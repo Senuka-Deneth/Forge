@@ -98,21 +98,38 @@ def enrich_candles(candles):
 
 
 def fetch_binance_klines(symbol, interval, limit):
-    params = {
-        "symbol": symbol,
-        "interval": interval,
-        "limit": limit
-    }
+    all_raw_data = []
+    current_end_time = None
+    remaining = limit
 
-    response = requests.get(BINANCE_KLINES_URL, params=params, timeout=10)
+    while remaining > 0:
+        fetch_limit = min(remaining, 1000)
+        params = {
+            "symbol": symbol,
+            "interval": interval,
+            "limit": fetch_limit
+        }
+        if current_end_time:
+            params["endTime"] = current_end_time
 
-    if response.status_code != 200:
-        raise ValueError(f"Binance request failed: {response.status_code} {response.text}")
+        response = requests.get(BINANCE_KLINES_URL, params=params, timeout=10)
 
-    raw_data = response.json()
+        if response.status_code != 200:
+            raise ValueError(f"Binance request failed: {response.status_code} {response.text}")
+
+        raw_data = response.json()
+        if not raw_data:
+            break
+
+        all_raw_data = raw_data + all_raw_data
+        current_end_time = raw_data[0][0] - 1
+        remaining -= len(raw_data)
+
+        if len(raw_data) < fetch_limit:
+            break
 
     candles = []
-    for item in raw_data:
+    for item in all_raw_data:
         candles.append({
             "time": int(item[0] / 1000),
             "open": float(item[1]),
@@ -121,6 +138,11 @@ def fetch_binance_klines(symbol, interval, limit):
             "close": float(item[4]),
             "volume": float(item[5]),
         })
+
+    candles = candles[-limit:]
+    
+    if not candles:
+        return []
 
     return enrich_candles(candles)
 
@@ -317,8 +339,8 @@ def get_klines():
         except ValueError:
             return jsonify({"error": "Limit must be an integer."}), 400
 
-        if limit < 50 or limit > 1000:
-            return jsonify({"error": "Limit must be between 50 and 1000."}), 400
+        if limit < 50 or limit > 10000:
+            return jsonify({"error": "Limit must be between 50 and 10000."}), 400
 
         candles = fetch_binance_klines(symbol, interval, limit)
         return jsonify(candles)
@@ -348,8 +370,8 @@ def analyze():
         except ValueError:
             return jsonify({"error": "Limit must be an integer."}), 400
 
-        if limit < 50 or limit > 1000:
-            return jsonify({"error": "Limit must be between 50 and 1000."}), 400
+        if limit < 50 or limit > 10000:
+            return jsonify({"error": "Limit must be between 50 and 10000."}), 400
 
         candles = fetch_binance_klines(symbol, interval, limit)
 

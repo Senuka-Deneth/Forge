@@ -27,6 +27,15 @@ export default function ChartPanel({ candles, loading, error, analysis }) {
 
   const supportLineRef = useRef(null)
   const resistanceLineRef = useRef(null)
+  const hasFitContentRef = useRef(false)
+  const isInitializedRef = useRef(false)
+
+  useEffect(() => {
+    if (loading) {
+      hasFitContentRef.current = false
+      isInitializedRef.current = false
+    }
+  }, [loading])
 
   useEffect(() => {
     if (!priceContainerRef.current || !rsiContainerRef.current || !macdContainerRef.current) return
@@ -196,56 +205,41 @@ export default function ChartPanel({ candles, loading, error, analysis }) {
       return
     }
 
-    const candleData = candles.map((c) => ({
-      time: c.time,
-      open: c.open,
-      high: c.high,
-      low: c.low,
-      close: c.close
-    }))
-
-    const volumeData = candles.map((c) => ({
-      time: c.time,
-      value: c.volume,
-      color: c.close >= c.open ? 'rgba(34, 197, 94, 0.45)' : 'rgba(239, 68, 68, 0.45)'
-    }))
-
-    const ema20Data = candles
-      .filter((c) => c.ema20 != null)
-      .map((c) => ({ time: c.time, value: c.ema20 }))
-
-    const ema50Data = candles
-      .filter((c) => c.ema50 != null)
-      .map((c) => ({ time: c.time, value: c.ema50 }))
-
-    const rsiData = candles
-      .filter((c) => c.rsi14 != null)
-      .map((c) => ({ time: c.time, value: c.rsi14 }))
-
-    const macdData = candles
-      .filter((c) => c.macd != null)
-      .map((c) => ({ time: c.time, value: c.macd }))
-
-    const macdSignalData = candles
-      .filter((c) => c.macdSignal != null)
-      .map((c) => ({ time: c.time, value: c.macdSignal }))
-
-    const macdHistData = candles
-      .filter((c) => c.macdHist != null)
-      .map((c) => ({
+    if (!isInitializedRef.current) {
+      const candleData = candles.map((c) => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close }))
+      const volumeData = candles.map((c) => ({ time: c.time, value: c.volume, color: c.close >= c.open ? 'rgba(34, 197, 94, 0.45)' : 'rgba(239, 68, 68, 0.45)' }))
+      const ema20Data = candles.filter((c) => c.ema20 != null).map((c) => ({ time: c.time, value: c.ema20 }))
+      const ema50Data = candles.filter((c) => c.ema50 != null).map((c) => ({ time: c.time, value: c.ema50 }))
+      const rsiData = candles.filter((c) => c.rsi14 != null).map((c) => ({ time: c.time, value: c.rsi14 }))
+      const macdData = candles.filter((c) => c.macd != null).map((c) => ({ time: c.time, value: c.macd }))
+      const macdSignalData = candles.filter((c) => c.macdSignal != null).map((c) => ({ time: c.time, value: c.macdSignal }))
+      const macdHistData = candles.filter((c) => c.macdHist != null).map((c) => ({
         time: c.time,
         value: c.macdHist,
         color: c.macdHist >= 0 ? 'rgba(34, 197, 94, 0.55)' : 'rgba(239, 68, 68, 0.55)'
       }))
 
-    candleSeriesRef.current.setData(candleData)
-    volumeSeriesRef.current.setData(volumeData)
-    ema20SeriesRef.current.setData(ema20Data)
-    ema50SeriesRef.current.setData(ema50Data)
-    rsiSeriesRef.current.setData(rsiData)
-    macdSeriesRef.current.setData(macdData)
-    macdSignalSeriesRef.current.setData(macdSignalData)
-    macdHistSeriesRef.current.setData(macdHistData)
+      candleSeriesRef.current.setData(candleData)
+      volumeSeriesRef.current.setData(volumeData)
+      ema20SeriesRef.current.setData(ema20Data)
+      ema50SeriesRef.current.setData(ema50Data)
+      rsiSeriesRef.current.setData(rsiData)
+      macdSeriesRef.current.setData(macdData)
+      macdSignalSeriesRef.current.setData(macdSignalData)
+      macdHistSeriesRef.current.setData(macdHistData)
+      
+      isInitializedRef.current = true;
+    } else {
+      const c = candles[candles.length - 1];
+      candleSeriesRef.current.update({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close });
+      volumeSeriesRef.current.update({ time: c.time, value: c.volume, color: c.close >= c.open ? 'rgba(34, 197, 94, 0.45)' : 'rgba(239, 68, 68, 0.45)' });
+      if (c.ema20 != null) ema20SeriesRef.current.update({ time: c.time, value: c.ema20 });
+      if (c.ema50 != null) ema50SeriesRef.current.update({ time: c.time, value: c.ema50 });
+      if (c.rsi14 != null) rsiSeriesRef.current.update({ time: c.time, value: c.rsi14 });
+      if (c.macd != null) macdSeriesRef.current.update({ time: c.time, value: c.macd });
+      if (c.macdSignal != null) macdSignalSeriesRef.current.update({ time: c.time, value: c.macdSignal });
+      if (c.macdHist != null) macdHistSeriesRef.current.update({ time: c.time, value: c.macdHist, color: c.macdHist >= 0 ? 'rgba(34, 197, 94, 0.55)' : 'rgba(239, 68, 68, 0.55)' });
+    }
 
     if (analysis?.nearestSupport) {
       const supportData = [
@@ -267,8 +261,11 @@ export default function ChartPanel({ candles, loading, error, analysis }) {
       resistanceLineRef.current.setData([])
     }
 
-    priceChartRef.current.timeScale().fitContent()
-    macdChartRef.current.timeScale().fitContent()
+    if (!hasFitContentRef.current) {
+      priceChartRef.current.timeScale().fitContent()
+      macdChartRef.current.timeScale().fitContent()
+      hasFitContentRef.current = true
+    }
   }, [candles, analysis])
 
   return (

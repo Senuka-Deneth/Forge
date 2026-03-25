@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import HeaderControls from './components/HeaderControls'
 import StatusBar from './components/StatusBar'
 import ChartPanel from './components/ChartPanel'
 import AnalysisPanel from './components/AnalysisPanel'
+import AIAnalysisPanel from './components/AIAnalysisPanel'
 
-const BACKEND_URL = 'http://127.0.0.1:5000'
+const BACKEND_URL = 'http://127.0.0.1:5001'
 const COMMON_QUOTES = ['USDT', 'BUSD', 'BTC', 'ETH', 'FDUSD']
 
 function calculateEMA(values, period) {
@@ -88,7 +89,12 @@ export default function App() {
   const [analysisLoading, setAnalysisLoading] = useState(false)
   const [analysisError, setAnalysisError] = useState('')
 
+  const [aiAnalysis, setAiAnalysis] = useState(null)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState('')
+
   const wsRef = useRef(null)
+  const lastAICallRef = useRef(0)
 
   const latestCandle = candles.length ? candles[candles.length - 1] : null
   const latestPrice = latestCandle?.close ?? null
@@ -226,6 +232,69 @@ export default function App() {
     }
   }
 
+  const runAIAnalysis = useCallback(async () => {
+    setAiLoading(true)
+    setAiError('')
+
+    // Collect market data from current state
+    const latest = candles.length ? candles[candles.length - 1] : null
+    if (!latest) {
+      setAiError('No candle data available yet.')
+      setAiLoading(false)
+      return
+    }
+
+    const closes = candles.slice(-5).map(c => c.close)
+    const volumes = candles.slice(-5).map(c => c.volume)
+
+    const payload = {
+      symbol,
+      timeframe: interval,
+      price: latest.close,
+      change: priceChange ?? 0,
+      rsi: latest.rsi14,
+      ema20: latest.ema20,
+      ema50: latest.ema50,
+      macd: {
+        macd: latest.macd,
+        signal: latest.macdSignal,
+        histogram: latest.macdHist
+      },
+      volume: latest.volume,
+      swingHighs: analysis?.swingHighs?.slice(0, 5)?.map(s => s.price) ?? [],
+      swingLows: analysis?.swingLows?.slice(0, 5)?.map(s => s.price) ?? [],
+      support: analysis?.nearestSupport?.price ?? null,
+      resistance: analysis?.nearestResistance?.price ?? null,
+      recentCloses: closes,
+      recentVolumes: volumes,
+      obi: null,
+      tfi: null,
+      fundingRate: null,
+      oiDelta: null
+    }
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/ai-analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        setAiAnalysis(data.analysis)
+        lastAICallRef.current = Date.now()
+      } else {
+        setAiError(data.error || 'AI analysis failed.')
+      }
+    } catch (err) {
+      setAiError('Failed to reach AI service. Is Ollama running?')
+    } finally {
+      setAiLoading(false)
+    }
+  }, [candles, symbol, interval, priceChange, analysis])
+
   const loadChart = async (selectedSymbol = symbol, selectedInterval = interval) => {
     const cleaned = selectedSymbol.trim().toUpperCase()
     const validationError = validateBinanceSymbol(cleaned)
@@ -257,6 +326,9 @@ export default function App() {
       setStatus('Historical candles loaded')
       startWebSocket(cleaned, selectedInterval)
       runAnalysis(cleaned, selectedInterval)
+      // AI analysis is triggered after rule-based analysis completes
+      // We call it with a small delay to allow state to settle
+      setTimeout(() => runAIAnalysis(), 500)
     } catch (err) {
       setError(err.message || 'Something went wrong while loading data.')
       setStatus('Load failed')
@@ -311,6 +383,13 @@ export default function App() {
           />
         </aside>
       </main>
+
+      <AIAnalysisPanel
+        analysis={aiAnalysis}
+        loading={aiLoading}
+        error={aiError}
+        onRefresh={runAIAnalysis}
+      />
     </div>
   )
 }

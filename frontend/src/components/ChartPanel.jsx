@@ -27,6 +27,13 @@ export default function ChartPanel({ candles, loading, error, analysis }) {
 
   const supportLineRef = useRef(null)
   const resistanceLineRef = useRef(null)
+  const hasFitContentRef = useRef(false)
+
+  useEffect(() => {
+    if (loading) {
+      hasFitContentRef.current = false
+    }
+  }, [loading])
 
   useEffect(() => {
     if (!priceContainerRef.current || !rsiContainerRef.current || !macdContainerRef.current) return
@@ -267,8 +274,11 @@ export default function ChartPanel({ candles, loading, error, analysis }) {
       resistanceLineRef.current.setData([])
     }
 
-    priceChartRef.current.timeScale().fitContent()
-    macdChartRef.current.timeScale().fitContent()
+    if (!hasFitContentRef.current) {
+      priceChartRef.current.timeScale().fitContent()
+      macdChartRef.current.timeScale().fitContent()
+      hasFitContentRef.current = true
+    }
   }, [candles, analysis])
 
   return (

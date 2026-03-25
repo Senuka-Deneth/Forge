@@ -175,8 +175,8 @@ export default function App() {
             next[next.length - 1] = { ...next[next.length - 1], ...liveCandle }
           } else if (liveCandle.time > last.time) {
             next.push(liveCandle)
-            if (next.length > 500) {
-              next = next.slice(next.length - 500)
+            if (next.length > 1000) {
+              next = next.slice(next.length - 1000)
             }
           } else {
             return prev
@@ -209,7 +209,7 @@ export default function App() {
     setAnalysisError('')
 
     try {
-      const url = `${BACKEND_URL}/api/analyze?symbol=${selectedSymbol}&interval=${selectedInterval}&limit=300`
+      const url = `${BACKEND_URL}/api/analyze?symbol=${selectedSymbol}&interval=${selectedInterval}&limit=1000`
       const res = await fetch(url)
       const data = await res.json()
 
@@ -243,7 +243,7 @@ export default function App() {
     closeSocket()
 
     try {
-      const url = `${BACKEND_URL}/api/klines?symbol=${cleaned}&interval=${selectedInterval}&limit=300`
+      const url = `${BACKEND_URL}/api/klines?symbol=${cleaned}&interval=${selectedInterval}&limit=1000`
       const res = await fetch(url)
       const data = await res.json()
 

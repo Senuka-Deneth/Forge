@@ -348,8 +348,6 @@ export default function App() {
       setStatus('Historical candles loaded')
       startWebSocket(cleaned, selectedInterval)
       runAnalysis(cleaned, selectedInterval)
-      // Trigger AI analysis after chart loads
-      setTimeout(() => runAIAnalysis(data), 500)
     } catch (err) {
       setError(err.message || 'Something went wrong while loading data.')
       setStatus('Load failed')
@@ -393,7 +391,7 @@ export default function App() {
           <ChartPanel candles={candles} loading={loading} error={error} analysis={analysis} />
         </section>
 
-        <aside className="side-panel">
+        <section className="logical-analysis-wrapper">
           <AnalysisPanel
             symbol={symbol}
             interval={interval}
@@ -402,7 +400,7 @@ export default function App() {
             loading={analysisLoading}
             error={analysisError}
           />
-        </aside>
+        </section>
       </main>
 
       <section className="ai-section-wrapper">

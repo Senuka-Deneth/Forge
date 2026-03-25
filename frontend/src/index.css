@@ -284,8 +284,8 @@ select {
 }
 
 .chart-card {
-  height: calc(100vh - 220px);
-  min-height: 760px;
+  height: calc(100vh - 180px);
+  min-height: 880px;
   display: flex;
   flex-direction: column;
   background: linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(15, 23, 42, 0.88));
@@ -342,7 +342,7 @@ select {
 
 .chart-stack {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) 160px 190px;
+  grid-template-rows: minmax(0, 1fr) 140px 160px;
   gap: 10px;
   flex: 1;
   min-height: 0;
@@ -405,8 +405,8 @@ select {
 }
 
 .analysis-panel {
-  height: calc(100vh - 220px);
-  min-height: 760px;
+  height: calc(100vh - 180px);
+  min-height: 880px;
   display: flex;
   flex-direction: column;
   gap: 16px;

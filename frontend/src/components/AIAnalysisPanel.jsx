@@ -74,9 +74,6 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
           >
             {aiLoading ? 'Analyzing…' : aiError ? 'Error' : a ? 'Ready' : 'Waiting'}
           </span>
-          <button className="ai-refresh-btn" onClick={onRefresh} disabled={aiLoading}>
-            ↻ Refresh
-          </button>
         </div>
       </div>
 
@@ -99,12 +96,16 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
 
       {!aiLoading && !aiError && !a && (
         <div className="ai-placeholder">
-          Load a chart to trigger AI analysis, or click <strong>↻ Refresh</strong> above.
+          <p>No AI analysis generated yet.</p>
+          <button className="ai-create-btn" onClick={onRefresh}>
+            ✨ Create AI Analysis
+          </button>
         </div>
       )}
 
       {!aiLoading && a && (
-        <div className="ai-grid">
+        <>
+          <div className="ai-grid">
           {/* ── Market Intelligence ── */}
           <div className="ai-card ai-card-wide">
             <h3>Market Intelligence</h3>
@@ -283,6 +284,13 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
             </div>
           )}
         </div>
+        
+        <div className="ai-footer-actions">
+          <button className="ai-refresh-btn" onClick={onRefresh} disabled={aiLoading}>
+            ↻ Generate New Analysis
+          </button>
+        </div>
+        </>
       )}
     </div>
   )

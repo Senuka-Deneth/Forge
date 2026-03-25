@@ -2,11 +2,13 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
 import re
-
-from services.ollama_service import analyze_market, check_ollama
+from services.ollama_service import analyze_market, check_ollama_health
 
 app = Flask(__name__)
 CORS(app)
+
+# Check Ollama availability at startup
+check_ollama_health()
 
 BINANCE_KLINES_URL = "https://api.binance.com/api/v3/klines"
 
@@ -431,10 +433,10 @@ def analyze():
 @app.route("/api/ai-analyze", methods=["POST"])
 def ai_analyze():
     try:
-        market_data = request.get_json(force=True)
+        market_data = request.get_json()
 
-        if not market_data or not market_data.get("price"):
-            return jsonify({"error": "Invalid market data"}), 400
+        if not market_data or market_data.get("price") is None:
+            return jsonify({"error": "Invalid market data — price is required."}), 400
 
         analysis = analyze_market(market_data)
         return jsonify({"success": True, "analysis": analysis})
@@ -444,10 +446,9 @@ def ai_analyze():
         return jsonify({
             "success": False,
             "error": str(exc),
-            "fallback": "AI model unavailable. Check Ollama is running."
+            "fallback": "AI model unavailable. Check that Ollama is running (ollama serve) and gpt-oss:20b is pulled."
         }), 500
 
 
 if __name__ == "__main__":
-    check_ollama()
-    app.run(host="127.0.0.1", port=5001, debug=True)
+    app.run(host="127.0.0.1", port=5000, debug=True)

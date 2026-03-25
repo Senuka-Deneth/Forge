@@ -3,6 +3,8 @@ from flask_cors import CORS
 import requests
 import re
 
+from services.ollama_service import analyze_market, check_ollama
+
 app = Flask(__name__)
 CORS(app)
 
@@ -426,5 +428,26 @@ def analyze():
         }), 500
 
 
+@app.route("/api/ai-analyze", methods=["POST"])
+def ai_analyze():
+    try:
+        market_data = request.get_json(force=True)
+
+        if not market_data or not market_data.get("price"):
+            return jsonify({"error": "Invalid market data"}), 400
+
+        analysis = analyze_market(market_data)
+        return jsonify({"success": True, "analysis": analysis})
+
+    except Exception as exc:
+        print(f"AI Analysis Error: {exc}")
+        return jsonify({
+            "success": False,
+            "error": str(exc),
+            "fallback": "AI model unavailable. Check Ollama is running."
+        }), 500
+
+
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    check_ollama()
+    app.run(host="127.0.0.1", port=5001, debug=True)

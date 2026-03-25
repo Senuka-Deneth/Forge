@@ -1,0 +1,408 @@
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import requests
+import re
+
+app = Flask(__name__)
+CORS(app)
+
+BINANCE_KLINES_URL = "https://api.binance.com/api/v3/klines"
+
+ALLOWED_INTERVALS = {
+    "1m", "5m", "15m", "30m",
+    "1h", "2h", "4h", "6h", "8h", "12h",
+    "1d", "3d", "1w", "1M"
+}
+
+SYMBOL_REGEX = re.compile(r"^[A-Z0-9]{5,20}$")
+
+
+def validate_symbol(symbol: str) -> bool:
+    return bool(SYMBOL_REGEX.fullmatch(symbol))
+
+
+def calculate_ema(values, period):
+    if not values:
+        return []
+
+    ema = []
+    multiplier = 2 / (period + 1)
+
+    for i, value in enumerate(values):
+        if i == 0:
+            ema.append(value)
+        else:
+            ema.append((value - ema[-1]) * multiplier + ema[-1])
+
+    return ema
+
+
+def calculate_rsi(values, period=14):
+    if len(values) < 2:
+        return [None] * len(values)
+
+    gains = [0]
+    losses = [0]
+
+    for i in range(1, len(values)):
+        change = values[i] - values[i - 1]
+        gains.append(max(change, 0))
+        losses.append(abs(min(change, 0)))
+
+    rsi = [None] * len(values)
+
+    if len(values) <= period:
+        return rsi
+
+    avg_gain = sum(gains[1:period + 1]) / period
+    avg_loss = sum(losses[1:period + 1]) / period
+
+    rsi[period] = 100 if avg_loss == 0 else 100 - (100 / (1 + (avg_gain / avg_loss)))
+
+    for i in range(period + 1, len(values)):
+        avg_gain = ((avg_gain * (period - 1)) + gains[i]) / period
+        avg_loss = ((avg_loss * (period - 1)) + losses[i]) / period
+        rsi[i] = 100 if avg_loss == 0 else 100 - (100 / (1 + (avg_gain / avg_loss)))
+
+    return rsi
+
+
+def calculate_macd(values, fast=12, slow=26, signal=9):
+    ema_fast = calculate_ema(values, fast)
+    ema_slow = calculate_ema(values, slow)
+
+    macd_line = [ema_fast[i] - ema_slow[i] for i in range(len(values))]
+    signal_line = calculate_ema(macd_line, signal)
+    histogram = [macd_line[i] - signal_line[i] for i in range(len(values))]
+
+    return macd_line, signal_line, histogram
+
+
+def enrich_candles(candles):
+    closes = [c["close"] for c in candles]
+
+    ema20 = calculate_ema(closes, 20)
+    ema50 = calculate_ema(closes, 50)
+    rsi14 = calculate_rsi(closes, 14)
+    macd_line, signal_line, macd_hist = calculate_macd(closes)
+
+    for i in range(len(candles)):
+        candles[i]["ema20"] = round(ema20[i], 6) if ema20[i] is not None else None
+        candles[i]["ema50"] = round(ema50[i], 6) if ema50[i] is not None else None
+        candles[i]["rsi14"] = round(rsi14[i], 6) if rsi14[i] is not None else None
+        candles[i]["macd"] = round(macd_line[i], 6) if macd_line[i] is not None else None
+        candles[i]["macdSignal"] = round(signal_line[i], 6) if signal_line[i] is not None else None
+        candles[i]["macdHist"] = round(macd_hist[i], 6) if macd_hist[i] is not None else None
+
+    return candles
+
+
+def fetch_binance_klines(symbol, interval, limit):
+    params = {
+        "symbol": symbol,
+        "interval": interval,
+        "limit": limit
+    }
+
+    response = requests.get(BINANCE_KLINES_URL, params=params, timeout=10)
+
+    if response.status_code != 200:
+        raise ValueError(f"Binance request failed: {response.status_code} {response.text}")
+
+    raw_data = response.json()
+
+    candles = []
+    for item in raw_data:
+        candles.append({
+            "time": int(item[0] / 1000),
+            "open": float(item[1]),
+            "high": float(item[2]),
+            "low": float(item[3]),
+            "close": float(item[4]),
+            "volume": float(item[5]),
+        })
+
+    return enrich_candles(candles)
+
+
+def find_swings(candles, lookback=2):
+    swing_highs = []
+    swing_lows = []
+
+    if len(candles) < (lookback * 2 + 1):
+        return swing_highs, swing_lows
+
+    for i in range(lookback, len(candles) - lookback):
+        current_high = candles[i]["high"]
+        current_low = candles[i]["low"]
+
+        left_highs = [candles[j]["high"] for j in range(i - lookback, i)]
+        right_highs = [candles[j]["high"] for j in range(i + 1, i + lookback + 1)]
+
+        left_lows = [candles[j]["low"] for j in range(i - lookback, i)]
+        right_lows = [candles[j]["low"] for j in range(i + 1, i + lookback + 1)]
+
+        if current_high > max(left_highs) and current_high > max(right_highs):
+            swing_highs.append({
+                "time": candles[i]["time"],
+                "price": current_high
+            })
+
+        if current_low < min(left_lows) and current_low < min(right_lows):
+            swing_lows.append({
+                "time": candles[i]["time"],
+                "price": current_low
+            })
+
+    return swing_highs, swing_lows
+
+
+def nearest_support_resistance(current_price, swing_highs, swing_lows):
+    supports = [s for s in swing_lows if s["price"] < current_price]
+    resistances = [r for r in swing_highs if r["price"] > current_price]
+
+    nearest_support = max(supports, key=lambda x: x["price"]) if supports else None
+    nearest_resistance = min(resistances, key=lambda x: x["price"]) if resistances else None
+
+    return nearest_support, nearest_resistance
+
+
+def get_trend(latest):
+    close = latest["close"]
+    ema20 = latest["ema20"]
+    ema50 = latest["ema50"]
+
+    if ema20 is None or ema50 is None:
+        return "unknown"
+
+    if close > ema20 > ema50:
+        return "bullish"
+    if close < ema20 < ema50:
+        return "bearish"
+    return "mixed"
+
+
+def get_momentum(latest):
+    rsi = latest["rsi14"]
+    macd = latest["macd"]
+    macd_signal = latest["macdSignal"]
+
+    if rsi is None or macd is None or macd_signal is None:
+        return "unknown"
+
+    if rsi >= 70 and macd > macd_signal:
+        return "strong bullish but overbought"
+    if rsi <= 30 and macd < macd_signal:
+        return "strong bearish but oversold"
+    if macd > macd_signal and rsi > 50:
+        return "bullish"
+    if macd < macd_signal and rsi < 50:
+        return "bearish"
+    return "neutral"
+
+
+def get_rsi_state(rsi):
+    if rsi is None:
+        return "unknown"
+    if rsi >= 70:
+        return "overbought"
+    if rsi <= 30:
+        return "oversold"
+    if rsi >= 55:
+        return "bullish zone"
+    if rsi <= 45:
+        return "bearish zone"
+    return "neutral zone"
+
+
+def get_macd_state(macd, signal):
+    if macd is None or signal is None:
+        return "unknown"
+    if macd > signal:
+        return "bullish crossover bias"
+    if macd < signal:
+        return "bearish crossover bias"
+    return "neutral"
+
+
+def build_scenarios(latest, trend, momentum, nearest_support, nearest_resistance):
+    close = latest["close"]
+    ema20 = latest["ema20"]
+
+    bullish = "Need more confirmation."
+    bearish = "Need more confirmation."
+    invalidation = "No clear invalidation level yet."
+
+    if nearest_resistance and ema20 is not None:
+        bullish = (
+            f"Bullish continuation becomes stronger if price holds above EMA20 ({ema20:.2f}) "
+            f"and breaks resistance near {nearest_resistance['price']:.2f}."
+        )
+    elif ema20 is not None:
+        bullish = f"Bullish continuation becomes stronger if price holds above EMA20 ({ema20:.2f})."
+
+    if nearest_support:
+        bearish = (
+            f"Bearish continuation becomes stronger if price loses support near "
+            f"{nearest_support['price']:.2f}."
+        )
+        invalidation = (
+            f"If using the bearish idea, invalidation is a clean reclaim above the latest broken "
+            f"support/resistance area."
+        )
+
+    if trend == "bullish" and nearest_support:
+        invalidation = (
+            f"If using the bullish idea, invalidation is a break below support near "
+            f"{nearest_support['price']:.2f}."
+        )
+
+    if trend == "mixed" and momentum == "neutral":
+        bullish = "Market is mixed. Bullish case needs a strong reclaim of key moving averages and resistance."
+        bearish = "Market is mixed. Bearish case needs a rejection and loss of nearby support."
+
+    return bullish, bearish, invalidation
+
+
+def get_confidence(trend, momentum, nearest_support, nearest_resistance):
+    score = 50
+
+    if trend in ("bullish", "bearish"):
+        score += 15
+    if momentum in ("bullish", "bearish"):
+        score += 15
+    if nearest_support is not None:
+        score += 10
+    if nearest_resistance is not None:
+        score += 10
+
+    return min(score, 95)
+
+
+@app.route("/", methods=["GET"])
+def home():
+    return jsonify({
+        "message": "Vision Chart Bot backend is running",
+        "available_routes": [
+            "/api/health",
+            "/api/klines?symbol=BTCUSDT&interval=4h&limit=300",
+            "/api/analyze?symbol=BTCUSDT&interval=4h&limit=300"
+        ]
+    })
+
+
+@app.route("/api/health", methods=["GET"])
+def health():
+    return jsonify({
+        "status": "ok",
+        "message": "Vision Chart Bot backend is running"
+    })
+
+
+@app.route("/api/klines", methods=["GET"])
+def get_klines():
+    try:
+        symbol = request.args.get("symbol", "BTCUSDT").upper().strip()
+        interval = request.args.get("interval", "4h").strip()
+        limit_raw = request.args.get("limit", "300").strip()
+
+        if not validate_symbol(symbol):
+            return jsonify({"error": "Invalid symbol format."}), 400
+
+        if interval not in ALLOWED_INTERVALS:
+            return jsonify({"error": "Invalid interval."}), 400
+
+        try:
+            limit = int(limit_raw)
+        except ValueError:
+            return jsonify({"error": "Limit must be an integer."}), 400
+
+        if limit < 50 or limit > 1000:
+            return jsonify({"error": "Limit must be between 50 and 1000."}), 400
+
+        candles = fetch_binance_klines(symbol, interval, limit)
+        return jsonify(candles)
+
+    except Exception as exc:
+        return jsonify({
+            "error": "Unexpected backend error",
+            "details": str(exc)
+        }), 500
+
+
+@app.route("/api/analyze", methods=["GET"])
+def analyze():
+    try:
+        symbol = request.args.get("symbol", "BTCUSDT").upper().strip()
+        interval = request.args.get("interval", "4h").strip()
+        limit_raw = request.args.get("limit", "300").strip()
+
+        if not validate_symbol(symbol):
+            return jsonify({"error": "Invalid symbol format."}), 400
+
+        if interval not in ALLOWED_INTERVALS:
+            return jsonify({"error": "Invalid interval."}), 400
+
+        try:
+            limit = int(limit_raw)
+        except ValueError:
+            return jsonify({"error": "Limit must be an integer."}), 400
+
+        if limit < 50 or limit > 1000:
+            return jsonify({"error": "Limit must be between 50 and 1000."}), 400
+
+        candles = fetch_binance_klines(symbol, interval, limit)
+
+        if len(candles) < 60:
+            return jsonify({"error": "Not enough candles for analysis."}), 400
+
+        latest = candles[-1]
+        swing_highs, swing_lows = find_swings(candles, lookback=2)
+        nearest_support, nearest_resistance = nearest_support_resistance(
+            latest["close"], swing_highs, swing_lows
+        )
+
+        trend = get_trend(latest)
+        momentum = get_momentum(latest)
+        rsi_state = get_rsi_state(latest["rsi14"])
+        macd_state = get_macd_state(latest["macd"], latest["macdSignal"])
+        bullish_scenario, bearish_scenario, invalidation = build_scenarios(
+            latest, trend, momentum, nearest_support, nearest_resistance
+        )
+        confidence = get_confidence(trend, momentum, nearest_support, nearest_resistance)
+
+        response = {
+            "symbol": symbol,
+            "interval": interval,
+            "latestPrice": latest["close"],
+            "trend": trend,
+            "momentum": momentum,
+            "rsi": latest["rsi14"],
+            "rsiState": rsi_state,
+            "macd": latest["macd"],
+            "macdSignal": latest["macdSignal"],
+            "macdHist": latest["macdHist"],
+            "macdState": macd_state,
+            "ema20": latest["ema20"],
+            "ema50": latest["ema50"],
+            "nearestSupport": nearest_support,
+            "nearestResistance": nearest_resistance,
+            "swingHighs": swing_highs[-5:],
+            "swingLows": swing_lows[-5:],
+            "bullishScenario": bullish_scenario,
+            "bearishScenario": bearish_scenario,
+            "invalidation": invalidation,
+            "confidence": confidence
+        }
+
+        return jsonify(response)
+
+    except Exception as exc:
+        return jsonify({
+            "error": "Unexpected backend error",
+            "details": str(exc)
+        }), 500
+
+
+if __name__ == "__main__":
+    app.run(host="127.0.0.1", port=5000, debug=True)

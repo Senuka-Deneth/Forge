@@ -71,7 +71,7 @@ export default function ChartPanel({ candles, loading, error, analysis }) {
 
     const macdChart = createChart(macdContainerRef.current, {
       width: macdContainerRef.current.clientWidth,
-      height: macdContainerRef.current.clientHeight || 180,
+      height: macdContainerRef.current.clientHeight || 240,
       layout: sharedLayout,
       grid: sharedGrid,
       rightPriceScale: { borderColor: '#334155' },
@@ -154,6 +154,24 @@ export default function ChartPanel({ candles, loading, error, analysis }) {
     macdSeriesRef.current = macdSeries
     macdSignalSeriesRef.current = macdSignalSeries
     macdHistSeriesRef.current = macdHistSeries
+
+    // Guard flag to prevent circular re-entrancy between charts
+    let isSyncing = false
+
+    const charts = [priceChart, rsiChart, macdChart]
+
+    charts.forEach((source) => {
+      source.timeScale().subscribeVisibleLogicalRangeChange((logicalRange) => {
+        if (isSyncing || logicalRange === null) return
+        isSyncing = true
+        charts.forEach((target) => {
+          if (target !== source) {
+            target.timeScale().setVisibleLogicalRange(logicalRange)
+          }
+        })
+        isSyncing = false
+      })
+    })
 
     const handleResize = () => {
       if (priceChartRef.current && priceContainerRef.current) {

@@ -595,6 +595,105 @@ select {
 }
 
 /* ─────────────────────────────────────────
+   Pivot Toggle Button
+───────────────────────────────────────── */
+
+.pivot-toggle {
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.pivot-toggle:hover {
+  border-color: #29b6f6;
+  color: #29b6f6;
+}
+
+.pivot-toggle.pivot-active {
+  background: #1a3a4a;
+  color: #29b6f6;
+  border-color: #29b6f6;
+}
+
+/* ─────────────────────────────────────────
+   Pivot Info Panel
+───────────────────────────────────────── */
+
+.pivot-panel h3 {
+  color: #90a4ae;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 12px;
+}
+
+.pivot-zone-badge, .pivot-bias-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.pivot-zone-badge label,
+.pivot-bias-row label {
+  color: #546e7a;
+  font-size: 12px;
+}
+
+.pivot-levels-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 12px 0;
+}
+
+.plevel {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px 10px;
+  border-radius: 5px;
+  font-size: 12px;
+}
+
+.plevel strong { color: #e0e0e0; }
+
+.plevel.r3 { background: rgba(183,28,28,0.3); color: #ef9a9a; }
+.plevel.r2 { background: rgba(229,57,53,0.2); color: #ef9a9a; }
+.plevel.r1 { background: rgba(239,83,80,0.15); color: #ef9a9a; }
+.plevel.pp { background: rgba(255,255,255,0.08); color: #e0e0e0;
+             font-weight: bold; border: 1px solid #444; }
+.plevel.s1 { background: rgba(38,166,154,0.15); color: #a5d6a7; }
+.plevel.s2 { background: rgba(0,137,123,0.2); color: #a5d6a7; }
+.plevel.s3 { background: rgba(0,77,64,0.3); color: #a5d6a7; }
+
+.pivot-proximity {
+  background: rgba(255,213,79,0.1);
+  border: 1px solid #ffd54f;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #ffd54f;
+  margin-bottom: 8px;
+}
+
+.pivot-distance-row {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+
+.pivot-distance-row label {
+  display: block;
+  color: #546e7a;
+  font-size: 11px;
+  margin-bottom: 2px;
+}
+
+.pivot-distance-row span {
+  color: #b0bec5;
+  font-size: 13px;
+}
+
+/* ─────────────────────────────────────────
    AI Analysis Section
 ───────────────────────────────────────── */
 

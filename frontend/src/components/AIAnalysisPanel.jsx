@@ -182,6 +182,68 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
             </Row>
           </div>
 
+          {/* ── Pivot Intelligence ── */}
+          {a.pivot_analysis && (
+            <div className="ai-card">
+              <h3>Pivot Intelligence</h3>
+              <Row label="PP Level">
+                <span style={{ fontWeight: 700, color: '#e0e0e0' }}>
+                  {a.pivot_analysis.pp ?? '—'}
+                </span>
+              </Row>
+              <Row label="Price Zone">
+                <Tag value={a.pivot_analysis.current_zone} />
+              </Row>
+              <Row label="Session Bias">
+                <Tag value={a.pivot_analysis.session_bias} />
+              </Row>
+              <Row label="Pivot Target (Bull)">
+                <span style={{ color: '#22c55e' }}>
+                  {a.pivot_analysis.pivot_target_bull
+                    ? `${a.pivot_analysis.pivot_target_bull.label} @ ${a.pivot_analysis.pivot_target_bull.value}`
+                    : '—'}
+                </span>
+              </Row>
+              <Row label="Pivot Target (Bear)">
+                <span style={{ color: '#ef4444' }}>
+                  {a.pivot_analysis.pivot_target_bear
+                    ? `${a.pivot_analysis.pivot_target_bear.label} @ ${a.pivot_analysis.pivot_target_bear.value}`
+                    : '—'}
+                </span>
+              </Row>
+              {a.pivot_analysis.at_inflection_point && a.pivot_analysis.inflection_level && (
+                <div className="pivot-proximity" style={{ marginTop: 10 }}>
+                  ⚡ At inflection: <strong>{a.pivot_analysis.inflection_level}</strong>
+                </div>
+              )}
+              {a.pivot_analysis.pivot_signal && (
+                <p className="ai-reasoning" style={{ marginTop: 10 }}>
+                  {a.pivot_analysis.pivot_signal}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* ── Pivot Confluences ── */}
+          {a.pivot_analysis?.confluences && (
+            <div className="ai-card">
+              <h3>Pivot Confluences</h3>
+              {a.pivot_analysis.confluences.length > 0 ? (
+                a.pivot_analysis.confluences.map((c, i) => (
+                  <div key={i} className="ai-anomaly">
+                    <Tag value={c.significance} />
+                    <span className="ai-anomaly-type">{c.level} @ {c.price}</span>
+                    <span className="ai-anomaly-desc">
+                      Confluent with {c.confluent_with}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <p className="ai-no-anomalies">No significant confluences detected.</p>
+              )}
+            </div>
+          )}
+
           {/* ── Market Structure ── */}
           <div className="ai-card">
             <h3>Market Structure</h3>

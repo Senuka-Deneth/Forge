@@ -1,3 +1,5 @@
+import React, { useState, useEffect } from 'react';
+
 const colorMap = {
   bullish: '#22c55e',
   strong_bullish: '#00e676',
@@ -54,14 +56,39 @@ function Row({ label, children }) {
 export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefresh }) {
   const a = aiAnalysis
 
+  const [loadingMsg, setLoadingMsg] = useState('Running 2-turn reasoning analysis...');
+
+  useEffect(() => {
+    if (aiLoading) {
+      const messages = [
+        'Running 2-turn reasoning analysis...',
+        'Turn 1: Deep market reasoning in progress...',
+        'Turn 2: Verifying signals and confluences...',
+        'Finalizing JSON output...'
+      ];
+      let i = 0;
+      setLoadingMsg(messages[0]);
+      const interval = setInterval(() => {
+        i++;
+        if (i < messages.length) {
+          setLoadingMsg(messages[i]);
+        } else {
+          clearInterval(interval);
+        }
+      }, 8000);
+      return () => clearInterval(interval);
+    }
+  }, [aiLoading]);
+
   return (
     <div className="ai-section">
       <div className="ai-panel-header">
         <h2>🤖 AI Analysis</h2>
         <div className="ai-meta">
-          <span className="ai-model-tag">gpt-oss:20b</span>
+          <span className="ai-model-tag">nemotron-120b · 2-turn reasoning</span>
           <span
             className="ai-badge"
+            title={a && a._meta ? `Reasoning tokens used: ${a._meta.turn1_reasoning_tokens}` : undefined}
             style={{
               backgroundColor: aiLoading
                 ? '#f59e0b'
@@ -80,7 +107,7 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
       {aiLoading && (
         <div className="ai-loading">
           <div className="ai-spinner" />
-          <span>AI is analyzing market structure…</span>
+          <span>{loadingMsg}</span>
         </div>
       )}
 

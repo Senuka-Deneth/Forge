@@ -3,6 +3,7 @@ from flask_cors import CORS
 import requests
 import re
 from services.ollama_service import analyze_market, check_ollama_health
+from utils.pivotPoints import compute_pivots, analyze_price_vs_pivots
 
 app = Flask(__name__)
 CORS(app)
@@ -428,6 +429,52 @@ def analyze():
             "error": "Unexpected backend error",
             "details": str(exc)
         }), 500
+
+
+@app.route("/api/pivots", methods=["GET"])
+def get_pivots():
+    try:
+        symbol = request.args.get("symbol", "BTCUSDT").upper().strip()
+        timeframe = request.args.get("timeframe", "4h").strip()
+
+        if not validate_symbol(symbol):
+            return jsonify({"error": "Invalid symbol format."}), 400
+
+        if timeframe not in ALLOWED_INTERVALS:
+            return jsonify({"error": "Invalid interval."}), 400
+
+        # Fetch enough candles to cover at least 2 full periods
+        candles = fetch_binance_klines(symbol, timeframe, 200)
+
+        if not candles:
+            return jsonify({"success": False, "error": "No candle data available."}), 400
+
+        current_price = candles[-1]["close"]
+
+        classic_pivots = compute_pivots(candles, timeframe, "classic")
+        fib_pivots = compute_pivots(candles, timeframe, "fibonacci")
+
+        if not classic_pivots or not fib_pivots:
+            return jsonify({
+                "success": False,
+                "error": "Not enough data to compute pivots for this timeframe."
+            }), 400
+
+        classic_analysis = analyze_price_vs_pivots(current_price, classic_pivots)
+        fib_analysis = analyze_price_vs_pivots(current_price, fib_pivots)
+
+        return jsonify({
+            "success": True,
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "currentPrice": current_price,
+            "classic": {"pivots": classic_pivots, "analysis": classic_analysis},
+            "fibonacci": {"pivots": fib_pivots, "analysis": fib_analysis},
+        })
+
+    except Exception as exc:
+        print(f"Pivot error: {exc}")
+        return jsonify({"success": False, "error": str(exc)}), 500
 
 
 @app.route("/api/ai-analyze", methods=["POST"])

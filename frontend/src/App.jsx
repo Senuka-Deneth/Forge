@@ -3,6 +3,7 @@ import HeaderControls from './components/HeaderControls'
 import StatusBar from './components/StatusBar'
 import ChartPanel from './components/ChartPanel'
 import AnalysisPanel from './components/AnalysisPanel'
+import AIAnalysisPanel from './components/AIAnalysisPanel'
 
 const BACKEND_URL = 'http://127.0.0.1:5000'
 const COMMON_QUOTES = ['USDT', 'BUSD', 'BTC', 'ETH', 'FDUSD']
@@ -87,6 +88,11 @@ export default function App() {
   const [analysis, setAnalysis] = useState(null)
   const [analysisLoading, setAnalysisLoading] = useState(false)
   const [analysisError, setAnalysisError] = useState('')
+
+  const [aiAnalysis, setAIAnalysis] = useState(null)
+  const [aiLoading, setAILoading] = useState(false)
+  const [aiError, setAIError] = useState('')
+  const lastAICallRef = useRef(0)
 
   const wsRef = useRef(null)
 
@@ -204,6 +210,91 @@ export default function App() {
     }
   }
 
+  const runAIAnalysis = async (currentCandles = null) => {
+    const candleData = currentCandles
+    if (!candleData || candleData.length < 2) return
+
+    setAILoading(true)
+    setAIError('')
+
+    const latest = candleData[candleData.length - 1]
+    const prev = candleData[candleData.length - 2]
+    const priceChg =
+      prev && prev.close !== 0
+        ? (((latest.close - prev.close) / prev.close) * 100).toFixed(4)
+        : 0
+
+    // Compute swing highs / lows (simplified: local peaks over last 50 candles)
+    const slice = candleData.slice(-50)
+    const swingHighs = []
+    const swingLows = []
+    for (let i = 2; i < slice.length - 2; i++) {
+      if (
+        slice[i].high > slice[i - 1].high &&
+        slice[i].high > slice[i - 2].high &&
+        slice[i].high > slice[i + 1].high &&
+        slice[i].high > slice[i + 2].high
+      ) {
+        swingHighs.push(slice[i].high)
+      }
+      if (
+        slice[i].low < slice[i - 1].low &&
+        slice[i].low < slice[i - 2].low &&
+        slice[i].low < slice[i + 1].low &&
+        slice[i].low < slice[i + 2].low
+      ) {
+        swingLows.push(slice[i].low)
+      }
+    }
+
+    const last5 = candleData.slice(-5)
+
+    const payload = {
+      symbol,
+      timeframe: interval,
+      price: latest.close,
+      change: priceChg,
+      rsi: latest.rsi14 ?? null,
+      ema20: latest.ema20 ?? null,
+      ema50: latest.ema50 ?? null,
+      macd: {
+        macd: latest.macd ?? null,
+        signal: latest.macdSignal ?? null,
+        histogram: latest.macdHist ?? null,
+      },
+      volume: latest.volume ?? null,
+      swingHighs: swingHighs.slice(-5),
+      swingLows: swingLows.slice(-5),
+      support: swingLows.length ? swingLows[swingLows.length - 1] : null,
+      resistance: swingHighs.length ? swingHighs[swingHighs.length - 1] : null,
+      recentCloses: last5.map((c) => c.close),
+      recentVolumes: last5.map((c) => c.volume),
+      obi: null,
+      tfi: null,
+      fundingRate: null,
+      oiDelta: null,
+    }
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/ai-analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setAIAnalysis(data.analysis)
+        lastAICallRef.current = Date.now()
+      } else {
+        setAIError(data.error || data.fallback || 'AI analysis failed.')
+      }
+    } catch (err) {
+      setAIError('Failed to reach AI service. Is the backend running?')
+    } finally {
+      setAILoading(false)
+    }
+  }
+
   const runAnalysis = async (selectedSymbol = symbol, selectedInterval = interval) => {
     setAnalysisLoading(true)
     setAnalysisError('')
@@ -300,7 +391,7 @@ export default function App() {
           <ChartPanel candles={candles} loading={loading} error={error} analysis={analysis} />
         </section>
 
-        <aside className="side-panel">
+        <section className="logical-analysis-wrapper">
           <AnalysisPanel
             symbol={symbol}
             interval={interval}
@@ -309,8 +400,17 @@ export default function App() {
             loading={analysisLoading}
             error={analysisError}
           />
-        </aside>
+        </section>
       </main>
+
+      <section className="ai-section-wrapper">
+        <AIAnalysisPanel
+          aiAnalysis={aiAnalysis}
+          aiLoading={aiLoading}
+          aiError={aiError}
+          onRefresh={() => runAIAnalysis(candles)}
+        />
+      </section>
     </div>
   )
 }

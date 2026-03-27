@@ -73,7 +73,7 @@ You specialize in:
 Your job is to receive structured live market data and return a single,
 precise JSON analysis object.
 
-CRITICAL: Keep your internal reasoning extremely concise and brief. Do not write essays. You must complete your analysis within token limits.
+CRITICAL: Keep your internal reasoning extremely concise and brief (UNDER 200 WORDS). Do not write essays. Do NOT manually calculate every pivot confluence step-by-step; only note the obvious ones. You must complete your analysis within token limits.
 
 STRICT RULES:
 1. Return ONLY a valid JSON object. No preamble. No explanation outside JSON.
@@ -295,9 +295,9 @@ Verify these specific points:
    - Is there unusual volume relative to recent candles?
    - Is price at a high-confluence inflection point?
 
-CRITICAL: Keep your internal verification reasoning extremely concise. Do not write an essay. Save tokens for the final JSON.
+CRITICAL: DO NOT WRITE ANY TEXT OR REASONING TO VERIFY. YOU MUST IMMEDIATELY START YOUR RESPONSE WITH THE JSON OBJECT STARTING WITH '{'. Failure to do so will break the system.
 
-If any of the above are wrong in your first response, correct them.
+If any of the above are wrong in your first response, correct them directly in the output JSON.
 Return the final corrected and complete JSON object only."""
 
 def analyze_market(market_data):
@@ -316,7 +316,7 @@ def analyze_market(market_data):
             ],
             "reasoning": { "enabled": True },
             "temperature": 0.1,
-            "max_tokens": 4096
+            "max_tokens": 2048
         },
         headers=BASE_HEADERS,
         timeout=60
@@ -346,8 +346,8 @@ def analyze_market(market_data):
     ]
     
     # Check for OpenRouter specific thought/reasoning objects
-    if "reasoning_details" in assistant_msg:
-        conversation_history[2]["reasoning_details"] = assistant_msg["reasoning_details"]
+    if "reasoning" in assistant_msg:
+        conversation_history[2]["reasoning"] = assistant_msg["reasoning"]
 
     # Turn 2
     turn2_response = requests.post(
@@ -355,7 +355,6 @@ def analyze_market(market_data):
         json={
             "model": MODEL,
             "messages": conversation_history,
-            "reasoning": { "enabled": True },
             "temperature": 0.1,
             "max_tokens": 4096
         },
@@ -374,7 +373,13 @@ def analyze_market(market_data):
         raise ValueError("Turn 2 failed. No choices returned. Raw response: " + turn2_response.text)
         
     final_content = choices[0].get("message", {}).get("content") or ""
-    parsed = extract_json(final_content)
+    
+    try:
+        parsed = extract_json(final_content)
+    except ValueError as e:
+        print(f"Turn 2 failed to parse JSON: {e}. Falling back to Turn 1 output.")
+        turn1_content = assistant_msg.get("content") or ""
+        parsed = extract_json(turn1_content)
 
     # Attach reasoning summary for frontend display
     parsed["_meta"] = {
@@ -382,7 +387,7 @@ def analyze_market(market_data):
         "reasoning_used": True,
         "turns": 2,
         "timestamp": datetime.utcnow().isoformat() + "Z",
-        "turn1_reasoning_tokens": len(assistant_msg.get("reasoning_details", "")) if assistant_msg.get("reasoning_details") else 0
+        "turn1_reasoning_tokens": len(assistant_msg.get("reasoning", "")) if assistant_msg.get("reasoning") else 0
     }
 
     return parsed

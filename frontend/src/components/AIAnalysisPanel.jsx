@@ -115,8 +115,8 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
         <div className="ai-error-box">
           <strong>AI Error:</strong> {aiError}
           <div className="ai-error-hint">
-            Make sure Ollama is running: <code>ollama serve</code> and model is pulled:{' '}
-            <code>ollama pull gpt-oss:20b</code>
+            The external AI model failed to return a proper analysis, or context limits were exceeded. 
+            Check backend logs or try again shortly.
           </div>
         </div>
       )}

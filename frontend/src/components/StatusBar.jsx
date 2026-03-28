@@ -31,22 +31,22 @@ export default function StatusBar({
 
   return (
     <div className="kpi-strip">
-      <div className="kpi-card">
+      <div className="kpi-card glass-card">
         <div className="kpi-label">Last Price</div>
         <div className="kpi-value" id="kpi-price">{formatPrice(latestPrice)}</div>
         <div className={`kpi-change ${priceChange != null ? changeColorClass : ''}`} id="kpi-change">{changeText}</div>
       </div>
-      <div className="kpi-card">
+      <div className="kpi-card glass-card">
         <div className="kpi-label">RSI 14</div>
         <div className="kpi-value" id="kpi-rsi">{rsiValue}</div>
         <div className="kpi-sub" id="kpi-rsi-state" style={{ textTransform: 'capitalize' }}>{rsiState}</div>
       </div>
-      <div className="kpi-card">
+      <div className="kpi-card glass-card">
         <div className="kpi-label">Volume</div>
         <div className="kpi-value" id="kpi-volume">{formatVolume(latestCandle?.volume)}</div>
         <div className="kpi-sub">24h Volume</div>
       </div>
-      <div className="kpi-card">
+      <div className="kpi-card glass-card">
         <div className="kpi-label">AI Confidence</div>
         <div className="kpi-value" id="kpi-confidence">{aiConfidence}</div>
         <div className="kpi-sub" id="kpi-bias" style={{ textTransform: 'capitalize' }}>{aiBias}</div>

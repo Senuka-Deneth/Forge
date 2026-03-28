@@ -8,6 +8,21 @@ import AIAnalysisPanel from './components/AIAnalysisPanel'
 const BACKEND_URL = 'http://127.0.0.1:5000'
 const COMMON_QUOTES = ['USDT', 'BUSD', 'BTC', 'ETH', 'FDUSD']
 
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme)
+  document.body.setAttribute('data-theme', theme)
+  localStorage.setItem('visionchartbot_theme', theme)
+  
+  // Dispatch custom event to tell chart panels to update colors
+  window.dispatchEvent(new CustomEvent('themeChanged', { detail: { theme } }))
+}
+
+function initTheme() {
+  const saved = localStorage.getItem('visionchartbot_theme') || 'dark'
+  applyTheme(saved)
+  return saved
+}
+
 function calculateEMA(values, period) {
   if (!values.length) return []
   const ema = []
@@ -411,68 +426,111 @@ export default function App() {
 
   useEffect(() => {
     loadChart('BTCUSDT', '4h')
+    const initialTheme = initTheme()
+    setTheme(initialTheme)
     return () => closeSocket()
   }, [])
 
+  const [theme, setTheme] = useState('dark')
+
+  const toggleTheme = () => {
+    const currentTheme = document.body.getAttribute('data-theme') || 'dark'
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark'
+    applyTheme(newTheme)
+    setTheme(newTheme)
+  }
+
   return (
-    <div className="app-shell">
-      <HeaderControls
-        symbolInput={symbolInput}
-        setSymbolInput={setSymbolInput}
-        interval={interval}
-        setInterval={setInterval}
-        onLoad={() => loadChart(symbolInput, interval)}
-        onAnalyze={() => runAnalysis(symbol, interval)}
-        loading={loading}
-        analysisLoading={analysisLoading}
-        isLive={isLive}
-      />
+    <>
+      <aside className="sidebar">
+        <div className="sidebar-brand">
+          <div className="brand-icon">📈</div>
+          <div className="brand-text">
+            <span className="brand-name">Vision Chart</span>
+            <span className="brand-sub">Binance Spot · AI Analysis</span>
+          </div>
+        </div>
 
-      <StatusBar
-        symbol={symbol}
-        interval={interval}
-        latestPrice={latestPrice}
-        priceChange={priceChange}
-        latestCandle={latestCandle}
-        status={status}
-        loading={loading}
-        error={error}
-      />
+        <nav className="sidebar-nav">
+          <div className="nav-section-label">MAIN</div>
+          <a className="nav-item active" data-section="dashboard">
+            <svg viewBox="0 0 24 24"><path d="M4 4h4v4H4zm12 0h4v4h-4zM4 16h4v4H4zm12 0h4v4h-4zM10 4h4v4h-4zm0 12h4v4h-4zm-6-6h4v4H4zm12 0h4v4h-4zm-6 0h4v4h-4z"/></svg>
+            <span>Dashboard</span>
+          </a>
+          <a className="nav-item" data-section="analysis">
+            <svg viewBox="0 0 24 24"><path d="M3 3v18h18M9 15l3-3 4 4 5-5"/></svg>
+            <span>Analysis</span>
+          </a>
+          <a className="nav-item" data-section="signals">
+            <svg viewBox="0 0 24 24"><path d="M4 2v20h16V2H4zm14 18H6V4h12v16zM8 6h8v2H8V6zm0 4h8v2H8v-2zm0 4h5v2H8v-2z"/></svg>
+            <span>Signals</span>
+          </a>
+        </nav>
 
-      <main className="main-layout">
-        <section className="chart-section">
-          <ChartPanel
-            candles={candles}
-            loading={loading}
-            error={error}
-            analysis={analysis}
-            pivotData={pivotData}
-            showPivots={showPivots}
-            onTogglePivots={handleTogglePivots}
-          />
-        </section>
+        <div className="sidebar-footer">
+          <div className="theme-toggle-wrap">
+            <button className="theme-toggle" id="theme-toggle-btn" onClick={toggleTheme}>
+              <span className="theme-icon-dark" style={{ display: theme === 'dark' ? 'inline' : 'none' }}>🌙</span>
+              <span className="theme-icon-light" style={{ display: theme === 'light' ? 'inline' : 'none' }}>☀️</span>
+              <span className="theme-toggle-label" id="theme-toggle-label">{theme === 'dark' ? 'Dark' : 'Light'}</span>
+            </button>
+          </div>
+        </div>
+      </aside>
 
-        <section className="logical-analysis-wrapper">
-          <AnalysisPanel
-            symbol={symbol}
-            interval={interval}
-            latestCandle={latestCandle}
-            analysis={analysis}
-            loading={analysisLoading}
-            error={analysisError}
-            pivotData={pivotData}
-          />
-        </section>
-      </main>
+      <div className="main-content">
+        <HeaderControls
+          symbolInput={symbolInput}
+          setSymbolInput={setSymbolInput}
+          interval={interval}
+          setInterval={setInterval}
+          onLoad={() => loadChart(symbolInput, interval)}
+          isLive={isLive}
+          toggleTheme={toggleTheme}
+          theme={theme}
+        />
 
-      <section className="ai-section-wrapper">
+        <StatusBar
+          latestPrice={latestPrice}
+          priceChange={priceChange}
+          latestCandle={latestCandle}
+          aiAnalysis={aiAnalysis}
+        />
+
+        <div className="dashboard-grid">
+          <div className="charts-column">
+            <ChartPanel
+              symbol={symbol}
+              interval={interval}
+              candles={candles}
+              loading={loading}
+              error={error}
+              analysis={analysis}
+              pivotData={pivotData}
+              showPivots={showPivots}
+              onTogglePivots={handleTogglePivots}
+            />
+          </div>
+
+          <div className="analysis-column">
+            <AnalysisPanel
+              symbol={symbol}
+              interval={interval}
+              analysis={analysis}
+              loading={analysisLoading}
+              error={analysisError}
+              pivotData={pivotData}
+            />
+          </div>
+        </div>
+
         <AIAnalysisPanel
           aiAnalysis={aiAnalysis}
           aiLoading={aiLoading}
           aiError={aiError}
           onRefresh={() => runAIAnalysis(candles)}
         />
-      </section>
-    </div>
+      </div>
+    </>
   )
 }

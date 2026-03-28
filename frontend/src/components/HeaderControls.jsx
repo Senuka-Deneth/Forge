@@ -4,49 +4,50 @@ export default function HeaderControls({
   interval,
   setInterval,
   onLoad,
-  loading,
-  isLive
+  isLive,
+  toggleTheme,
+  theme
 }) {
   return (
-    <>
-      <header className="topbar">
-        <div className="brand-block">
-          <div className="brand-title">CERN</div>
-          <div className="brand-subtitle">The Analyzer</div>
-        </div>
-      </header>
-      
-      <div className="controls-bar">
-        <div className="topbar-controls">
+    <header className="topbar">
+      <div className="topbar-left">
+        <div className="symbol-selector-wrap">
           <input
-            className="control-input"
-            type="text"
+            id="symbol-input"
+            className="symbol-input"
             value={symbolInput}
             onChange={(e) => setSymbolInput(e.target.value.toUpperCase())}
-            placeholder="BTCUSDT"
+            placeholder="Symbol..."
           />
-
           <select
-            className="control-select"
+            id="timeframe-select"
+            className="timeframe-select"
             value={interval}
             onChange={(e) => setInterval(e.target.value)}
           >
             <option value="15m">15m</option>
-            <option value="1h">1h</option>
-            <option value="4h">4h</option>
-            <option value="1d">1d</option>
+            <option value="1h">1H</option>
+            <option value="4h">4H</option>
+            <option value="1d">1D</option>
+            <option value="1w">1W</option>
           </select>
-
-          <button className="load-button" onClick={onLoad} disabled={loading}>
-            {loading ? 'Loading...' : 'Load Chart'}
+          <button id="load-chart-btn" className="btn-primary" onClick={onLoad}>
+            Load Chart
           </button>
-
-          <div className={`live-pill ${isLive ? 'live-on' : 'live-off'}`}>
-            <span className="live-dot" />
-            {isLive ? 'Live' : 'Offline'}
-          </div>
         </div>
       </div>
-    </>
+
+      <div className="topbar-right">
+        {isLive && (
+          <div className="live-indicator" id="live-indicator">
+            <span className="live-dot"></span>
+            <span>Live</span>
+          </div>
+        )}
+        <button className="theme-toggle-icon" onClick={toggleTheme} title="Toggle theme">
+          <span id="theme-icon-topbar">{theme === 'dark' ? '🌙' : '☀️'}</span>
+        </button>
+      </div>
+    </header>
   )
 }

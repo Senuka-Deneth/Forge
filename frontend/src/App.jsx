@@ -483,7 +483,7 @@ export default function App() {
         <div className="sidebar-footer">
           <div className="theme-toggle-wrap">
             <button className="theme-toggle" id="theme-toggle-btn" onClick={toggleTheme} style={{ justifyContent: 'center' }}>
-              <span className="theme-toggle-label" id="theme-toggle-label">{theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}</span>
+              <span className="theme-toggle-label" id="theme-toggle-label">{theme === 'dark' ? 'Light' : 'Dark'}</span>
             </button>
           </div>
         </div>

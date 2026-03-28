@@ -552,6 +552,16 @@ body, #root {
   flex-direction: column;
 }
 
+.panel-card.wide {
+  grid-column: span 2;
+}
+
+@media (max-width: 900px) {
+  .panel-card.wide {
+    grid-column: span 1;
+  }
+}
+
 .panel-card-header {
   display: flex;
   justify-content: space-between;
@@ -728,7 +738,14 @@ body, #root {
 
 .scenario {
   border-radius: 8px;
-  padding: 10px;
+  padding: 12px;
+}
+
+.scenario p {
+  font-size: var(--text-md);
+  line-height: 1.6;
+  color: var(--text-primary);
+  margin-bottom: 8px;
 }
 
 .bull-scenario {
@@ -1035,17 +1052,31 @@ body, #root {
 
 .theme-toggle-label { font-size: var(--text-sm); }
 
-.theme-toggle-icon {
-  background: transparent;
-  border: none;
-  font-size: 16px;
+.theme-toggle-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border-default);
+  color: #ffffff;
+  font-size: var(--text-sm);
+  font-weight: 600;
   cursor: pointer;
-  padding: 4px;
+  padding: 6px 14px;
   border-radius: 6px;
-  transition: background 0.15s;
+  transition: all 0.2s ease;
 }
 
-.theme-toggle-icon:hover { background: var(--bg-input); }
+.theme-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+[data-theme="light"] .theme-toggle-btn {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+[data-theme="light"] .theme-toggle-btn:hover {
+  background: var(--accent-hover);
+}
 
 /* SVG icon standard styles inside nav */
 .nav-item svg {

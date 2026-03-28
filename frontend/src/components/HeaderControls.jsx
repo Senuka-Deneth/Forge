@@ -44,8 +44,8 @@ export default function HeaderControls({
             <span>Live</span>
           </div>
         )}
-        <button className="theme-toggle-icon" onClick={toggleTheme} title="Toggle theme">
-          <span id="theme-icon-topbar">{theme === 'dark' ? 'Dark Mode' : 'Light Mode'}</span>
+        <button className="theme-toggle-btn" onClick={toggleTheme} title="Toggle theme">
+          <span id="theme-icon-topbar">{theme === 'dark' ? 'Dark' : 'Light'}</span>
         </button>
       </div>
     </header>

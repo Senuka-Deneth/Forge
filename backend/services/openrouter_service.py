@@ -70,17 +70,11 @@ You specialize in:
 - Market microstructure (order flow, funding rates, open interest)
 - Risk-defined trade scenario construction
 
-Your job is to receive structured live market data and return a single,
-precise JSON analysis object.
+Your job is to receive structured live market data and return a precise analysis.
 
-CRITICAL: Keep your internal reasoning extremely concise and brief. Do not write essays. You must complete your analysis within token limits.
+CRITICAL: For this first step, provide your step-by-step reasoning and market analysis. Keep it concise (under 200 words). Do NOT manually calculate every pivot confluence step-by-step.
 
-STRICT RULES:
-1. Return ONLY a valid JSON object. No preamble. No explanation outside JSON.
-2. Every price target or invalidation level must be a real number from the data.
-3. Never invent price levels. Only use levels present in the data.
-4. Confidence score must reflect actual signal confluence count — not optimism.
-5. If signals conflict, lower confidence and label bias as "neutral" or "wait".
+DO NOT output JSON yet. Just provide your analytical thought process.
 6. Pivot point rules you MUST apply:
    - Price above PP = session bullish bias
    - Price below PP = session bearish bias
@@ -295,9 +289,9 @@ Verify these specific points:
    - Is there unusual volume relative to recent candles?
    - Is price at a high-confluence inflection point?
 
-CRITICAL: Keep your internal verification reasoning extremely concise. Do not write an essay. Save tokens for the final JSON.
+CRITICAL: DO NOT WRITE ANY TEXT OR REASONING TO VERIFY. YOU MUST IMMEDIATELY START YOUR RESPONSE WITH THE JSON OBJECT STARTING WITH '{{'. Failure to do so will break the system.
 
-If any of the above are wrong in your first response, correct them.
+If any of the above are wrong in your first response, correct them directly in the output JSON.
 Return the final corrected and complete JSON object only."""
 
 def analyze_market(market_data):
@@ -314,12 +308,11 @@ def analyze_market(market_data):
                 { "role": "system", "content": system_prompt },
                 { "role": "user", "content": first_user_msg }
             ],
-            "reasoning": { "enabled": True },
             "temperature": 0.1,
-            "max_tokens": 4096
+            "max_tokens": 8192
         },
         headers=BASE_HEADERS,
-        timeout=60
+        timeout=300
     )
     turn1_response.raise_for_status()
     
@@ -333,6 +326,7 @@ def analyze_market(market_data):
         raise ValueError("Turn 1 failed. No choices returned. Raw response: " + turn1_response.text)
         
     assistant_msg = choices[0].get("message", {})
+    turn1_content = assistant_msg.get("content") or ""
 
     # Preserve reasoning_details or thought if passed by OpenRouter
     conversation_history = [
@@ -340,22 +334,26 @@ def analyze_market(market_data):
         { "role": "user", "content": first_user_msg },
         {
             "role": "assistant",
-            "content": assistant_msg.get("content") or ""
+            "content": turn1_content
         },
         { "role": "user", "content": second_user_msg }
     ]
     
     # Check for OpenRouter specific thought/reasoning objects
-    if "reasoning_details" in assistant_msg:
-        conversation_history[2]["reasoning_details"] = assistant_msg["reasoning_details"]
+    if "reasoning" in assistant_msg:
+        conversation_history[2]["reasoning"] = assistant_msg["reasoning"]
+
+    # Turn 2: Assistant Prefill Hack
+    # Force the model to skip reasoning and start outputting JSON immediately
+    turn2_history = conversation_history.copy()
+    turn2_history.append({"role": "assistant", "content": "```json\n{"})
 
     # Turn 2
     turn2_response = requests.post(
         OPENROUTER_URL,
         json={
             "model": MODEL,
-            "messages": conversation_history,
-            "reasoning": { "enabled": True },
+            "messages": turn2_history,
             "temperature": 0.1,
             "max_tokens": 4096
         },
@@ -374,7 +372,12 @@ def analyze_market(market_data):
         raise ValueError("Turn 2 failed. No choices returned. Raw response: " + turn2_response.text)
         
     final_content = choices[0].get("message", {}).get("content") or ""
-    parsed = extract_json(final_content)
+    
+    try:
+        parsed = extract_json(final_content)
+    except ValueError as e:
+        print(f"Turn 2 failed to parse JSON: {e}. Falling back to Turn 1 output.")
+        parsed = extract_json(turn1_content)
 
     # Attach reasoning summary for frontend display
     parsed["_meta"] = {
@@ -382,7 +385,7 @@ def analyze_market(market_data):
         "reasoning_used": True,
         "turns": 2,
         "timestamp": datetime.utcnow().isoformat() + "Z",
-        "turn1_reasoning_tokens": len(assistant_msg.get("reasoning_details", "")) if assistant_msg.get("reasoning_details") else 0
+        "turn1_reasoning_tokens": len(turn1_content)
     }
 
     return parsed

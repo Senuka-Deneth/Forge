@@ -1,10 +1,10 @@
 function formatValue(value, digits = 2) {
-  if (value == null) return '--'
+  if (value == null) return '—'
   return Number(value).toFixed(digits)
 }
 
 function formatLevel(item) {
-  if (!item) return '--'
+  if (!item) return '—'
   return `${Number(item.price).toFixed(2)}`
 }
 
@@ -28,203 +28,206 @@ export default function AnalysisPanel({
   const pivots = pivotData?.classic?.pivots ?? null
   const pivotAnalysis = pivotData?.classic?.analysis ?? null
 
+  const statusText = loading ? 'Running' : error ? 'Error' : analysis ? 'Ready' : 'Waiting'
+  const confidenceValue = analysis?.confidence ?? 0
+
   return (
-    <div className="analysis-panel">
-      <div className="panel-header">
-        <h2>Analysis</h2>
-        <span className="panel-badge">
-          {loading ? 'Running' : analysis ? 'Ready' : 'Waiting'}
-        </span>
+    <>
+      <div className="panel-card glass-card">
+        <div className="panel-card-header">
+          <span className="panel-title">Market Summary</span>
+          <span className={`panel-badge ${statusText === 'Ready' ? 'ready' : ''}`} id="analysis-status-badge">
+            {statusText}
+          </span>
+        </div>
+        <div className="summary-grid">
+          <div className="summary-item">
+            <div className="summary-label">Trend</div>
+            <div className="summary-value" id="summary-trend">{analysis?.trend || '—'}</div>
+          </div>
+          <div className="summary-item">
+            <div className="summary-label">Momentum</div>
+            <div className="summary-value" id="summary-momentum">{analysis?.momentum || '—'}</div>
+          </div>
+          <div className="summary-item">
+            <div className="summary-label">RSI State</div>
+            <div className="summary-value" id="summary-rsi-state">{analysis?.rsiState || '—'}</div>
+          </div>
+          <div className="summary-item">
+            <div className="summary-label">MACD State</div>
+            <div className="summary-value" id="summary-macd-state">{analysis?.macdState || '—'}</div>
+          </div>
+        </div>
+        <div className="confidence-row">
+          <span className="summary-label">Confidence</span>
+          <div className="confidence-bar-track">
+            <div className="confidence-bar-fill" id="confidence-bar-fill" style={{
+              width: `${confidenceValue}%`,
+              backgroundColor: confidenceValue >= 70 ? 'var(--bull)' : confidenceValue >= 40 ? 'var(--neutral)' : 'var(--bear)'
+            }}></div>
+          </div>
+          <span className="confidence-pct" id="confidence-pct">{analysis ? `${confidenceValue}%` : '—'}</span>
+        </div>
       </div>
 
-      {error && (
-        <div className="analysis-card error-card">
-          <h3>Analysis Error</h3>
-          <p>{error}</p>
+      <div className="panel-card glass-card">
+        <div className="panel-card-header">
+          <span className="panel-title">Key Levels</span>
         </div>
-      )}
-
-      {!analysis && !loading && !error && (
-        <div className="analysis-card">
-          <h3>No Analysis Yet</h3>
-          <p>
-            Load a market and run analysis for <strong>{symbol}</strong> on <strong>{interval}</strong>.
-          </p>
+        <div className="levels-grid">
+          <div className="level-item">
+            <span className="level-label">EMA 20</span>
+            <span className="level-value" id="level-ema20">{formatValue(analysis?.ema20)}</span>
+          </div>
+          <div className="level-item">
+            <span className="level-label">EMA 50</span>
+            <span className="level-value" id="level-ema50">{formatValue(analysis?.ema50)}</span>
+          </div>
+          <div className="level-item">
+            <span className="level-label">Support</span>
+            <span className="level-value bull" id="level-support">{formatLevel(analysis?.nearestSupport)}</span>
+          </div>
+          <div className="level-item">
+            <span className="level-label">Resistance</span>
+            <span className="level-value bear" id="level-resistance">{formatLevel(analysis?.nearestResistance)}</span>
+          </div>
         </div>
-      )}
+      </div>
 
-      {loading && (
-        <div className="analysis-card">
-          <h3>Analyzing Market</h3>
-          <p>Building trend, momentum, and support/resistance summary...</p>
+      <div className="panel-card glass-card" id="pivot-info-panel">
+        <div className="panel-card-header">
+          <span className="panel-title">Pivot Points</span>
         </div>
-      )}
 
-      {analysis && (
-        <>
-          <div className="analysis-card">
-            <h3>Market Summary</h3>
-            <div className="kv-grid">
-              <div className="kv-item">
-                <span className="kv-label">Trend</span>
-                <span className="kv-value">{analysis.trend}</span>
-              </div>
-              <div className="kv-item">
-                <span className="kv-label">Momentum</span>
-                <span className="kv-value">{analysis.momentum}</span>
-              </div>
-              <div className="kv-item">
-                <span className="kv-label">RSI State</span>
-                <span className="kv-value">{analysis.rsiState}</span>
-              </div>
-              <div className="kv-item">
-                <span className="kv-label">MACD State</span>
-                <span className="kv-value">{analysis.macdState}</span>
-              </div>
-              <div className="kv-item">
-                <span className="kv-label">Confidence</span>
-                <span className="kv-value">{analysis.confidence}%</span>
-              </div>
-              <div className="kv-item">
-                <span className="kv-label">Latest Price</span>
-                <span className="kv-value">{formatValue(analysis.latestPrice)}</span>
-              </div>
+        <div className="pivot-meta-row">
+          <div className="pivot-meta-item">
+            <span className="summary-label">Price Zone</span>
+            <span id="pivot-zone-tag" className="status-pill" style={{
+              backgroundColor: pivotAnalysis?.zone ? zoneColors[pivotAnalysis.zone] : 'transparent',
+              color: pivotAnalysis?.zone ? '#fff' : 'inherit',
+              border: pivotAnalysis?.zone ? 'none' : '1px solid var(--border-default)'
+            }}>
+              {pivotAnalysis ? pivotAnalysis.zone.replace(/_/g, ' ') : '—'}
+            </span>
+          </div>
+          <div className="pivot-meta-item">
+            <span className="summary-label">Session Bias</span>
+            <span id="pivot-bias-tag" className="status-pill" style={{
+               backgroundColor: pivotAnalysis?.bias === 'bullish' ? 'var(--bull)' : pivotAnalysis?.bias === 'bearish' ? 'var(--bear)' : 'transparent',
+               color: pivotAnalysis?.bias ? '#fff' : 'inherit',
+               border: pivotAnalysis?.bias ? 'none' : '1px solid var(--border-default)'
+            }}>
+              {pivotAnalysis?.bias || '—'}
+            </span>
+          </div>
+        </div>
+
+        <div className="pivot-levels-stack">
+          <div className="plevel r3">
+            <span>R3</span><strong id="pv-R3">{pivots?.R3 ?? '—'}</strong>
+          </div>
+          <div className="plevel r2">
+            <span>R2</span><strong id="pv-R2">{pivots?.R2 ?? '—'}</strong>
+          </div>
+          <div className="plevel r1">
+            <span>R1</span><strong id="pv-R1">{pivots?.R1 ?? '—'}</strong>
+          </div>
+          <div className="plevel pp">
+            <span>PP</span><strong id="pv-PP">{pivots?.PP ?? '—'}</strong>
+          </div>
+          <div className="plevel s1">
+            <span>S1</span><strong id="pv-S1">{pivots?.S1 ?? '—'}</strong>
+          </div>
+          <div className="plevel s2">
+            <span>S2</span><strong id="pv-S2">{pivots?.S2 ?? '—'}</strong>
+          </div>
+          <div className="plevel s3">
+            <span>S3</span><strong id="pv-S3">{pivots?.S3 ?? '—'}</strong>
+          </div>
+        </div>
+
+        {pivotAnalysis?.atInflectionPoint && pivotAnalysis?.inflectionLevel && (
+          <div id="pivot-inflection" className="inflection-alert" style={{ display: 'flex' }}>
+            <span>⚡</span>
+            <span>Inflection: <strong id="pivot-inflection-level">{pivotAnalysis.inflectionLevel.label} @ {pivotAnalysis.inflectionLevel.value}</strong></span>
+          </div>
+        )}
+        {(!pivotAnalysis?.atInflectionPoint || !pivotAnalysis?.inflectionLevel) && (
+          <div id="pivot-inflection" className="inflection-alert" style={{ display: 'none' }}>
+            <span>⚡</span>
+            <span>Inflection: <strong id="pivot-inflection-level"></strong></span>
+          </div>
+        )}
+
+        <div className="pivot-distance-row">
+          <div className="pivot-dist-item">
+            <span className="summary-label">To Resistance</span>
+            <span id="pivot-dist-res" className="bear">
+              {pivotAnalysis?.distToResistance !== null && pivotAnalysis?.distToResistance !== undefined
+                ? `${pivotAnalysis.distToResistance}% → ${pivotAnalysis.nearestResistance?.label}`
+                : '—'}
+            </span>
+          </div>
+          <div className="pivot-dist-item">
+            <span className="summary-label">To Support</span>
+            <span id="pivot-dist-sup" className="bull">
+              {pivotAnalysis?.distToSupport !== null && pivotAnalysis?.distToSupport !== undefined
+                ? `${pivotAnalysis.distToSupport}% → ${pivotAnalysis.nearestSupport?.label}`
+                : '—'}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="panel-card glass-card wide">
+        <div className="panel-card-header">
+          <span className="panel-title">Trade Logic</span>
+        </div>
+        <div className="trade-scenarios">
+          <div className="scenario bull-scenario">
+            <div className="scenario-header">Bullish</div>
+            <p id="trade-bull">{analysis?.bullishScenario || '—'}</p>
+          </div>
+          <div className="scenario bear-scenario">
+            <div className="scenario-header">Bearish</div>
+            <p id="trade-bear">{analysis?.bearishScenario || '—'}</p>
+          </div>
+        </div>
+        <div className="invalidation-row">
+          <div className="inv-item">
+            <span className="summary-label">Bull invalidation</span>
+            <span id="inv-bull" className="bear">{analysis?.invalidation || '—'}</span>
+          </div>
+          <div className="inv-item">
+            <span className="summary-label">Bear invalidation</span>
+            <span id="inv-bear" className="bull">{analysis?.invalidation || '—'}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="panel-card glass-card">
+        <div className="panel-card-header">
+          <span className="panel-title">Recent Swing Points</span>
+        </div>
+        <div className="swing-grid">
+          <div className="swing-col">
+            <div className="swing-col-header bear">Swing Highs</div>
+            <div id="swing-highs-list" className="swing-list">
+              {analysis?.swingHighs?.length ? analysis.swingHighs.map((item, idx) => (
+                <div key={`high-${idx}`} className="swing-item">{Number(item.price).toFixed(2)}</div>
+              )) : <div className="swing-item">—</div>}
             </div>
           </div>
-
-          <div className="analysis-card">
-            <h3>Key Levels</h3>
-            <div className="kv-grid">
-              <div className="kv-item">
-                <span className="kv-label">EMA 20</span>
-                <span className="kv-value">{formatValue(analysis.ema20)}</span>
-              </div>
-              <div className="kv-item">
-                <span className="kv-label">EMA 50</span>
-                <span className="kv-value">{formatValue(analysis.ema50)}</span>
-              </div>
-              <div className="kv-item">
-                <span className="kv-label">Nearest Support</span>
-                <span className="kv-value">{formatLevel(analysis.nearestSupport)}</span>
-              </div>
-              <div className="kv-item">
-                <span className="kv-label">Nearest Resistance</span>
-                <span className="kv-value">{formatLevel(analysis.nearestResistance)}</span>
-              </div>
+          <div className="swing-col">
+            <div className="swing-col-header bull">Swing Lows</div>
+            <div id="swing-lows-list" className="swing-list">
+              {analysis?.swingLows?.length ? analysis.swingLows.map((item, idx) => (
+                <div key={`low-${idx}`} className="swing-item">{Number(item.price).toFixed(2)}</div>
+              )) : <div className="swing-item">—</div>}
             </div>
           </div>
-
-          {/* Pivot Points Info Panel */}
-          {pivots && pivotAnalysis && (
-            <div className="analysis-card pivot-panel">
-              <h3>Pivot Points</h3>
-
-              <div className="pivot-zone-badge">
-                <label>Price Zone</label>
-                <span
-                  className="ai-tag"
-                  style={{ backgroundColor: zoneColors[pivotAnalysis.zone] ?? '#444' }}
-                >
-                  {pivotAnalysis.zone.replace(/_/g, ' ')}
-                </span>
-              </div>
-
-              <div className="pivot-bias-row">
-                <label>Session Bias</label>
-                <span
-                  className="ai-tag"
-                  style={{
-                    backgroundColor: pivotAnalysis.bias === 'bullish' ? '#26a69a' : '#ef5350'
-                  }}
-                >
-                  {pivotAnalysis.bias}
-                </span>
-              </div>
-
-              <div className="pivot-levels-grid">
-                {[
-                  { key: 'R3', cls: 'r3' },
-                  { key: 'R2', cls: 'r2' },
-                  { key: 'R1', cls: 'r1' },
-                  { key: 'PP', cls: 'pp' },
-                  { key: 'S1', cls: 's1' },
-                  { key: 'S2', cls: 's2' },
-                  { key: 'S3', cls: 's3' },
-                ].map(({ key, cls }) => (
-                  <div key={key} className={`plevel ${cls}`}>
-                    <span>{key}</span>
-                    <strong>{pivots[key]}</strong>
-                  </div>
-                ))}
-              </div>
-
-              {pivotAnalysis.atInflectionPoint && pivotAnalysis.inflectionLevel && (
-                <div className="pivot-proximity">
-                  ⚡ Price at inflection point:{' '}
-                  <strong>
-                    {pivotAnalysis.inflectionLevel.label} @ {pivotAnalysis.inflectionLevel.value}
-                  </strong>
-                </div>
-              )}
-
-              <div className="pivot-distance-row">
-                <div>
-                  <label>To Resistance</label>
-                  <span>
-                    {pivotAnalysis.distToResistance !== null
-                      ? `${pivotAnalysis.distToResistance}% → ${pivotAnalysis.nearestResistance?.label}`
-                      : '—'}
-                  </span>
-                </div>
-                <div>
-                  <label>To Support</label>
-                  <span>
-                    {pivotAnalysis.distToSupport !== null
-                      ? `${pivotAnalysis.distToSupport}% → ${pivotAnalysis.nearestSupport?.label}`
-                      : '—'}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="analysis-card">
-            <h3>Trade Logic</h3>
-            <ul className="analysis-list">
-              <li><strong>Bullish:</strong> {analysis.bullishScenario}</li>
-              <li><strong>Bearish:</strong> {analysis.bearishScenario}</li>
-              <li><strong>Invalidation:</strong> {analysis.invalidation}</li>
-            </ul>
-          </div>
-
-          <div className="analysis-card">
-            <h3>Recent Swing Points</h3>
-            <div className="swing-columns">
-              <div>
-                <div className="swing-title">Swing Highs</div>
-                <ul className="analysis-list tight">
-                  {analysis.swingHighs?.length
-                    ? analysis.swingHighs.map((item, idx) => (
-                        <li key={`high-${idx}`}>{Number(item.price).toFixed(2)}</li>
-                      ))
-                    : <li>None</li>}
-                </ul>
-              </div>
-
-              <div>
-                <div className="swing-title">Swing Lows</div>
-                <ul className="analysis-list tight">
-                  {analysis.swingLows?.length
-                    ? analysis.swingLows.map((item, idx) => (
-                        <li key={`low-${idx}`}>{Number(item.price).toFixed(2)}</li>
-                      ))
-                    : <li>None</li>}
-                </ul>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-    </div>
+        </div>
+      </div>
+    </>
   )
 }

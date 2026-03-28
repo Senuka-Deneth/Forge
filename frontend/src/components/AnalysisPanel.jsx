@@ -179,7 +179,7 @@ export default function AnalysisPanel({
         </div>
       </div>
 
-      <div className="panel-card glass-card">
+      <div className="panel-card glass-card wide">
         <div className="panel-card-header">
           <span className="panel-title">Trade Logic</span>
         </div>

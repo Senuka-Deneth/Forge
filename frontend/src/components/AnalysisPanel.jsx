@@ -33,7 +33,7 @@ export default function AnalysisPanel({
 
   return (
     <>
-      <div className="panel-card">
+      <div className="panel-card glass-card">
         <div className="panel-card-header">
           <span className="panel-title">Market Summary</span>
           <span className={`panel-badge ${statusText === 'Ready' ? 'ready' : ''}`} id="analysis-status-badge">
@@ -70,7 +70,7 @@ export default function AnalysisPanel({
         </div>
       </div>
 
-      <div className="panel-card">
+      <div className="panel-card glass-card">
         <div className="panel-card-header">
           <span className="panel-title">Key Levels</span>
         </div>
@@ -94,7 +94,7 @@ export default function AnalysisPanel({
         </div>
       </div>
 
-      <div className="panel-card" id="pivot-info-panel">
+      <div className="panel-card glass-card" id="pivot-info-panel">
         <div className="panel-card-header">
           <span className="panel-title">Pivot Points</span>
         </div>
@@ -179,17 +179,17 @@ export default function AnalysisPanel({
         </div>
       </div>
 
-      <div className="panel-card">
+      <div className="panel-card glass-card">
         <div className="panel-card-header">
           <span className="panel-title">Trade Logic</span>
         </div>
         <div className="trade-scenarios">
           <div className="scenario bull-scenario">
-            <div className="scenario-header">🟢 Bullish</div>
+            <div className="scenario-header">Bullish</div>
             <p id="trade-bull">{analysis?.bullishScenario || '—'}</p>
           </div>
           <div className="scenario bear-scenario">
-            <div className="scenario-header">🔴 Bearish</div>
+            <div className="scenario-header">Bearish</div>
             <p id="trade-bear">{analysis?.bearishScenario || '—'}</p>
           </div>
         </div>
@@ -205,7 +205,7 @@ export default function AnalysisPanel({
         </div>
       </div>
 
-      <div className="panel-card">
+      <div className="panel-card glass-card">
         <div className="panel-card-header">
           <span className="panel-title">Recent Swing Points</span>
         </div>

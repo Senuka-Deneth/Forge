@@ -100,6 +100,8 @@ export default function App() {
   const [status, setStatus] = useState('Idle')
   const [isLive, setIsLive] = useState(false)
 
+  const [activeTab, setActiveTab] = useState('dashboard')
+
   const [analysis, setAnalysis] = useState(null)
   const [analysisLoading, setAnalysisLoading] = useState(false)
   const [analysisError, setAnalysisError] = useState('')
@@ -444,8 +446,7 @@ export default function App() {
     <>
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <div className="brand-icon">📈</div>
-          <div className="brand-text">
+          <div className="brand-text" style={{ paddingLeft: '8px' }}>
             <span className="brand-name">Vision Chart</span>
             <span className="brand-sub">Binance Spot · AI Analysis</span>
           </div>
@@ -453,15 +454,27 @@ export default function App() {
 
         <nav className="sidebar-nav">
           <div className="nav-section-label">MAIN</div>
-          <a className="nav-item active" data-section="dashboard">
+          <a 
+            className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} 
+            onClick={() => setActiveTab('dashboard')}
+            style={{ cursor: 'pointer' }}
+          >
             <svg viewBox="0 0 24 24"><path d="M4 4h4v4H4zm12 0h4v4h-4zM4 16h4v4H4zm12 0h4v4h-4zM10 4h4v4h-4zm0 12h4v4h-4zm-6-6h4v4H4zm12 0h4v4h-4zm-6 0h4v4h-4z"/></svg>
             <span>Dashboard</span>
           </a>
-          <a className="nav-item" data-section="analysis">
+          <a 
+            className={`nav-item ${activeTab === 'analysis' ? 'active' : ''}`} 
+            onClick={() => setActiveTab('analysis')}
+            style={{ cursor: 'pointer' }}
+          >
             <svg viewBox="0 0 24 24"><path d="M3 3v18h18M9 15l3-3 4 4 5-5"/></svg>
             <span>Analysis</span>
           </a>
-          <a className="nav-item" data-section="signals">
+          <a 
+            className={`nav-item ${activeTab === 'signals' ? 'active' : ''}`} 
+            onClick={() => setActiveTab('signals')}
+            style={{ cursor: 'pointer' }}
+          >
             <svg viewBox="0 0 24 24"><path d="M4 2v20h16V2H4zm14 18H6V4h12v16zM8 6h8v2H8V6zm0 4h8v2H8v-2zm0 4h5v2H8v-2z"/></svg>
             <span>Signals</span>
           </a>
@@ -469,10 +482,8 @@ export default function App() {
 
         <div className="sidebar-footer">
           <div className="theme-toggle-wrap">
-            <button className="theme-toggle" id="theme-toggle-btn" onClick={toggleTheme}>
-              <span className="theme-icon-dark" style={{ display: theme === 'dark' ? 'inline' : 'none' }}>🌙</span>
-              <span className="theme-icon-light" style={{ display: theme === 'light' ? 'inline' : 'none' }}>☀️</span>
-              <span className="theme-toggle-label" id="theme-toggle-label">{theme === 'dark' ? 'Dark' : 'Light'}</span>
+            <button className="theme-toggle" id="theme-toggle-btn" onClick={toggleTheme} style={{ justifyContent: 'center' }}>
+              <span className="theme-toggle-label" id="theme-toggle-label">{theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}</span>
             </button>
           </div>
         </div>
@@ -497,39 +508,51 @@ export default function App() {
           aiAnalysis={aiAnalysis}
         />
 
-        <div className="dashboard-grid">
-          <div className="charts-column">
-            <ChartPanel
-              symbol={symbol}
-              interval={interval}
-              candles={candles}
-              loading={loading}
-              error={error}
-              analysis={analysis}
-              pivotData={pivotData}
-              showPivots={showPivots}
-              onTogglePivots={handleTogglePivots}
+        {activeTab === 'dashboard' && (
+          <div className="dashboard-grid glass-layout">
+            <div className="charts-column">
+              <ChartPanel
+                symbol={symbol}
+                interval={interval}
+                candles={candles}
+                loading={loading}
+                error={error}
+                analysis={analysis}
+                pivotData={pivotData}
+                showPivots={showPivots}
+                onTogglePivots={handleTogglePivots}
+              />
+            </div>
+
+            <div className="analysis-column-fullwidth">
+              <AnalysisPanel
+                symbol={symbol}
+                interval={interval}
+                analysis={analysis}
+                loading={analysisLoading}
+                error={analysisError}
+                pivotData={pivotData}
+              />
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'analysis' && (
+          <div className="dashboard-grid glass-layout">
+            <AIAnalysisPanel
+              aiAnalysis={aiAnalysis}
+              aiLoading={aiLoading}
+              aiError={aiError}
+              onRefresh={() => runAIAnalysis(candles)}
             />
           </div>
+        )}
 
-          <div className="analysis-column">
-            <AnalysisPanel
-              symbol={symbol}
-              interval={interval}
-              analysis={analysis}
-              loading={analysisLoading}
-              error={analysisError}
-              pivotData={pivotData}
-            />
+        {activeTab === 'signals' && (
+          <div className="dashboard-grid glass-layout" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh', color: 'var(--text-muted)' }}>
+            <h2>Signals Module Coming Soon</h2>
           </div>
-        </div>
-
-        <AIAnalysisPanel
-          aiAnalysis={aiAnalysis}
-          aiLoading={aiLoading}
-          aiError={aiError}
-          onRefresh={() => runAIAnalysis(candles)}
-        />
+        )}
       </div>
     </>
   )

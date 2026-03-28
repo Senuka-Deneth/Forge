@@ -45,7 +45,7 @@ export default function HeaderControls({
           </div>
         )}
         <button className="theme-toggle-icon" onClick={toggleTheme} title="Toggle theme">
-          <span id="theme-icon-topbar">{theme === 'dark' ? '🌙' : '☀️'}</span>
+          <span id="theme-icon-topbar">{theme === 'dark' ? 'Dark Mode' : 'Light Mode'}</span>
         </button>
       </div>
     </header>

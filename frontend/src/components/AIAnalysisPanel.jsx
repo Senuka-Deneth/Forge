@@ -69,7 +69,6 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
     <div id="ai-analysis-section" className="ai-section">
       <div className="ai-section-header">
         <div className="ai-section-title">
-          <span className="ai-icon">🤖</span>
           <span>AI Analysis</span>
           <span className="model-tag" id="ai-model-tag">nemotron-120b · 2-turn reasoning</span>
         </div>
@@ -97,7 +96,7 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
             {aiLoading ? 'Analyzing…' : aiError ? 'Error' : a ? 'Ready' : 'Waiting'}
           </span>
           <button className="btn-ghost" id="ai-refresh-btn" onClick={onRefresh} disabled={aiLoading}>
-            ↻ Refresh
+            Refresh
           </button>
         </div>
       </div>
@@ -119,15 +118,32 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
       )}
 
       {!aiLoading && !aiError && !a && (
-        <div style={{ padding: '20px 0', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
-          Click Refresh to run deep reasoning AI analysis on this market.
+        <div style={{ padding: '20px 0', color: 'var(--text-muted)', fontSize: 'var(--text-sm)', textAlign: 'center' }}>
+          <p style={{ marginBottom: '16px' }}>No AI analysis generated yet.</p>
+          <button 
+            className="ai-create-btn" 
+            onClick={onRefresh}
+            style={{
+              padding: '10px 20px',
+              background: 'var(--accent)',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: '14px',
+              boxShadow: 'var(--shadow-sm)'
+            }}
+          >
+            Create AI Analysis
+          </button>
         </div>
       )}
 
       {!aiLoading && a && (
         <div id="ai-content" className="ai-content-grid">
 
-          <div className="ai-card wide">
+          <div className="ai-card wide glass-card">
             <div className="ai-card-header">Market Intelligence</div>
             <div className="ai-summary-strip">
               <div className="ai-kpi">
@@ -166,7 +182,7 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
             )}
           </div>
 
-          <div className="ai-card">
+          <div className="ai-card glass-card">
             <div className="ai-card-header">Indicator Readings</div>
             <div className="ai-rows">
               <div className="ai-row">
@@ -197,7 +213,7 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
 
           {/* Pivot Intelligence */}
           {a.pivot_analysis && (
-            <div className="ai-card">
+            <div className="ai-card glass-card">
               <div className="ai-card-header">Pivot Intelligence</div>
               <div className="ai-rows">
                 <div className="ai-row">
@@ -238,16 +254,16 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
             </div>
           )}
 
-          <div className="ai-card wide">
+          <div className="ai-card wide glass-card">
             <div className="ai-card-header">AI Trade Logic</div>
             <div className="trade-scenarios">
               <div className="scenario bull-scenario">
-                <div className="scenario-header">🟢 Bullish Scenario</div>
+                <div className="scenario-header">Bullish Scenario</div>
                 <p id="ai-bull-scenario">{a.trade_logic?.bullish_scenario ?? '—'}</p>
                 <small>Invalidation: <strong id="ai-invalidation-bull" className="bear">{a.trade_logic?.invalidation_bull ?? '—'}</strong></small>
               </div>
               <div className="scenario bear-scenario">
-                <div className="scenario-header">🔴 Bearish Scenario</div>
+                <div className="scenario-header">Bearish Scenario</div>
                 <p id="ai-bear-scenario">{a.trade_logic?.bearish_scenario ?? '—'}</p>
                 <small>Invalidation: <strong id="ai-invalidation-bear" className="bull">{a.trade_logic?.invalidation_bear ?? '—'}</strong></small>
               </div>
@@ -260,7 +276,7 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
             )}
           </div>
 
-          <div className="ai-card">
+          <div className="ai-card glass-card">
             <div className="ai-card-header">Pivot Confluences</div>
             <div id="ai-confluences" className="confluence-list">
               {a.pivot_analysis?.confluences?.length > 0 ? (
@@ -277,7 +293,7 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
             </div>
           </div>
 
-          <div className="ai-card">
+          <div className="ai-card glass-card">
             <div className="ai-card-header">Anomalies &amp; Alerts</div>
             <div id="ai-anomalies" className="anomaly-list">
               {a.anomalies?.filter((x) => x.type !== 'none').length > 0 ? (

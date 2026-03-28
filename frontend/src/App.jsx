@@ -94,6 +94,10 @@ export default function App() {
   const [aiError, setAIError] = useState('')
   const lastAICallRef = useRef(0)
 
+  // Pivot state
+  const [pivotData, setPivotData] = useState(null)
+  const [showPivots, setShowPivots] = useState(false)
+
   const wsRef = useRef(null)
 
   const latestCandle = candles.length ? candles[candles.length - 1] : null
@@ -210,12 +214,38 @@ export default function App() {
     }
   }
 
+  const fetchPivots = async (selectedSymbol, selectedTimeframe) => {
+    try {
+      const res = await fetch(
+        `${BACKEND_URL}/api/pivots?symbol=${selectedSymbol}&timeframe=${selectedTimeframe}`
+      )
+      const data = await res.json()
+      if (data.success) {
+        setPivotData(data)
+        return data
+      }
+    } catch (err) {
+      console.error('Failed to fetch pivots:', err)
+    }
+    return null
+  }
+
+  const handleTogglePivots = () => {
+    setShowPivots((prev) => !prev)
+  }
+
   const runAIAnalysis = async (currentCandles = null) => {
     const candleData = currentCandles
     if (!candleData || candleData.length < 2) return
 
     setAILoading(true)
     setAIError('')
+
+    // Fetch fresh pivots if not already available
+    let currentPivotData = pivotData
+    if (!currentPivotData) {
+      currentPivotData = await fetchPivots(symbol, interval)
+    }
 
     const latest = candleData[candleData.length - 1]
     const prev = candleData[candleData.length - 2]
@@ -249,6 +279,10 @@ export default function App() {
 
     const last5 = candleData.slice(-5)
 
+    const pivots = currentPivotData?.classic?.pivots ?? null
+    const pivotAnalysis = currentPivotData?.classic?.analysis ?? null
+    const fibPivots = currentPivotData?.fibonacci?.pivots ?? null
+
     const payload = {
       symbol,
       timeframe: interval,
@@ -273,6 +307,23 @@ export default function App() {
       tfi: null,
       fundingRate: null,
       oiDelta: null,
+
+      // Pivot data for AI
+      pivots: pivots ? {
+        classic: pivots,
+        fibonacci: fibPivots,
+        analysis: {
+          zone: pivotAnalysis.zone,
+          bias: pivotAnalysis.bias,
+          nearestPivotResistance: pivotAnalysis.nearestResistance,
+          nearestPivotSupport: pivotAnalysis.nearestSupport,
+          distToResistance: pivotAnalysis.distToResistance,
+          distToSupport: pivotAnalysis.distToSupport,
+          atInflectionPoint: pivotAnalysis.atInflectionPoint,
+          inflectionLevel: pivotAnalysis.inflectionLevel,
+          sessionBullish: pivotAnalysis.sessionBullish,
+        },
+      } : null,
     }
 
     try {
@@ -331,6 +382,7 @@ export default function App() {
     setStatus('Loading historical candles...')
     setAnalysis(null)
     setAnalysisError('')
+    setPivotData(null)
     closeSocket()
 
     try {
@@ -348,6 +400,7 @@ export default function App() {
       setStatus('Historical candles loaded')
       startWebSocket(cleaned, selectedInterval)
       runAnalysis(cleaned, selectedInterval)
+      fetchPivots(cleaned, selectedInterval)
     } catch (err) {
       setError(err.message || 'Something went wrong while loading data.')
       setStatus('Load failed')
@@ -388,7 +441,15 @@ export default function App() {
 
       <main className="main-layout">
         <section className="chart-section">
-          <ChartPanel candles={candles} loading={loading} error={error} analysis={analysis} />
+          <ChartPanel
+            candles={candles}
+            loading={loading}
+            error={error}
+            analysis={analysis}
+            pivotData={pivotData}
+            showPivots={showPivots}
+            onTogglePivots={handleTogglePivots}
+          />
         </section>
 
         <section className="logical-analysis-wrapper">
@@ -399,6 +460,7 @@ export default function App() {
             analysis={analysis}
             loading={analysisLoading}
             error={analysisError}
+            pivotData={pivotData}
           />
         </section>
       </main>

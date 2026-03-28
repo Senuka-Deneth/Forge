@@ -1,3 +1,5 @@
+import React, { useState, useEffect } from 'react';
+
 const colorMap = {
   bullish: '#22c55e',
   strong_bullish: '#00e676',
@@ -54,14 +56,39 @@ function Row({ label, children }) {
 export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefresh }) {
   const a = aiAnalysis
 
+  const [loadingMsg, setLoadingMsg] = useState('Running 2-turn reasoning analysis...');
+
+  useEffect(() => {
+    if (aiLoading) {
+      const messages = [
+        'Running 2-turn reasoning analysis...',
+        'Turn 1: Deep market reasoning in progress...',
+        'Turn 2: Verifying signals and confluences...',
+        'Finalizing JSON output...'
+      ];
+      let i = 0;
+      setLoadingMsg(messages[0]);
+      const interval = setInterval(() => {
+        i++;
+        if (i < messages.length) {
+          setLoadingMsg(messages[i]);
+        } else {
+          clearInterval(interval);
+        }
+      }, 8000);
+      return () => clearInterval(interval);
+    }
+  }, [aiLoading]);
+
   return (
     <div className="ai-section">
       <div className="ai-panel-header">
         <h2>🤖 AI Analysis</h2>
         <div className="ai-meta">
-          <span className="ai-model-tag">gpt-oss:20b</span>
+          <span className="ai-model-tag">nemotron-120b · 2-turn reasoning</span>
           <span
             className="ai-badge"
+            title={a && a._meta ? `Reasoning tokens used: ${a._meta.turn1_reasoning_tokens}` : undefined}
             style={{
               backgroundColor: aiLoading
                 ? '#f59e0b'
@@ -80,7 +107,7 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
       {aiLoading && (
         <div className="ai-loading">
           <div className="ai-spinner" />
-          <span>AI is analyzing market structure…</span>
+          <span>{loadingMsg}</span>
         </div>
       )}
 
@@ -88,8 +115,8 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
         <div className="ai-error-box">
           <strong>AI Error:</strong> {aiError}
           <div className="ai-error-hint">
-            Make sure Ollama is running: <code>ollama serve</code> and model is pulled:{' '}
-            <code>ollama pull gpt-oss:20b</code>
+            The external AI model failed to return a proper analysis, or context limits were exceeded. 
+            Check backend logs or try again shortly.
           </div>
         </div>
       )}
@@ -181,6 +208,68 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
               <Tag value={a.indicators?.ema?.price_vs_ema50} />
             </Row>
           </div>
+
+          {/* ── Pivot Intelligence ── */}
+          {a.pivot_analysis && (
+            <div className="ai-card">
+              <h3>Pivot Intelligence</h3>
+              <Row label="PP Level">
+                <span style={{ fontWeight: 700, color: '#e0e0e0' }}>
+                  {a.pivot_analysis.pp ?? '—'}
+                </span>
+              </Row>
+              <Row label="Price Zone">
+                <Tag value={a.pivot_analysis.current_zone} />
+              </Row>
+              <Row label="Session Bias">
+                <Tag value={a.pivot_analysis.session_bias} />
+              </Row>
+              <Row label="Pivot Target (Bull)">
+                <span style={{ color: '#22c55e' }}>
+                  {a.pivot_analysis.pivot_target_bull
+                    ? `${a.pivot_analysis.pivot_target_bull.label} @ ${a.pivot_analysis.pivot_target_bull.value}`
+                    : '—'}
+                </span>
+              </Row>
+              <Row label="Pivot Target (Bear)">
+                <span style={{ color: '#ef4444' }}>
+                  {a.pivot_analysis.pivot_target_bear
+                    ? `${a.pivot_analysis.pivot_target_bear.label} @ ${a.pivot_analysis.pivot_target_bear.value}`
+                    : '—'}
+                </span>
+              </Row>
+              {a.pivot_analysis.at_inflection_point && a.pivot_analysis.inflection_level && (
+                <div className="pivot-proximity" style={{ marginTop: 10 }}>
+                  ⚡ At inflection: <strong>{a.pivot_analysis.inflection_level}</strong>
+                </div>
+              )}
+              {a.pivot_analysis.pivot_signal && (
+                <p className="ai-reasoning" style={{ marginTop: 10 }}>
+                  {a.pivot_analysis.pivot_signal}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* ── Pivot Confluences ── */}
+          {a.pivot_analysis?.confluences && (
+            <div className="ai-card">
+              <h3>Pivot Confluences</h3>
+              {a.pivot_analysis.confluences.length > 0 ? (
+                a.pivot_analysis.confluences.map((c, i) => (
+                  <div key={i} className="ai-anomaly">
+                    <Tag value={c.significance} />
+                    <span className="ai-anomaly-type">{c.level} @ {c.price}</span>
+                    <span className="ai-anomaly-desc">
+                      Confluent with {c.confluent_with}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <p className="ai-no-anomalies">No significant confluences detected.</p>
+              )}
+            </div>
+          )}
 
           {/* ── Market Structure ── */}
           <div className="ai-card">

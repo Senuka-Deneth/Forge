@@ -13,8 +13,21 @@ export default function AnalysisPanel({
   interval,
   analysis,
   loading,
-  error
+  error,
+  pivotData
 }) {
+  const zoneColors = {
+    above_R3: '#b71c1c',
+    between_R2_R3: '#e53935', between_R1_R2: '#ef5350',
+    between_PP_R1: '#ef9a9a',
+    between_S1_PP: '#a5d6a7',
+    between_S2_S1: '#26a69a', between_S3_S2: '#00897b',
+    below_S3: '#004d40'
+  }
+
+  const pivots = pivotData?.classic?.pivots ?? null
+  const pivotAnalysis = pivotData?.classic?.analysis ?? null
+
   return (
     <div className="analysis-panel">
       <div className="panel-header">
@@ -100,6 +113,80 @@ export default function AnalysisPanel({
               </div>
             </div>
           </div>
+
+          {/* Pivot Points Info Panel */}
+          {pivots && pivotAnalysis && (
+            <div className="analysis-card pivot-panel">
+              <h3>Pivot Points</h3>
+
+              <div className="pivot-zone-badge">
+                <label>Price Zone</label>
+                <span
+                  className="ai-tag"
+                  style={{ backgroundColor: zoneColors[pivotAnalysis.zone] ?? '#444' }}
+                >
+                  {pivotAnalysis.zone.replace(/_/g, ' ')}
+                </span>
+              </div>
+
+              <div className="pivot-bias-row">
+                <label>Session Bias</label>
+                <span
+                  className="ai-tag"
+                  style={{
+                    backgroundColor: pivotAnalysis.bias === 'bullish' ? '#26a69a' : '#ef5350'
+                  }}
+                >
+                  {pivotAnalysis.bias}
+                </span>
+              </div>
+
+              <div className="pivot-levels-grid">
+                {[
+                  { key: 'R3', cls: 'r3' },
+                  { key: 'R2', cls: 'r2' },
+                  { key: 'R1', cls: 'r1' },
+                  { key: 'PP', cls: 'pp' },
+                  { key: 'S1', cls: 's1' },
+                  { key: 'S2', cls: 's2' },
+                  { key: 'S3', cls: 's3' },
+                ].map(({ key, cls }) => (
+                  <div key={key} className={`plevel ${cls}`}>
+                    <span>{key}</span>
+                    <strong>{pivots[key]}</strong>
+                  </div>
+                ))}
+              </div>
+
+              {pivotAnalysis.atInflectionPoint && pivotAnalysis.inflectionLevel && (
+                <div className="pivot-proximity">
+                  ⚡ Price at inflection point:{' '}
+                  <strong>
+                    {pivotAnalysis.inflectionLevel.label} @ {pivotAnalysis.inflectionLevel.value}
+                  </strong>
+                </div>
+              )}
+
+              <div className="pivot-distance-row">
+                <div>
+                  <label>To Resistance</label>
+                  <span>
+                    {pivotAnalysis.distToResistance !== null
+                      ? `${pivotAnalysis.distToResistance}% → ${pivotAnalysis.nearestResistance?.label}`
+                      : '—'}
+                  </span>
+                </div>
+                <div>
+                  <label>To Support</label>
+                  <span>
+                    {pivotAnalysis.distToSupport !== null
+                      ? `${pivotAnalysis.distToSupport}% → ${pivotAnalysis.nearestSupport?.label}`
+                      : '—'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="analysis-card">
             <h3>Trade Logic</h3>

@@ -3,10 +3,11 @@ import {
   createChart,
   CandlestickSeries,
   HistogramSeries,
-  LineSeries
+  LineSeries,
+  LineStyle
 } from 'lightweight-charts'
 
-export default function ChartPanel({ candles, loading, error, analysis }) {
+export default function ChartPanel({ candles, loading, error, analysis, pivotData, showPivots, onTogglePivots }) {
   const priceContainerRef = useRef(null)
   const rsiContainerRef = useRef(null)
   const macdContainerRef = useRef(null)
@@ -29,6 +30,20 @@ export default function ChartPanel({ candles, loading, error, analysis }) {
   const resistanceLineRef = useRef(null)
   const hasFitContentRef = useRef(false)
   const isInitializedRef = useRef(false)
+
+  // Pivot lines ref
+  const activePivotLinesRef = useRef([])
+
+  // Pivot level config
+  const pivotConfig = {
+    PP:  { color: '#ffffff', width: 2, style: LineStyle.Solid,       label: 'PP'  },
+    R1:  { color: '#ef5350', width: 1, style: LineStyle.Dotted,      label: 'R1'  },
+    R2:  { color: '#e53935', width: 1, style: LineStyle.Dotted,      label: 'R2'  },
+    R3:  { color: '#b71c1c', width: 1, style: LineStyle.Dashed,      label: 'R3'  },
+    S1:  { color: '#26a69a', width: 1, style: LineStyle.Dotted,      label: 'S1'  },
+    S2:  { color: '#00897b', width: 1, style: LineStyle.Dotted,      label: 'S2'  },
+    S3:  { color: '#004d40', width: 1, style: LineStyle.Dashed,      label: 'S3'  },
+  }
 
   useEffect(() => {
     if (loading) {
@@ -71,7 +86,7 @@ export default function ChartPanel({ candles, loading, error, analysis }) {
 
     const macdChart = createChart(macdContainerRef.current, {
       width: macdContainerRef.current.clientWidth,
-      height: macdContainerRef.current.clientHeight || 180,
+      height: macdContainerRef.current.clientHeight || 240,
       layout: sharedLayout,
       grid: sharedGrid,
       rightPriceScale: { borderColor: '#334155' },
@@ -154,6 +169,24 @@ export default function ChartPanel({ candles, loading, error, analysis }) {
     macdSeriesRef.current = macdSeries
     macdSignalSeriesRef.current = macdSignalSeries
     macdHistSeriesRef.current = macdHistSeries
+
+    // Guard flag to prevent circular re-entrancy between charts
+    let isSyncing = false
+
+    const charts = [priceChart, rsiChart, macdChart]
+
+    charts.forEach((source) => {
+      source.timeScale().subscribeVisibleLogicalRangeChange((logicalRange) => {
+        if (isSyncing || logicalRange === null) return
+        isSyncing = true
+        charts.forEach((target) => {
+          if (target !== source) {
+            target.timeScale().setVisibleLogicalRange(logicalRange)
+          }
+        })
+        isSyncing = false
+      })
+    })
 
     const handleResize = () => {
       if (priceChartRef.current && priceContainerRef.current) {
@@ -268,6 +301,38 @@ export default function ChartPanel({ candles, loading, error, analysis }) {
     }
   }, [candles, analysis])
 
+  // Pivot lines rendering
+  useEffect(() => {
+    const series = candleSeriesRef.current
+    if (!series) return
+
+    // Clear existing pivot lines
+    activePivotLinesRef.current.forEach(({ line }) => {
+      try { series.removePriceLine(line) } catch (e) { /* ignore */ }
+    })
+    activePivotLinesRef.current = []
+
+    // Render new pivot lines if toggled on and data available
+    if (showPivots && pivotData?.classic?.pivots) {
+      const pivots = pivotData.classic.pivots
+
+      Object.entries(pivotConfig).forEach(([key, cfg]) => {
+        if (pivots[key] === undefined) return
+
+        const line = series.createPriceLine({
+          price: pivots[key],
+          color: cfg.color,
+          lineWidth: cfg.width,
+          lineStyle: cfg.style,
+          axisLabelVisible: true,
+          title: `${cfg.label} ${pivots[key]}`,
+        })
+
+        activePivotLinesRef.current.push({ key, line })
+      })
+    }
+  }, [showPivots, pivotData])
+
   return (
     <div className="chart-card">
       <div className="chart-header">
@@ -284,6 +349,12 @@ export default function ChartPanel({ candles, loading, error, analysis }) {
           <span className="legend-item volume">MACD</span>
           <span className="legend-item support">Support</span>
           <span className="legend-item resistance">Resistance</span>
+          <button
+            className={`legend-item pivot-toggle${showPivots ? ' pivot-active' : ''}`}
+            onClick={onTogglePivots}
+          >
+            Pivots
+          </button>
         </div>
       </div>
 

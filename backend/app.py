@@ -2,13 +2,14 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
 import re
-from services.ollama_service import analyze_market, check_ollama_health
+from services.openrouter_service import analyze_market, check_openrouter_health
+from utils.pivotPoints import compute_pivots, analyze_price_vs_pivots
 
 app = Flask(__name__)
 CORS(app)
 
-# Check Ollama availability at startup
-check_ollama_health()
+# Check OpenRouter availability at startup
+check_openrouter_health()
 
 BINANCE_KLINES_URL = "https://api.binance.com/api/v3/klines"
 
@@ -430,6 +431,52 @@ def analyze():
         }), 500
 
 
+@app.route("/api/pivots", methods=["GET"])
+def get_pivots():
+    try:
+        symbol = request.args.get("symbol", "BTCUSDT").upper().strip()
+        timeframe = request.args.get("timeframe", "4h").strip()
+
+        if not validate_symbol(symbol):
+            return jsonify({"error": "Invalid symbol format."}), 400
+
+        if timeframe not in ALLOWED_INTERVALS:
+            return jsonify({"error": "Invalid interval."}), 400
+
+        # Fetch enough candles to cover at least 2 full periods
+        candles = fetch_binance_klines(symbol, timeframe, 200)
+
+        if not candles:
+            return jsonify({"success": False, "error": "No candle data available."}), 400
+
+        current_price = candles[-1]["close"]
+
+        classic_pivots = compute_pivots(candles, timeframe, "classic")
+        fib_pivots = compute_pivots(candles, timeframe, "fibonacci")
+
+        if not classic_pivots or not fib_pivots:
+            return jsonify({
+                "success": False,
+                "error": "Not enough data to compute pivots for this timeframe."
+            }), 400
+
+        classic_analysis = analyze_price_vs_pivots(current_price, classic_pivots)
+        fib_analysis = analyze_price_vs_pivots(current_price, fib_pivots)
+
+        return jsonify({
+            "success": True,
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "currentPrice": current_price,
+            "classic": {"pivots": classic_pivots, "analysis": classic_analysis},
+            "fibonacci": {"pivots": fib_pivots, "analysis": fib_analysis},
+        })
+
+    except Exception as exc:
+        print(f"Pivot error: {exc}")
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
 @app.route("/api/ai-analyze", methods=["POST"])
 def ai_analyze():
     try:
@@ -441,14 +488,51 @@ def ai_analyze():
         analysis = analyze_market(market_data)
         return jsonify({"success": True, "analysis": analysis})
 
+    except requests.exceptions.HTTPError as err:
+        print(f"OpenRouter Analysis Error: {err}")
+        if err.response.status_code == 401:
+            return jsonify({
+                "success": False,
+                "error": "Invalid OpenRouter API key. Check your .env file."
+            }), 500
+        if err.response.status_code == 429:
+            return jsonify({
+                "success": False,
+                "error": "Rate limit hit. Free tier has limits — wait 10 seconds and retry."
+            }), 500
+        return jsonify({"success": False, "error": str(err)}), 500
+
+    except requests.exceptions.Timeout:
+        return jsonify({
+            "success": False,
+            "error": "OpenRouter timeout. Model took too long (>60s). Try again."
+        }), 500
+
     except Exception as exc:
         print(f"AI Analysis Error: {exc}")
         return jsonify({
             "success": False,
             "error": str(exc),
-            "fallback": "AI model unavailable. Check that Ollama is running (ollama serve) and gpt-oss:20b is pulled."
         }), 500
 
+
+def validate_env():
+    import os
+    required = [
+        "OPENROUTER_API_KEY",
+        "OPENROUTER_MODEL",
+        "OPENROUTER_BASE_URL"
+    ]
+    missing = [key for key in required if not os.getenv(key)]
+    if missing:
+        print("❌ Missing required environment variables:")
+        for k in missing:
+            print(f"   - {k}")
+        print("Add them to your .env file and restart.")
+        exit(1)
+    print("✅ Environment validated")
+
+validate_env()
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5000, debug=True)

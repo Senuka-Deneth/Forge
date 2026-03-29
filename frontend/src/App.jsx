@@ -442,6 +442,14 @@ export default function App() {
     setTheme(newTheme)
   }
 
+  const logout = () => {
+    localStorage.removeItem('vcb_auth_token')
+    localStorage.removeItem('vcb_user')
+    sessionStorage.removeItem('vcb_auth_token')
+    sessionStorage.removeItem('vcb_user')
+    window.location.href = 'welcome.html'
+  }
+
   return (
     <>
       <aside className="sidebar">
@@ -486,6 +494,9 @@ export default function App() {
               <span className="theme-toggle-label" id="theme-toggle-label">{theme === 'dark' ? 'Light' : 'Dark'}</span>
             </button>
           </div>
+          <button className="btn-ghost sidebar-logout" onClick={logout} style={{ width: '100%', marginTop: '12px', justifyContent: 'center' }}>
+            Sign out
+          </button>
         </div>
       </aside>
 

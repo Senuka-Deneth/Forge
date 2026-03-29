@@ -276,7 +276,7 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
             )}
           </div>
 
-          <div className="ai-card glass-card">
+          <div className="ai-card glass-card tall-card">
             <div className="ai-card-header">Pivot Confluences</div>
             <div id="ai-confluences" className="confluence-list">
               {a.pivot_analysis?.confluences?.length > 0 ? (
@@ -293,7 +293,7 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
             </div>
           </div>
 
-          <div className="ai-card glass-card">
+          <div className="ai-card glass-card tall-card">
             <div className="ai-card-header">Anomalies &amp; Alerts</div>
             <div id="ai-anomalies" className="anomaly-list">
               {a.anomalies?.filter((x) => x.type !== 'none').length > 0 ? (

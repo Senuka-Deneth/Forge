@@ -4,7 +4,8 @@ import {
   CandlestickSeries,
   HistogramSeries,
   LineSeries,
-  LineStyle
+  LineStyle,
+  CrosshairMode
 } from 'lightweight-charts'
 
 export default function ChartPanel({ symbol, interval, candles, loading, error, analysis, pivotData, showPivots, onTogglePivots }) {
@@ -105,8 +106,9 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
       height: 420,
       layout: sharedLayout,
       grid: sharedGrid,
-      crosshair: sharedCrosshair,
-      timeScale: { timeVisible: true, secondsVisible: false }
+      crosshair: { ...sharedCrosshair, mode: CrosshairMode.Normal },
+      timeScale: { timeVisible: true, secondsVisible: false },
+      rightPriceScale: { minimumWidth: 80 }
     })
 
     const rsiChart = createChart(rsiContainerRef.current, {
@@ -114,8 +116,9 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
       height: 120,
       layout: sharedLayout,
       grid: sharedGrid,
-      crosshair: sharedCrosshair,
-      timeScale: { visible: false }
+      crosshair: { ...sharedCrosshair, mode: CrosshairMode.Normal },
+      timeScale: { visible: false },
+      rightPriceScale: { minimumWidth: 80 }
     })
 
     const macdChart = createChart(macdContainerRef.current, {
@@ -123,8 +126,9 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
       height: 120,
       layout: sharedLayout,
       grid: sharedGrid,
-      crosshair: sharedCrosshair,
-      timeScale: { timeVisible: true, secondsVisible: false }
+      crosshair: { ...sharedCrosshair, mode: CrosshairMode.Normal },
+      timeScale: { timeVisible: true, secondsVisible: false },
+      rightPriceScale: { minimumWidth: 80 }
     })
 
     const candleSeries = priceChart.addSeries(CandlestickSeries, {
@@ -422,8 +426,17 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
     }
 
     if (!hasFitContentRef.current) {
+      // Only fit the price chart, then sync range to RSI + MACD so all 3 align perfectly
       priceChartRef.current.timeScale().fitContent()
-      macdChartRef.current.timeScale().fitContent()
+      // Give the chart one tick to apply fitContent before reading the range
+      setTimeout(() => {
+        if (!priceChartRef.current) return
+        const range = priceChartRef.current.timeScale().getVisibleLogicalRange()
+        if (range) {
+          if (rsiChartRef.current) rsiChartRef.current.timeScale().setVisibleLogicalRange(range)
+          if (macdChartRef.current) macdChartRef.current.timeScale().setVisibleLogicalRange(range)
+        }
+      }, 50)
       hasFitContentRef.current = true
     }
   }, [candles, analysis])

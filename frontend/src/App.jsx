@@ -486,6 +486,16 @@ export default function App() {
             <svg viewBox="0 0 24 24"><path d="M4 2v20h16V2H4zm14 18H6V4h12v16zM8 6h8v2H8V6zm0 4h8v2H8v-2zm0 4h5v2H8v-2z"/></svg>
             <span>Signals</span>
           </a>
+          <a 
+            className="nav-item"
+            href="education.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ cursor: 'pointer' }}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5-10-5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
+            <span>Learning</span>
+          </a>
         </nav>
 
         <div className="sidebar-footer">

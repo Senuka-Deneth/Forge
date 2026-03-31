@@ -4,6 +4,7 @@ import StatusBar from './components/StatusBar'
 import ChartPanel from './components/ChartPanel'
 import AnalysisPanel from './components/AnalysisPanel'
 import AIAnalysisPanel from './components/AIAnalysisPanel'
+import EducationPanel from './components/EducationPanel'
 
 const BACKEND_URL = 'http://127.0.0.1:5000'
 const COMMON_QUOTES = ['USDT', 'BUSD', 'BTC', 'ETH', 'FDUSD']
@@ -100,7 +101,21 @@ export default function App() {
   const [status, setStatus] = useState('Idle')
   const [isLive, setIsLive] = useState(false)
 
-  const [activeTab, setActiveTab] = useState('dashboard')
+  const getInitialTab = () => {
+    const params = new URLSearchParams(window.location.search);
+    const tabName = params.get('tab');
+    return tabName && ['dashboard', 'analysis', 'learning'].includes(tabName) ? tabName : 'dashboard';
+  };
+  const [activeTab, setActiveTabState] = useState(getInitialTab);
+
+  const setActiveTab = (tab) => {
+    setActiveTabState(tab);
+    const newUrl = new URL(window.location);
+    newUrl.searchParams.set('tab', tab);
+    window.history.replaceState(null, '', newUrl.toString());
+  };
+
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true)
 
   const [analysis, setAnalysis] = useState(null)
   const [analysisLoading, setAnalysisLoading] = useState(false)
@@ -442,41 +457,45 @@ export default function App() {
     setTheme(newTheme)
   }
 
+  const logout = () => {
+    localStorage.removeItem('vcb_auth_token')
+    localStorage.removeItem('vcb_user')
+    sessionStorage.removeItem('vcb_auth_token')
+    sessionStorage.removeItem('vcb_user')
+    window.location.href = 'welcome.html'
+  }
+
   return (
     <>
-      <aside className="sidebar">
-        <div className="sidebar-brand">
-          <div className="brand-text" style={{ paddingLeft: '8px' }}>
+      <aside className={`sidebar ${isSidebarCollapsed ? 'collapsed' : ''}`}>
+        <div className="sidebar-header">
+          <a href="welcome.html" className="sidebar-brand">
+            <div className="brand-icon-wrap">
+              <svg viewBox="0 0 24 24"><path d="M3 3v18h18M9 15l3-3 4 4 5-5"/></svg>
+            </div>
             <span className="brand-name">Vision Chart</span>
-            <span className="brand-sub">Binance Spot · AI Analysis</span>
-          </div>
+          </a>
+          <button className={`sidebar-toggle-btn ${!isSidebarCollapsed ? 'open' : ''}`} onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}>
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">
+              <line x1="3" y1="12" x2="21" y2="12" className="hamburger-line line-2" />
+              <line x1="3" y1="6" x2="21" y2="6" className="hamburger-line line-1" />
+              <line x1="3" y1="18" x2="21" y2="18" className="hamburger-line line-3" />
+            </svg>
+          </button>
         </div>
 
         <nav className="sidebar-nav">
-          <div className="nav-section-label">MAIN</div>
-          <a 
-            className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} 
-            onClick={() => setActiveTab('dashboard')}
-            style={{ cursor: 'pointer' }}
-          >
-            <svg viewBox="0 0 24 24"><path d="M4 4h4v4H4zm12 0h4v4h-4zM4 16h4v4H4zm12 0h4v4h-4zM10 4h4v4h-4zm0 12h4v4h-4zm-6-6h4v4H4zm12 0h4v4h-4zm-6 0h4v4h-4z"/></svg>
-            <span>Dashboard</span>
+          <a className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>
+            <span className="nav-item-text">Dashboard</span>
           </a>
-          <a 
-            className={`nav-item ${activeTab === 'analysis' ? 'active' : ''}`} 
-            onClick={() => setActiveTab('analysis')}
-            style={{ cursor: 'pointer' }}
-          >
-            <svg viewBox="0 0 24 24"><path d="M3 3v18h18M9 15l3-3 4 4 5-5"/></svg>
-            <span>Analysis</span>
+          <a className={`nav-item ${activeTab === 'analysis' ? 'active' : ''}`} onClick={() => setActiveTab('analysis')}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path><path d="M5 3v4"></path><path d="M19 17v4"></path><path d="M3 5h4"></path><path d="M17 19h4"></path></svg>
+            <span className="nav-item-text">Analysis</span>
           </a>
-          <a 
-            className={`nav-item ${activeTab === 'signals' ? 'active' : ''}`} 
-            onClick={() => setActiveTab('signals')}
-            style={{ cursor: 'pointer' }}
-          >
-            <svg viewBox="0 0 24 24"><path d="M4 2v20h16V2H4zm14 18H6V4h12v16zM8 6h8v2H8V6zm0 4h8v2H8v-2zm0 4h5v2H8v-2z"/></svg>
-            <span>Signals</span>
+          <a className={`nav-item ${activeTab === 'learning' ? 'active' : ''}`} onClick={() => setActiveTab('learning')}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
+            <span className="nav-item-text">Learning</span>
           </a>
         </nav>
 
@@ -484,32 +503,43 @@ export default function App() {
           <div className="theme-toggle-wrap">
             <button className="theme-toggle" id="theme-toggle-btn" onClick={toggleTheme} style={{ justifyContent: 'center' }}>
               <span className="theme-toggle-label" id="theme-toggle-label">{theme === 'dark' ? 'Light' : 'Dark'}</span>
+              {isSidebarCollapsed && (
+                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+              )}
             </button>
           </div>
+          <button className="btn-logout" onClick={logout}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: '16px', height: '16px' }}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+            <span className="btn-logout-text">Sign out</span>
+          </button>
         </div>
       </aside>
 
-      <div className="main-content">
-        <HeaderControls
-          symbolInput={symbolInput}
-          setSymbolInput={setSymbolInput}
-          interval={interval}
-          setInterval={setInterval}
-          onLoad={() => loadChart(symbolInput, interval)}
-          isLive={isLive}
-          toggleTheme={toggleTheme}
-          theme={theme}
-        />
+      <div className="main-content" style={{ padding: activeTab === 'learning' ? 0 : undefined }}>
+        {activeTab !== 'learning' && (
+          <>
+            <HeaderControls
+              symbolInput={symbolInput}
+              setSymbolInput={setSymbolInput}
+              interval={interval}
+              setInterval={setInterval}
+              onLoad={() => loadChart(symbolInput, interval)}
+              isLive={isLive}
+              toggleTheme={toggleTheme}
+              theme={theme}
+            />
 
-        <StatusBar
-          latestPrice={latestPrice}
-          priceChange={priceChange}
-          latestCandle={latestCandle}
-          aiAnalysis={aiAnalysis}
-        />
+            <StatusBar
+              latestPrice={latestPrice}
+              priceChange={priceChange}
+              latestCandle={latestCandle}
+              aiAnalysis={aiAnalysis}
+            />
+          </>
+        )}
 
         {activeTab === 'dashboard' && (
-          <div className="dashboard-grid glass-layout">
+          <div className="dashboard-grid">
             <div className="charts-column">
               <ChartPanel
                 symbol={symbol}
@@ -538,21 +568,20 @@ export default function App() {
         )}
 
         {activeTab === 'analysis' && (
-          <div className="dashboard-grid glass-layout">
+          <div className="dashboard-grid">
             <AIAnalysisPanel
-              aiAnalysis={aiAnalysis}
-              aiLoading={aiLoading}
-              aiError={aiError}
-              onRefresh={() => runAIAnalysis(candles)}
+               aiAnalysis={aiAnalysis}
+               aiLoading={aiLoading}
+               aiError={aiError}
+               onRefresh={() => runAIAnalysis(candles)}
             />
           </div>
         )}
 
-        {activeTab === 'signals' && (
-          <div className="dashboard-grid glass-layout" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh', color: 'var(--text-muted)' }}>
-            <h2>Signals Module Coming Soon</h2>
-          </div>
+        {activeTab === 'learning' && (
+          <EducationPanel />
         )}
+
       </div>
     </>
   )

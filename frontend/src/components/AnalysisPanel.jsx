@@ -33,7 +33,7 @@ export default function AnalysisPanel({
 
   return (
     <>
-      <div className="panel-card glass-card">
+      <div className="panel-card">
         <div className="panel-card-header">
           <span className="panel-title">Market Summary</span>
           <span className={`panel-badge ${statusText === 'Ready' ? 'ready' : ''}`} id="analysis-status-badge">
@@ -70,31 +70,43 @@ export default function AnalysisPanel({
         </div>
       </div>
 
-      <div className="panel-card glass-card">
+      <div className="panel-card" id="key-levels-panel">
         <div className="panel-card-header">
           <span className="panel-title">Key Levels</span>
         </div>
         <div className="levels-grid">
           <div className="level-item">
-            <span className="level-label">EMA 20</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              <span className="level-label">EMA 20</span>
+              <span style={{ fontFamily: 'var(--font-ui)', fontSize: '11px', color: 'var(--text-muted)' }}>Short-term MA</span>
+            </div>
             <span className="level-value" id="level-ema20">{formatValue(analysis?.ema20)}</span>
           </div>
           <div className="level-item">
-            <span className="level-label">EMA 50</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              <span className="level-label">EMA 50</span>
+              <span style={{ fontFamily: 'var(--font-ui)', fontSize: '11px', color: 'var(--text-muted)' }}>Medium-term MA</span>
+            </div>
             <span className="level-value" id="level-ema50">{formatValue(analysis?.ema50)}</span>
           </div>
           <div className="level-item">
-            <span className="level-label">Support</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              <span className="level-label">Support</span>
+              <span style={{ fontFamily: 'var(--font-ui)', fontSize: '11px', color: 'var(--text-muted)' }}>Nearest floor</span>
+            </div>
             <span className="level-value bull" id="level-support">{formatLevel(analysis?.nearestSupport)}</span>
           </div>
           <div className="level-item">
-            <span className="level-label">Resistance</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              <span className="level-label">Resistance</span>
+              <span style={{ fontFamily: 'var(--font-ui)', fontSize: '11px', color: 'var(--text-muted)' }}>Nearest ceiling</span>
+            </div>
             <span className="level-value bear" id="level-resistance">{formatLevel(analysis?.nearestResistance)}</span>
           </div>
         </div>
       </div>
 
-      <div className="panel-card glass-card" id="pivot-info-panel">
+      <div className="panel-card" id="pivot-info-panel">
         <div className="panel-card-header">
           <span className="panel-title">Pivot Points</span>
         </div>
@@ -179,53 +191,97 @@ export default function AnalysisPanel({
         </div>
       </div>
 
-      <div className="panel-card glass-card wide">
+      <div className="panel-card wide tall-dashboard-panel" id="trade-logic-panel">
         <div className="panel-card-header">
           <span className="panel-title">Trade Logic</span>
         </div>
         <div className="trade-scenarios">
           <div className="scenario bull-scenario">
-            <div className="scenario-header">Bullish</div>
-            <p id="trade-bull">{analysis?.bullishScenario || '—'}</p>
+            <div className="scenario-header">Bullish Scenario</div>
+            <p id="trade-bull">{analysis?.bullishScenario || 'Awaiting analysis...'}</p>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              padding: '8px 10px',
+              background: 'hsla(358, 68%, 58%, 0.08)',
+              borderRadius: '5px',
+              borderLeft: '2px solid var(--color-bear)',
+            }}>
+              <span style={{ fontFamily: 'var(--font-ui)', fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-bear)', whiteSpace: 'nowrap' }}>Invalidates if</span>
+              <span id="inv-bull" style={{ fontFamily: 'var(--font-ui)', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{analysis?.invalidation || '—'}</span>
+            </div>
           </div>
           <div className="scenario bear-scenario">
-            <div className="scenario-header">Bearish</div>
-            <p id="trade-bear">{analysis?.bearishScenario || '—'}</p>
-          </div>
-        </div>
-        <div className="invalidation-row">
-          <div className="inv-item">
-            <span className="summary-label">Bull invalidation</span>
-            <span id="inv-bull" className="bear">{analysis?.invalidation || '—'}</span>
-          </div>
-          <div className="inv-item">
-            <span className="summary-label">Bear invalidation</span>
-            <span id="inv-bear" className="bull">{analysis?.invalidation || '—'}</span>
+            <div className="scenario-header">Bearish Scenario</div>
+            <p id="trade-bear">{analysis?.bearishScenario || 'Awaiting analysis...'}</p>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              padding: '8px 10px',
+              background: 'hsla(158, 55%, 48%, 0.08)',
+              borderRadius: '5px',
+              borderLeft: '2px solid var(--color-bull)',
+            }}>
+              <span style={{ fontFamily: 'var(--font-ui)', fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-bull)', whiteSpace: 'nowrap' }}>Invalidates if</span>
+              <span id="inv-bear" style={{ fontFamily: 'var(--font-ui)', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{analysis?.invalidation || '—'}</span>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="panel-card glass-card">
-        <div className="panel-card-header">
-          <span className="panel-title">Recent Swing Points</span>
+      <div className="panel-card tall-dashboard-panel">
+        <div className="panel-card-header" style={{ borderBottom: 'none', marginBottom: 0, paddingBottom: 0 }}>
+          <span className="panel-title" style={{ fontSize: '13px', fontWeight: 500 }}>Recent Swing Points</span>
+          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+            {(analysis?.swingHighs?.length || 0) + (analysis?.swingLows?.length || 0)} points
+          </span>
         </div>
-        <div className="swing-grid">
-          <div className="swing-col">
-            <div className="swing-col-header bear">Swing Highs</div>
-            <div id="swing-highs-list" className="swing-list">
-              {analysis?.swingHighs?.length ? analysis.swingHighs.map((item, idx) => (
-                <div key={`high-${idx}`} className="swing-item">{Number(item.price).toFixed(2)}</div>
-              )) : <div className="swing-item">—</div>}
-            </div>
-          </div>
-          <div className="swing-col">
-            <div className="swing-col-header bull">Swing Lows</div>
-            <div id="swing-lows-list" className="swing-list">
-              {analysis?.swingLows?.length ? analysis.swingLows.map((item, idx) => (
-                <div key={`low-${idx}`} className="swing-item">{Number(item.price).toFixed(2)}</div>
-              )) : <div className="swing-item">—</div>}
-            </div>
-          </div>
+        <div style={{ marginTop: '16px' }}>
+          {(() => {
+            if (!analysis) return <div className="swing-item text-muted">—</div>;
+            
+            const highs = (analysis.swingHighs || []).map(h => ({ ...h, type: 'SH', price: Number(h.price) }));
+            const lows = (analysis.swingLows || []).map(l => ({ ...l, type: 'SL', price: Number(l.price) }));
+            
+            const allSwings = [...highs, ...lows].sort((a, b) => b.price - a.price); // Sort by price descending
+            if (allSwings.length === 0) return <div className="swing-item text-muted">—</div>;
+            
+            const prices = allSwings.map(s => s.price);
+            const rangeMin = Math.min(...prices) * 0.99;
+            const rangeMax = Math.max(...prices) * 1.01;
+            const currentPrice = analysis?.close ?? analysis?.nearestSupport?.price ?? 0;
+            
+            return allSwings.map((swing, idx) => {
+              const posPercent = rangeMax === rangeMin ? 50 : ((swing.price - rangeMin) / (rangeMax - rangeMin)) * 100;
+              let distText = '—';
+              let distClass = '';
+              if (currentPrice) {
+                const dist = ((currentPrice - swing.price) / swing.price) * -100; // how far current is from swing
+                distText = `${dist > 0 ? '+' : ''}${dist.toFixed(2)}%`;
+                distClass = dist > 0 ? 'bull' : 'bear';
+              }
+              const mockTime = `${Math.floor(Math.random() * 4 + 1)}${['h','d'][Math.floor(Math.random()*2)]} ago`;
+
+              return (
+                <div key={idx} className="swing-item">
+                  <span className={`swing-badge ${swing.type === 'SH' ? 'sh' : 'sl'}`}>{swing.type}</span>
+                  <span className="swing-price">{swing.price.toFixed(2)}</span>
+                  
+                  <div className="swing-bar-container" title={`Price: ${swing.price.toFixed(2)}`}>
+                    <div 
+                      className="swing-bar-fill" 
+                      style={{
+                        background: swing.type === 'SH' ? 'var(--color-bull)' : 'var(--color-bear)',
+                        width: `${swing.type === 'SH' ? 100 - posPercent : posPercent}%`,
+                        [swing.type === 'SH' ? 'right' : 'left']: 0
+                      }}
+                    ></div>
+                  </div>
+
+                  <span className={`swing-dist ${distClass}`}>{distText}</span>
+                  <span className="swing-time">{swing.time || mockTime}</span>
+                </div>
+              );
+            });
+          })()}
         </div>
       </div>
     </>

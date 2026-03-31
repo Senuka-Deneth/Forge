@@ -4,7 +4,8 @@ import {
   CandlestickSeries,
   HistogramSeries,
   LineSeries,
-  LineStyle
+  LineStyle,
+  CrosshairMode
 } from 'lightweight-charts'
 
 export default function ChartPanel({ symbol, interval, candles, loading, error, analysis, pivotData, showPivots, onTogglePivots }) {
@@ -42,16 +43,25 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
   // Pivot lines ref
   const activePivotLinesRef = useRef([])
 
-  // Pivot level config
+  // Pivot level config — neutral gray, dashed
+  const pivotLineColor = 'rgba(160, 160, 170, 0.7)';
   const pivotConfig = {
-    PP:  { color: '#ffffff', width: 2, style: LineStyle.Solid,       label: 'PP'  },
-    R1:  { color: '#ef5350', width: 1, style: LineStyle.Dotted,      label: 'R1'  },
-    R2:  { color: '#e53935', width: 1, style: LineStyle.Dotted,      label: 'R2'  },
-    R3:  { color: '#b71c1c', width: 1, style: LineStyle.Dashed,      label: 'R3'  },
-    S1:  { color: '#26a69a', width: 1, style: LineStyle.Dotted,      label: 'S1'  },
-    S2:  { color: '#00897b', width: 1, style: LineStyle.Dotted,      label: 'S2'  },
-    S3:  { color: '#004d40', width: 1, style: LineStyle.Dashed,      label: 'S3'  },
+    PP:  { color: pivotLineColor, width: 1, style: LineStyle.Dashed, label: 'PP'  },
+    R1:  { color: pivotLineColor, width: 1, style: LineStyle.Dashed, label: 'R1'  },
+    R2:  { color: pivotLineColor, width: 1, style: LineStyle.Dashed, label: 'R2'  },
+    R3:  { color: pivotLineColor, width: 1, style: LineStyle.Dashed, label: 'R3'  },
+    S1:  { color: pivotLineColor, width: 1, style: LineStyle.Dashed, label: 'S1'  },
+    S2:  { color: pivotLineColor, width: 1, style: LineStyle.Dashed, label: 'S2'  },
+    S3:  { color: pivotLineColor, width: 1, style: LineStyle.Dashed, label: 'S3'  },
   }
+
+  const pivotDataRef = useRef(pivotData)
+  const showPivotsRef = useRef(showPivots)
+
+  useEffect(() => {
+    pivotDataRef.current = pivotData
+    showPivotsRef.current = showPivots
+  }, [pivotData, showPivots])
 
   useEffect(() => {
     if (loading) {
@@ -77,16 +87,28 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
       horzLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)' }
     }
 
+    const sharedCrosshair = {
+      vertLine: { 
+        color: '#808080', 
+        width: 1, 
+        style: LineStyle.Dashed, 
+      },
+      horzLine: { 
+        color: '#808080', 
+        width: 1, 
+        style: LineStyle.Dashed, 
+        labelBackgroundColor: '#808080' 
+      },
+    }
+
     const priceChart = createChart(priceContainerRef.current, {
       width: priceContainerRef.current.clientWidth,
       height: 420,
       layout: sharedLayout,
       grid: sharedGrid,
-      crosshair: {
-        vertLine: { color: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.2)' },
-        horzLine: { color: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.2)' },
-      },
-      timeScale: { timeVisible: true, secondsVisible: false }
+      crosshair: { ...sharedCrosshair, mode: CrosshairMode.Normal },
+      timeScale: { timeVisible: true, secondsVisible: false },
+      rightPriceScale: { minimumWidth: 80 }
     })
 
     const rsiChart = createChart(rsiContainerRef.current, {
@@ -94,11 +116,9 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
       height: 120,
       layout: sharedLayout,
       grid: sharedGrid,
-      crosshair: {
-        vertLine: { color: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.2)' },
-        horzLine: { color: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.2)' },
-      },
-      timeScale: { visible: false }
+      crosshair: { ...sharedCrosshair, mode: CrosshairMode.Normal },
+      timeScale: { visible: false },
+      rightPriceScale: { minimumWidth: 80 }
     })
 
     const macdChart = createChart(macdContainerRef.current, {
@@ -106,11 +126,9 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
       height: 120,
       layout: sharedLayout,
       grid: sharedGrid,
-      crosshair: {
-        vertLine: { color: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.2)' },
-        horzLine: { color: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.2)' },
-      },
-      timeScale: { timeVisible: true, secondsVisible: false }
+      crosshair: { ...sharedCrosshair, mode: CrosshairMode.Normal },
+      timeScale: { timeVisible: true, secondsVisible: false },
+      rightPriceScale: { minimumWidth: 80 }
     })
 
     const candleSeries = priceChart.addSeries(CandlestickSeries, {
@@ -147,13 +165,13 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
     const supportLine = priceChart.addSeries(LineSeries, {
       color: '#22c55e',
       lineWidth: 1,
-      lineStyle: 2
+      lineStyle: LineStyle.Solid
     })
 
     const resistanceLine = priceChart.addSeries(LineSeries, {
       color: '#ef4444',
       lineWidth: 1,
-      lineStyle: 2
+      lineStyle: LineStyle.Solid
     })
 
     const rsiSeries = rsiChart.addSeries(LineSeries, {
@@ -189,6 +207,78 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
     macdSeriesRef.current = macdSeries
     macdSignalSeriesRef.current = macdSignalSeries
     macdHistSeriesRef.current = macdHistSeries
+
+    // ── Crosshair Sync across all 3 charts ──────────────────────────────
+    // We use setCrosshairPosition so both vertical AND horizontal lines sync.
+    let isSyncingCrosshair = false;
+
+    const getSyncValue = (series, param) => {
+      if (!param.time) return 0;
+      const d = param.seriesData.get(series);
+      if (!d) return 0;
+      return d.value !== undefined ? d.value : (d.close !== undefined ? d.close : 0);
+    };
+
+    const syncToTargets = (sourceParam, targets) => {
+      if (isSyncingCrosshair) return;
+      isSyncingCrosshair = true;
+      const oob = !sourceParam.point || !sourceParam.time;
+      targets.forEach(({ chart, series }) => {
+        if (oob) {
+          chart.clearCrosshairPosition();
+        } else {
+          chart.setCrosshairPosition(getSyncValue(series, sourceParam), sourceParam.time, series);
+        }
+      });
+      isSyncingCrosshair = false;
+    };
+
+    priceChart.subscribeCrosshairMove((param) => {
+      syncToTargets(param, [
+        { chart: rsiChart,  series: rsiSeries  },
+        { chart: macdChart, series: macdSeries }
+      ]);
+
+      // Dynamic horizontal line color when near a pivot
+      if (!param.point) {
+        priceChart.applyOptions({ crosshair: sharedCrosshair });
+        return;
+      }
+      if (showPivotsRef.current && pivotDataRef.current?.classic?.pivots) {
+        const pivots = pivotDataRef.current.classic.pivots;
+        let matchedColor = '#808080';
+        Object.entries(pivotConfig).forEach(([key, cfg]) => {
+          if (pivots[key] !== undefined) {
+            const pricePx = candleSeries.priceToCoordinate(pivots[key]);
+            if (pricePx !== null && Math.abs(param.point.y - pricePx) <= 8) {
+              matchedColor = cfg.color;
+            }
+          }
+        });
+        priceChart.applyOptions({
+          crosshair: {
+            horzLine: { color: matchedColor, labelBackgroundColor: matchedColor, width: 1, style: LineStyle.Dashed },
+            vertLine: { color: '#808080', width: 1, style: LineStyle.Dashed }
+          }
+        });
+      } else {
+        priceChart.applyOptions({ crosshair: sharedCrosshair });
+      }
+    });
+
+    rsiChart.subscribeCrosshairMove((param) => {
+      syncToTargets(param, [
+        { chart: priceChart, series: candleSeries },
+        { chart: macdChart,  series: macdSeries  }
+      ]);
+    });
+
+    macdChart.subscribeCrosshairMove((param) => {
+      syncToTargets(param, [
+        { chart: priceChart, series: candleSeries },
+        { chart: rsiChart,   series: rsiSeries   }
+      ]);
+    });
 
     // Guard flag to prevent circular re-entrancy between charts
     let isSyncing = false
@@ -242,10 +332,6 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
         grid: {
           vertLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)' },
           horzLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)' },
-        },
-        crosshair: {
-          vertLine: { color: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.2)' },
-          horzLine: { color: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.2)' },
         }
       }
 
@@ -340,8 +426,17 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
     }
 
     if (!hasFitContentRef.current) {
+      // Only fit the price chart, then sync range to RSI + MACD so all 3 align perfectly
       priceChartRef.current.timeScale().fitContent()
-      macdChartRef.current.timeScale().fitContent()
+      // Give the chart one tick to apply fitContent before reading the range
+      setTimeout(() => {
+        if (!priceChartRef.current) return
+        const range = priceChartRef.current.timeScale().getVisibleLogicalRange()
+        if (range) {
+          if (rsiChartRef.current) rsiChartRef.current.timeScale().setVisibleLogicalRange(range)
+          if (macdChartRef.current) macdChartRef.current.timeScale().setVisibleLogicalRange(range)
+        }
+      }, 50)
       hasFitContentRef.current = true
     }
   }, [candles, analysis])
@@ -369,8 +464,8 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
           color: cfg.color,
           lineWidth: cfg.width,
           lineStyle: cfg.style,
-          axisLabelVisible: true,
-          title: `${cfg.label} ${pivots[key]}`,
+          axisLabelVisible: false,
+          title: cfg.label,
         })
 
         activePivotLinesRef.current.push({ key, line })
@@ -412,7 +507,7 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
   }, [showResistance])
 
   return (
-    <div className="chart-card glass-card">
+    <div className="chart-card">
       <div className="chart-card-header">
         <div className="chart-card-title">
           <span id="chart-symbol-display">{symbol}</span>
@@ -439,8 +534,12 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
       </div>
 
       <div id="chart-container" className="chart-container" ref={priceContainerRef}></div>
-      <div id="rsi-container" className="subchart-container" ref={rsiContainerRef}></div>
-      <div id="macd-container" className="subchart-container" ref={macdContainerRef}></div>
+      <div id="rsi-container" className="subchart-container" ref={rsiContainerRef} style={{ position: 'relative' }}>
+        <div style={{ position: 'absolute', top: 5, left: 10, color: '#8b8b9e', zIndex: 10, fontSize: '12px', fontWeight: 'bold', pointerEvents: 'none' }}>RSI</div>
+      </div>
+      <div id="macd-container" className="subchart-container" ref={macdContainerRef} style={{ position: 'relative' }}>
+        <div style={{ position: 'absolute', top: 5, left: 10, color: '#8b8b9e', zIndex: 10, fontSize: '12px', fontWeight: 'bold', pointerEvents: 'none' }}>MACD</div>
+      </div>
     </div>
   )
 }

@@ -31,6 +31,11 @@
 
       --border-subtle: hsla(220, 20%, 50%, 0.10);
       --border-medium: hsla(220, 20%, 50%, 0.18);
+
+      /* Shared spacing variables (Premium 40px Standard) */
+      --radius-sm: 14px;
+      --radius-md: 24px;
+      --radius-lg: 40px;
     }
 
     *, *::before, *::after {
@@ -193,7 +198,7 @@
       gap: 12px;
       background: transparent;
       border: 1px solid var(--border-medium);
-      border-radius: 4px;
+      border-radius: var(--radius-lg);
       padding: 12px;
       color: var(--text-primary);
       font-family: var(--font-ui);
@@ -246,7 +251,7 @@
       width: 100%;
       background: var(--bg-raised);
       border: 1px solid var(--border-medium);
-      border-radius: 4px;
+      border-radius: var(--radius-md);
       padding: 12px 14px;
       color: var(--text-primary);
       font-family: var(--font-ui);
@@ -310,7 +315,7 @@
       background: var(--accent-primary);
       color: var(--text-inverse);
       border: none;
-      border-radius: 4px;
+      border-radius: var(--radius-lg);
       padding: 14px;
       font-family: var(--font-ui);
       font-weight: 600;

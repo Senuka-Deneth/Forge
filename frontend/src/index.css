@@ -751,7 +751,7 @@ body, #root {
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  padding: 40px;
+  padding: 52px;
 }
 
 .ai-section-header {
@@ -1175,13 +1175,13 @@ mark {
 .inflection-alert {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   background: hsla(47, 96%, 55%, 0.08);
   border: 1px solid hsla(47, 96%, 55%, 0.25);
   border-radius: var(--radius-lg);
-  padding: 12px 20px;
+  padding: 16px 28px;
   font-family: var(--font-ui);
-  font-size: 13px;
+  font-size: 13.5px;
   color: hsl(47, 96%, 65%);
 }
 
@@ -1257,10 +1257,10 @@ mark {
 
 .scenario {
   border-radius: var(--radius-lg);
-  padding: 24px;
+  padding: 32px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
 
 .bull-scenario {
@@ -1321,17 +1321,17 @@ mark {
 
 .risk-note-box {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   align-items: flex-start;
   background: hsla(47, 96%, 55%, 0.06);
   border: 1px solid hsla(47, 96%, 55%, 0.18);
   border-radius: var(--radius-lg);
-  padding: 16px 24px;
-  margin-top: 12px;
+  padding: 20px 32px;
+  margin-top: 16px;
   font-family: var(--font-ui);
-  font-size: 13px;
+  font-size: 14px;
   color: hsl(47, 96%, 70%);
-  line-height: 1.6;
+  line-height: 1.7;
 }
 
 /* Confidence row in AnalysisPanel */

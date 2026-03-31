@@ -3,29 +3,514 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Documentation - Vision Chart</title>
+  <title>Education - Vision Chart</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="education-styles.css" />
+  <style>
+    /* ─── TOKENS ─── */
+    :root {
+      --font-display: 'Instrument Serif', Georgia, serif;
+      --font-ui: 'DM Sans', system-ui, sans-serif;
+      --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+    }
+    [data-theme="dark"] {
+      --bg-base:    hsl(222, 20%, 7%);
+      --bg-surface: hsl(222, 18%, 10%);
+      --bg-raised:  hsl(222, 16%, 13%);
+      --bg-overlay: hsl(222, 14%, 16%);
+      --accent-primary: hsl(158, 64%, 52%);
+      --accent-hover:   hsl(158, 64%, 44%);
+      --accent-subtle:  hsla(158, 64%, 52%, 0.10);
+      --text-primary:   hsl(220, 20%, 92%);
+      --text-secondary: hsl(220, 12%, 60%);
+      --text-muted:     hsl(220, 10%, 40%);
+      --text-inverse:   hsl(222, 20%, 7%);
+      --color-bull:  hsl(158, 55%, 48%);
+      --color-bear:  hsl(358, 68%, 58%);
+      --color-flat:  hsl(220, 12%, 50%);
+      --border-subtle: hsla(220, 20%, 50%, 0.10);
+      --border-medium: hsla(220, 20%, 50%, 0.18);
+    }
+    [data-theme="light"] {
+      --bg-base:    hsl(0, 0%, 98%);
+      --bg-surface: hsl(0, 0%, 100%);
+      --bg-raised:  hsl(220, 10%, 95%);
+      --bg-overlay: hsl(220, 10%, 90%);
+      --accent-primary: hsl(158, 64%, 40%);
+      --accent-hover:   hsl(158, 64%, 32%);
+      --accent-subtle:  hsla(158, 64%, 40%, 0.08);
+      --text-primary:   hsl(222, 20%, 10%);
+      --text-secondary: hsl(220, 15%, 35%);
+      --text-muted:     hsl(220, 10%, 50%);
+      --text-inverse:   hsl(0, 0%, 98%);
+      --color-bull:  hsl(158, 64%, 38%);
+      --color-bear:  hsl(358, 68%, 48%);
+      --color-flat:  hsl(220, 12%, 50%);
+      --border-subtle: hsla(220, 30%, 20%, 0.10);
+      --border-medium: hsla(220, 30%, 20%, 0.18);
+    }
+
+    /* ─── RESET ─── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; }
+    body {
+      font-family: var(--font-ui);
+      background: var(--bg-base);
+      color: var(--text-primary);
+      line-height: 1.7;
+      -webkit-font-smoothing: antialiased;
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+    a { text-decoration: none; color: inherit; }
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-medium); border-radius: 2px; }
+
+    /* ─── SHELL ─── */
+    .edu-shell {
+      display: flex;
+      width: 100%;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ─── SIDEBAR ─── */
+    .edu-sidebar {
+      width: 240px;
+      min-width: 240px;
+      height: 100vh;
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      flex-shrink: 0;
+    }
+
+    .edu-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 28px 24px 36px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .edu-brand-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: var(--accent-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .edu-brand-icon svg {
+      width: 18px;
+      height: 18px;
+      fill: none;
+      stroke: var(--accent-primary);
+      stroke-width: 1.5;
+    }
+
+    .edu-brand-text {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    .edu-brand-name {
+      font-family: var(--font-ui);
+      font-weight: 600;
+      font-size: 15px;
+      color: var(--text-primary);
+      line-height: 1;
+    }
+
+    .edu-brand-sub {
+      font-family: var(--font-ui);
+      font-size: 11px;
+      color: var(--text-muted);
+      letter-spacing: 0.04em;
+    }
+
+    .edu-nav-wrap {
+      flex: 1;
+      padding: 16px 0 24px;
+    }
+
+    .edu-nav-group {
+      margin-bottom: 8px;
+    }
+
+    .edu-group-label {
+      font-family: var(--font-ui);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      padding: 16px 20px 8px;
+      display: block;
+    }
+
+    .edu-nav-link {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 20px;
+      font-size: 13px;
+      font-family: var(--font-ui);
+      font-weight: 450;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.16s ease;
+      border-left: 2px solid transparent;
+    }
+
+    .edu-nav-link:hover {
+      color: var(--text-primary);
+      background: var(--bg-raised);
+    }
+
+    .edu-nav-link.active {
+      color: var(--text-primary);
+      border-left-color: var(--accent-primary);
+      background: var(--bg-raised);
+      font-weight: 500;
+      padding-left: 18px;
+    }
+
+    .edu-nav-link svg {
+      width: 15px;
+      height: 15px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      flex-shrink: 0;
+    }
+
+    .edu-nav-link-text {
+      font-size: 13px;
+    }
+
+    /* ─── MAIN CONTENT ─── */
+    .edu-main {
+      flex: 1;
+      height: 100vh;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    /* ─── TOPBAR ─── */
+    .edu-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 40px;
+      height: 56px;
+      min-height: 56px;
+      background: var(--bg-base);
+      border-bottom: 1px solid var(--border-subtle);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .edu-breadcrumb {
+      font-family: var(--font-ui);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .edu-breadcrumb span {
+      color: var(--text-secondary);
+    }
+
+    .edu-search {
+      background: var(--bg-raised);
+      border: 1px solid transparent;
+      border-bottom: 1px solid var(--border-medium);
+      border-radius: 4px 4px 0 0;
+      padding: 8px 14px;
+      font-size: 13px;
+      font-family: var(--font-ui);
+      color: var(--text-primary);
+      width: 200px;
+      outline: none;
+      transition: border-bottom-color 0.18s;
+    }
+    .edu-search:focus { border-bottom-color: var(--accent-primary); }
+    .edu-search::placeholder { color: var(--text-muted); }
+
+    /* ─── CONTENT AREA ─── */
+    .edu-content-wrap {
+      padding: 48px 56px 80px;
+      max-width: 860px;
+    }
+
+    /* ─── HERO INTRO ─── */
+    .edu-hero {
+      margin-bottom: 56px;
+      padding-bottom: 40px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .edu-hero-eyebrow {
+      font-family: var(--font-ui);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--accent-primary);
+      margin-bottom: 12px;
+    }
+
+    .edu-hero-title {
+      font-family: var(--font-display);
+      font-size: 52px;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      color: var(--text-primary);
+      margin-bottom: 20px;
+    }
+
+    .edu-hero-title i {
+      font-style: italic;
+    }
+
+    .edu-hero-desc {
+      font-family: var(--font-ui);
+      font-size: 17px;
+      color: var(--text-secondary);
+      line-height: 1.75;
+      max-width: 580px;
+    }
+
+    /* ─── SECTION ARTICLE CARDS ─── */
+    .edu-section {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 40px;
+      margin-bottom: 24px;
+      opacity: 0;
+      transform: translateY(16px);
+      transition: opacity 0.45s ease, transform 0.45s ease;
+    }
+
+    .edu-section.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .edu-section-meta {
+      margin-bottom: 20px;
+    }
+
+    .edu-section-tag {
+      display: inline-flex;
+      align-items: center;
+      font-family: var(--font-ui);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      color: var(--accent-primary);
+      background: var(--accent-subtle);
+      padding: 4px 10px;
+      border-radius: 4px;
+      margin-bottom: 14px;
+    }
+
+    .edu-section-title {
+      font-family: var(--font-display);
+      font-size: 34px;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      color: var(--text-primary);
+      margin-bottom: 6px;
+    }
+
+    .edu-section-subtitle {
+      font-family: var(--font-ui);
+      font-size: 15px;
+      color: var(--text-muted);
+    }
+
+    .edu-section-body {
+      border-top: 1px solid var(--border-subtle);
+      margin-top: 28px;
+      padding-top: 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+
+    .edu-block {}
+
+    .edu-block-label {
+      font-family: var(--font-ui);
+      font-size: 10.5px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+
+    .edu-block-text {
+      font-family: var(--font-ui);
+      font-size: 15px;
+      line-height: 1.8;
+      color: var(--text-secondary);
+    }
+
+    /* ─── VISUAL COMPONENTS ─── */
+    .formula-box {
+      background: var(--bg-raised);
+      border: 1px solid var(--border-subtle);
+      border-left: 3px solid var(--accent-primary);
+      padding: 14px 18px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--text-primary);
+      border-radius: 0 6px 6px 0;
+      margin: 16px 0;
+    }
+
+    .edu-tips {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .edu-tip {
+      font-family: var(--font-ui);
+      font-size: 14px;
+      line-height: 1.6;
+      padding: 12px 16px;
+      border-left: 3px solid transparent;
+      border-radius: 0 6px 6px 0;
+      background: var(--bg-raised);
+      color: var(--text-secondary);
+    }
+    .edu-tip.bull { border-left-color: var(--color-bull); }
+    .edu-tip.bear { border-left-color: var(--color-bear); }
+    .edu-tip.neutral { border-left-color: var(--color-flat); }
+    .edu-tip.info { border-left-color: var(--accent-primary); }
+
+    .scale-bar {
+      display: flex;
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      overflow: hidden;
+      height: 36px;
+      margin: 14px 0;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .zone { display: flex; align-items: center; justify-content: center; }
+    .zone.oversold { background: hsla(158, 55%, 48%, 0.10); color: var(--color-bull); border-right: 1px solid var(--border-subtle); }
+    .zone.neutral-zone { background: var(--bg-raised); color: var(--text-muted); }
+    .zone.overbought { background: hsla(358, 68%, 58%, 0.10); color: var(--color-bear); border-left: 1px solid var(--border-subtle); }
+
+    .pivot-diagram {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      margin: 16px 0;
+      background: var(--border-subtle);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .pivot-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 16px;
+      background: var(--bg-raised);
+      font-family: var(--font-mono);
+      font-size: 13px;
+    }
+    .pivot-row.r3, .pivot-row.r2, .pivot-row.r1 { color: var(--color-bear); }
+    .pivot-row.pp { background: var(--bg-overlay); color: var(--text-primary); font-weight: 500; font-family: var(--font-ui); }
+    .pivot-row.s1, .pivot-row.s2, .pivot-row.s3 { color: var(--color-bull); }
+
+    .macd-visual {
+      height: 2px; background: var(--color-bull); position: relative; margin: 32px 0 16px;
+    }
+    .macd-visual .macd-bar {
+      position: absolute; top: -10px; left: 20%; width: 60%; height: 2px;
+      background: var(--color-bear); transform: rotate(5deg);
+    }
+
+    .conf-visual { height: 4px; background: var(--border-subtle); border-radius: 2px; margin: 16px 0 8px; }
+
+    /* ─── RESPONSIVE ─── */
+    @media (max-width: 768px) {
+      .edu-sidebar { display: none; }
+      .edu-content-wrap { padding: 32px 24px 60px; }
+      .edu-hero-title { font-size: 36px; }
+      .edu-section-title { font-size: 26px; }
+    }
+  </style>
 </head>
 <body>
-  <nav class="edu-nav" id="edu-nav">
-    <div class="container edu-nav-inner">
+  <div class="edu-shell">
+
+    <!-- SIDEBAR -->
+    <aside class="edu-sidebar">
       <a href="welcome.html" class="edu-brand">
-        <svg viewBox="0 0 24 24"><path d="M3 3v18h18M9 15l3-3 4 4 5-5"/></svg>
-        Vision Chart
+        <div class="edu-brand-icon">
+          <svg viewBox="0 0 24 24"><path d="M3 3v18h18M9 15l3-3 4 4 5-5"/></svg>
+        </div>
+        <div class="edu-brand-text">
+          <span class="edu-brand-name">Vision Chart</span>
+          <span class="edu-brand-sub">Education</span>
+        </div>
       </a>
-      <div class="edu-nav-links">
-        <a href="welcome.html">Overview</a>
-        <a href="login.html">Dashboard</a>
-        <a href="login.html" class="btn-primary" id="navActionBtn">Sign In</a>
+
+      <div class="edu-nav-wrap">
+        <nav id="edu-sidebar">
+          <!-- Generated by JS -->
+        </nav>
+      </div>
+    </aside>
+
+    <!-- MAIN -->
+    <div class="edu-main">
+      <header class="edu-topbar">
+        <div class="edu-breadcrumb">
+          Learning / <span id="edu-breadcrumb-current">Overview</span>
+        </div>
+        <input type="text" id="edu-search-input" class="edu-search" placeholder="Search topics..." />
+      </header>
+
+      <div class="edu-content-wrap">
+        <!-- Hero Intro -->
+        <div class="edu-hero" id="edu-content">
+          <!-- Injected by JS -->
+        </div>
+
+        <!-- Section Articles -->
+        <div id="edu-sections"></div>
       </div>
     </div>
-  </nav>
 
-  <div class="container edu-layout">
-    <aside class="edu-sidebar" id="edu-sidebar"></aside>
-    <main class="edu-content" id="edu-content"></main>
   </div>
 
   <script src="education-data.js"></script>

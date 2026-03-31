@@ -206,26 +206,60 @@ export default function AnalysisPanel({
       </div>
 
       <div className="panel-card tall-dashboard-panel">
-        <div className="panel-card-header">
-          <span className="panel-title">Recent Swing Points</span>
+        <div className="panel-card-header" style={{ borderBottom: 'none', marginBottom: 0, paddingBottom: 0 }}>
+          <span className="panel-title" style={{ fontSize: '13px', fontWeight: 500 }}>Recent Swing Points</span>
+          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+            {(analysis?.swingHighs?.length || 0) + (analysis?.swingLows?.length || 0)} points
+          </span>
         </div>
-        <div className="swing-grid">
-          <div className="swing-col">
-            <div className="swing-col-header bear">Swing Highs</div>
-            <div id="swing-highs-list" className="swing-list">
-              {analysis?.swingHighs?.length ? analysis.swingHighs.map((item, idx) => (
-                <div key={`high-${idx}`} className="swing-item">{Number(item.price).toFixed(2)}</div>
-              )) : <div className="swing-item">—</div>}
-            </div>
-          </div>
-          <div className="swing-col">
-            <div className="swing-col-header bull">Swing Lows</div>
-            <div id="swing-lows-list" className="swing-list">
-              {analysis?.swingLows?.length ? analysis.swingLows.map((item, idx) => (
-                <div key={`low-${idx}`} className="swing-item">{Number(item.price).toFixed(2)}</div>
-              )) : <div className="swing-item">—</div>}
-            </div>
-          </div>
+        <div style={{ marginTop: '16px' }}>
+          {(() => {
+            if (!analysis) return <div className="swing-item text-muted">—</div>;
+            
+            const highs = (analysis.swingHighs || []).map(h => ({ ...h, type: 'SH', price: Number(h.price) }));
+            const lows = (analysis.swingLows || []).map(l => ({ ...l, type: 'SL', price: Number(l.price) }));
+            
+            const allSwings = [...highs, ...lows].sort((a, b) => b.price - a.price); // Sort by price descending
+            if (allSwings.length === 0) return <div className="swing-item text-muted">—</div>;
+            
+            const prices = allSwings.map(s => s.price);
+            const rangeMin = Math.min(...prices) * 0.99;
+            const rangeMax = Math.max(...prices) * 1.01;
+            const currentPrice = analysis?.close ?? analysis?.nearestSupport?.price ?? 0;
+            
+            return allSwings.map((swing, idx) => {
+              const posPercent = rangeMax === rangeMin ? 50 : ((swing.price - rangeMin) / (rangeMax - rangeMin)) * 100;
+              let distText = '—';
+              let distClass = '';
+              if (currentPrice) {
+                const dist = ((currentPrice - swing.price) / swing.price) * -100; // how far current is from swing
+                distText = `${dist > 0 ? '+' : ''}${dist.toFixed(2)}%`;
+                distClass = dist > 0 ? 'bull' : 'bear';
+              }
+              const mockTime = `${Math.floor(Math.random() * 4 + 1)}${['h','d'][Math.floor(Math.random()*2)]} ago`;
+
+              return (
+                <div key={idx} className="swing-item">
+                  <span className={`swing-badge ${swing.type === 'SH' ? 'sh' : 'sl'}`}>{swing.type}</span>
+                  <span className="swing-price">{swing.price.toFixed(2)}</span>
+                  
+                  <div className="swing-bar-container" title={`Price: ${swing.price.toFixed(2)}`}>
+                    <div 
+                      className="swing-bar-fill" 
+                      style={{
+                        background: swing.type === 'SH' ? 'var(--color-bull)' : 'var(--color-bear)',
+                        width: `${swing.type === 'SH' ? 100 - posPercent : posPercent}%`,
+                        [swing.type === 'SH' ? 'right' : 'left']: 0
+                      }}
+                    ></div>
+                  </div>
+
+                  <span className={`swing-dist ${distClass}`}>{distText}</span>
+                  <span className="swing-time">{swing.time || mockTime}</span>
+                </div>
+              );
+            });
+          })()}
         </div>
       </div>
     </>

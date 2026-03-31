@@ -340,6 +340,25 @@ body, #root {
   color: var(--text-primary);
 }
 
+.btn-logout {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-medium);
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-family: var(--font-ui);
+  font-weight: 500;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+
+.btn-logout:hover {
+  background: var(--bg-raised);
+  color: var(--text-primary);
+  border-color: var(--border-subtle);
+}
+
 /* ── LIVE INDICATOR ── */
 .live-indicator {
   display: flex;
@@ -692,3 +711,156 @@ mark {
 
 .font-italic { font-style: italic; }
 .text-right { text-align: right; }
+
+/* AI Skeleton Animation */
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+@keyframes pulseDot {
+  0%, 100% { transform: scale(0.8); opacity: 0.5; }
+  50% { transform: scale(1.2); opacity: 1; }
+}
+
+.ai-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 32px 0;
+}
+
+.ai-loading-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.ai-loading-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.ai-loading-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  animation: pulseDot 1.4s ease-in-out infinite;
+}
+
+.ai-loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+.ai-loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+.ai-loading-text-label {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.ai-skeleton-line {
+  height: 12px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--bg-raised) 25%, var(--bg-overlay) 50%, var(--bg-raised) 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  margin-bottom: 8px;
+}
+
+.ai-skeleton-line.w-100 { width: 100%; }
+.ai-skeleton-line.w-85 { width: 85%; }
+.ai-skeleton-line.w-60 { width: 60%; }
+
+/* AI Transition Fade */
+.fade-in {
+  animation: fadeIn 300ms ease forwards;
+}
+
+.fade-out {
+  animation: fadeOut 300ms ease forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; display: none; }
+}
+
+/* Swing Points */
+.swing-bar-container {
+  width: 80px;
+  height: 4px;
+  background: var(--bg-raised);
+  border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+}
+
+.swing-bar-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  opacity: 0.7;
+  border-radius: 2px;
+  transition: opacity 0.2s;
+}
+
+.swing-bar-container:hover .swing-bar-fill {
+  opacity: 1;
+}
+
+.swing-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.swing-item:last-child {
+  border-bottom: none;
+}
+
+.swing-badge {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+.swing-badge.sh {
+  background: hsla(158, 55%, 48%, 0.12);
+  color: var(--color-bull);
+}
+.swing-badge.sl {
+  background: hsla(358, 68%, 58%, 0.12);
+  color: var(--color-bear);
+}
+
+.swing-price {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  width: 70px;
+}
+
+.swing-dist {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  width: 55px;
+  text-align: right;
+}
+
+.swing-time {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-left: auto;
+}

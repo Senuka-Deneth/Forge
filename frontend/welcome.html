@@ -395,6 +395,45 @@
       .how-grid { grid-template-columns: 1fr; }
       .footer-flex { flex-direction: column; gap: 40px; }
       .footer-links { flex-direction: column; gap: 40px; }
+      .footer-links { flex-direction: column; gap: 40px; }
+    }
+
+    /* FIX 7: WELCOME PAGE ENTRANCE ANIMATIONS */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+
+    @keyframes slideInRight {
+      from { opacity: 0; transform: translateX(30px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+
+    .hero-eyebrow { opacity: 0; animation: fadeIn 0.5s ease forwards; animation-delay: 0.1s; }
+    .h1-line1 { opacity: 0; animation: fadeUp 0.6s ease forwards; animation-delay: 0.25s; display: block; }
+    .h1-line2 { opacity: 0; animation: fadeUp 0.6s ease forwards; animation-delay: 0.4s; display: block; }
+    .hero-desc { opacity: 0; animation: fadeUp 0.6s ease forwards; animation-delay: 0.55s; }
+    .hero-ctas { opacity: 0; animation: fadeUp 0.5s ease forwards; animation-delay: 0.7s; }
+    .social-proof { opacity: 0; animation: fadeIn 0.6s ease forwards; animation-delay: 0.9s; }
+    .hero-visual .data-panel { opacity: 0; animation: slideInRight 0.7s ease forwards; animation-delay: 0.5s; }
+
+    .feature-card {
+      opacity: 0; 
+      transform: translateY(16px); 
+      transition: opacity 0.5s ease, transform 0.5s ease;
+    }
+    .feature-card.is-visible {
+      opacity: 1; 
+      transform: translateY(0);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { animation: none !important; transition: none !important; }
     }
   </style>
 </head>
@@ -422,7 +461,8 @@
       <div class="hero-content">
         <div class="hero-eyebrow label-caps">Real-Time Analysis</div>
         <h1 class="font-display hero-title">
-          Trade with <i>Precision.</i>
+          <span class="h1-line1">Trade with</span>
+          <span class="h1-line2"><i>Precision.</i></span>
         </h1>
         <p class="hero-desc">
           High-performance technical tracking combined with logical AI market insights. Make confident decisions based on data, not guesswork.
@@ -559,6 +599,28 @@
         btn.href = 'index.html';
       }
     }
+    // Feature Cards scroll animation
+    document.addEventListener("DOMContentLoaded", () => {
+      const featureCards = document.querySelectorAll(".feature-card");
+      if(featureCards.length > 0) {
+        const observer = new IntersectionObserver((entries) => {
+          entries.forEach((entry, index) => {
+            if (entry.isIntersecting) {
+              // Add stagger effect per card using transitionDelay (calculating index if they appear together, otherwise use simple global index or similar, assuming they are in a grid)
+              // To properly stagger based on screen position, we can just use the DOM index relative to its siblings
+              const cardArray = Array.from(entry.target.parentNode.children);
+              const cardIndex = cardArray.indexOf(entry.target);
+              entry.target.style.transitionDelay = `${cardIndex * 0.12}s`;
+              entry.target.classList.add("is-visible");
+              observer.unobserve(entry.target);
+            }
+          });
+        }, { threshold: 0.15 });
+
+        featureCards.forEach(card => observer.observe(card));
+      }
+    });
+
   </script>
 </body>
 </html>

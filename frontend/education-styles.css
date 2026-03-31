@@ -173,8 +173,8 @@ a { text-decoration: none; color: inherit; }
 
 /* ── SECTION ARTICLE ── */
 .edu-section {
-  padding: 40px 0;
-  border-bottom: 1px solid var(--border-subtle);
+  padding: 0;
+  border: none;
   opacity: 0;
   transform: translateY(16px);
   transition: opacity 0.5s ease, transform 0.5s ease;
@@ -183,6 +183,16 @@ a { text-decoration: none; color: inherit; }
 .edu-section:last-child { border-bottom: none; }
 
 .edu-section.visible { opacity: 1; transform: translateY(0); }
+
+/* The section body inside each panel card */
+.edu-section-body {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
 
 .edu-section-tag {
   display: inline-block;

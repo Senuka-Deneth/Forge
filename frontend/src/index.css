@@ -16,10 +16,10 @@
   --text-3xl: clamp(2rem, 4vw, 2.5rem);
   --text-4xl: clamp(2.5rem, 6vw, 4rem);
 
-  /* Shared spacing variables */
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  /* Shared spacing variables (Premium 40px Standard) */
+  --radius-sm: 14px;
+  --radius-md: 24px;
+  --radius-lg: 40px;
 }
 
 [data-theme="dark"] {
@@ -294,7 +294,7 @@ body, #root {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 10px 12px;
+  padding: 10px 18px;
   color: var(--text-secondary);
   font-size: var(--text-sm);
   font-weight: 500;
@@ -305,13 +305,15 @@ body, #root {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   font-size: 11px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   white-space: nowrap;
 }
 
 .sidebar.collapsed .nav-item {
   justify-content: center;
   padding: 12px 0;
+  border-radius: var(--radius-md);
+  margin: 0 8px;
 }
 
 .sidebar.collapsed .nav-item-text {
@@ -421,20 +423,20 @@ body, #root {
 /* ── INPUTS & BUTTONS ── */
 .symbol-input {
   background: var(--bg-raised);
-  border: 1px solid var(--bg-raised);
-  border-bottom: 1px solid var(--border-medium);
-  border-radius: 4px 4px 0 0;
-  padding: 6px 0 6px 8px;
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  padding: 0 12px;
+  height: 36px;
   font-size: var(--text-sm);
   font-family: var(--font-mono);
   color: var(--text-primary);
-  width: 100px;
+  width: 110px;
   outline: none;
-  transition: border-bottom-color 0.18s ease;
+  transition: border-color 0.2s ease;
 }
 
 .symbol-input:focus { 
-  border-bottom-color: var(--accent-primary); 
+  border-color: var(--accent-primary); 
 }
 
 .timeframe-select {
@@ -453,14 +455,16 @@ body, #root {
   color: var(--text-inverse);
   border: none;
   border-radius: var(--radius-md);
-  padding: 10px 20px;
+  padding: 0 16px;
+  height: 36px;
   font-size: var(--text-sm);
   font-family: var(--font-ui);
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   transition: background 0.18s ease;
-  min-height: 44px;
-  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn-primary:hover { background: var(--accent-hover); }
@@ -517,18 +521,25 @@ body, #root {
   /* no pulse animation */
 }
 
-/* ── KPI STRIP & CARDS (Editorial layout) ── */
+/* ── STATUS BAR KPI (Isolated Section) ── */
 .kpi-strip {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 1px;
-  background: var(--border-subtle);
-  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  gap: 24px;
+  padding: 20px 48px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  margin: 20px 32px 0 32px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
 }
 
 .kpi-card {
-  background: var(--bg-surface);
-  padding: 24px 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
 }
 
 .kpi-label {
@@ -565,7 +576,8 @@ body, #root {
 .chart-card {
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);  /* sharp / minimal curves */
+  border-radius: var(--radius-lg);
+  padding-bottom: 12px;
   overflow: hidden;
 }
 
@@ -738,8 +750,8 @@ body, #root {
 .ai-section {
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  padding: 32px;
+  border-radius: var(--radius-lg);
+  padding: 40px;
 }
 
 .ai-section-header {
@@ -752,15 +764,27 @@ body, #root {
 }
 
 .ai-section-title {
+  display: flex;
+  align-items: center;
   font-family: var(--font-display);
   font-size: var(--text-2xl);
   color: var(--text-primary);
 }
 
 .model-tag {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 38px; /* 1cm gap approx */
+  padding: 6px 20px;
+  border: 1px solid var(--accent-primary);
+  border-radius: var(--radius-lg);
+  background: var(--accent-subtle);
+  color: var(--accent-primary);
   font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--text-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 /* AI Highlight tag */
@@ -1040,15 +1064,19 @@ mark {
 }
 
 /* Card base */
-.ai-card {
-  background: var(--bg-raised);
+.chart-card,
+.ai-card,
+.panel-card {
+  background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  padding: 20px;
+  border-radius: var(--radius-lg);
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  animation: cardFadeUp 0.4s ease both;
+  transition: transform 0.25s ease, border-color 0.25s;
+}
+
+.chart-card {
+  padding-bottom: 8px; /* Adds space at bottom so charts stay square inside avoiding clip */
 }
 
 .ai-card.wide { grid-column: span 2; }
@@ -1150,10 +1178,10 @@ mark {
   gap: 8px;
   background: hsla(47, 96%, 55%, 0.08);
   border: 1px solid hsla(47, 96%, 55%, 0.25);
-  border-radius: 6px;
-  padding: 8px 12px;
+  border-radius: var(--radius-lg);
+  padding: 12px 20px;
   font-family: var(--font-ui);
-  font-size: 12px;
+  font-size: 13px;
   color: hsl(47, 96%, 65%);
 }
 
@@ -1228,11 +1256,11 @@ mark {
 }
 
 .scenario {
-  border-radius: 8px;
-  padding: 16px;
+  border-radius: var(--radius-lg);
+  padding: 24px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .bull-scenario {
@@ -1247,10 +1275,11 @@ mark {
 
 .scenario-header {
   font-family: var(--font-ui);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 13.5px;
+  font-weight: 600;
   letter-spacing: 0.07em;
   text-transform: uppercase;
+  margin-bottom: 10px;
 }
 
 .bull-scenario .scenario-header { color: var(--color-bull); }
@@ -1259,16 +1288,18 @@ mark {
 .scenario p,
 .scenario > p {
   font-family: var(--font-ui);
-  font-size: 13px;
-  color: var(--text-secondary);
-  line-height: 1.7;
+  font-size: 16px;
+  color: var(--text-primary);
+  line-height: 1.85;
+  letter-spacing: -0.01em;
 }
 
 .scenario small {
   font-family: var(--font-ui);
-  font-size: 11.5px;
+  font-size: 13px;
   color: var(--text-muted);
-  padding-top: 8px;
+  padding-top: 10px;
+  margin-top: 10px;
   border-top: 1px solid var(--border-subtle);
   display: block;
 }
@@ -1294,11 +1325,11 @@ mark {
   align-items: flex-start;
   background: hsla(47, 96%, 55%, 0.06);
   border: 1px solid hsla(47, 96%, 55%, 0.18);
-  border-radius: 6px;
-  padding: 12px 14px;
+  border-radius: var(--radius-lg);
+  padding: 16px 24px;
   margin-top: 12px;
   font-family: var(--font-ui);
-  font-size: 12.5px;
+  font-size: 13px;
   color: hsl(47, 96%, 70%);
   line-height: 1.6;
 }

@@ -67,7 +67,7 @@ function StatusPill({ value }) {
       color: color,
       border: `1px solid ${isTransparent ? 'var(--border-subtle)' : color}`,
       padding: '2px 8px',
-      borderRadius: '4px',
+      borderRadius: 'var(--radius-sm)',
       fontSize: '10px',
       fontWeight: '700',
       letterSpacing: '0.02em',

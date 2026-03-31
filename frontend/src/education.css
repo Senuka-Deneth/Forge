@@ -29,10 +29,13 @@
 .btn-primary {
   background: var(--accent-primary);
   color: var(--text-inverse) !important;
-  padding: 8px 16px;
-  border-radius: 4px;
+  padding: 10px 20px;
+  border-radius: var(--radius-lg);
   font-weight: 600;
   transition: background 0.18s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn-primary:hover { background: var(--accent-hover); }
@@ -70,7 +73,7 @@
 .edu-brand-icon {
   width: 32px;
   height: 32px;
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--accent-subtle);
   display: flex;
   align-items: center;
@@ -212,19 +215,19 @@
 .edu-search {
   background: var(--bg-raised);
   border: 1px solid transparent;
-  border-bottom: 1px solid var(--border-medium);
-  border-radius: 4px 4px 0 0;
-  padding: 8px 14px 8px 36px;
-  font-size: 13px;
+  border-bottom: 2px solid var(--border-medium);
+  border-radius: var(--radius-lg);
+  padding: 10px 16px 10px 40px;
+  font-size: 13.5px;
   font-family: var(--font-ui);
   color: var(--text-primary);
   width: 250px;
   outline: none;
-  transition: border-bottom-color 0.18s;
+  transition: all 0.2s ease;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'%3E%3C/circle%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'%3E%3C/line%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: 10px center;
-  background-size: 15px;
+  background-position: 14px center;
+  background-size: 16px;
 }
 .edu-search:focus { border-bottom-color: var(--accent-primary); }
 .edu-search::placeholder { color: var(--text-muted); }
@@ -290,11 +293,15 @@
 
 /* ── SECTION ARTICLE ── */
 .edu-section {
-  padding: 0;
-  border: none;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 48px;
+  margin-bottom: 32px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.06);
   opacity: 0;
   transform: translateY(16px);
-  transition: opacity 0.5s ease, transform 0.5s ease;
+  transition: opacity 0.45s ease, transform 0.45s ease;
 }
 
 .edu-section:last-child { border-bottom: none; }
@@ -353,10 +360,11 @@
 /* ── TIPS ── */
 .edu-tips { display: flex; flex-direction: column; gap: 8px; margin: 16px 0; }
 .edu-tip {
-  font-size: 14px;
-  padding: 12px 16px;
-  border-left: 2px solid transparent;
+  font-size: 14.5px;
+  padding: 14px 20px;
+  border-left: 4px solid transparent;
   background: var(--bg-surface);
+  border-radius: var(--radius-md);
 }
 .edu-tip.bull { border-left-color: var(--color-bull); color: var(--text-secondary); }
 .edu-tip.bear { border-left-color: var(--color-bear); color: var(--text-secondary); }
@@ -405,11 +413,13 @@
 .formula-box {
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
-  padding: 12px 16px;
+  border-left: 4px solid var(--accent-primary);
+  padding: 16px 20px;
   font-family: var(--font-mono);
   font-size: 14px;
   color: var(--text-primary);
-  margin: 16px 0;
+  border-radius: var(--radius-md);
+  margin: 20px 0;
 }
 
 /* ── CONFIDENCE VISUAL ── */

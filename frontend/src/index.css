@@ -40,6 +40,18 @@
   --color-bull:  hsl(158, 55%, 48%);
   --color-bear:  hsl(358, 68%, 58%);
   --color-flat:  hsl(220, 12%, 50%);
+  --color-neutral: hsl(47, 96%, 55%);
+
+  --bull: var(--color-bull);
+  --bear: var(--color-bear);
+  --neutral: var(--color-neutral);
+  --info: hsl(200, 95%, 60%);
+
+  /* Translucent versions for backgrounds */
+  --bull-soft: hsla(158, 55%, 48%, 0.12);
+  --bear-soft: hsla(358, 68%, 58%, 0.12);
+  --neutral-soft: hsla(47, 96%, 55%, 0.12);
+  --info-soft: hsla(200, 95%, 60%, 0.12);
 
   --border-subtle: hsla(220, 20%, 50%, 0.10);
   --border-medium: hsla(220, 20%, 50%, 0.18);
@@ -67,6 +79,18 @@
   --color-bull:  hsl(158, 64%, 38%);
   --color-bear:  hsl(358, 68%, 48%);
   --color-flat:  hsl(220, 12%, 50%);
+  --color-neutral: hsl(42, 100%, 45%);
+
+  --bull: var(--color-bull);
+  --bear: var(--color-bear);
+  --neutral: var(--color-neutral);
+  --info: hsl(200, 95%, 45%);
+
+  /* Translucent versions for backgrounds */
+  --bull-soft: hsla(158, 64%, 38%, 0.1);
+  --bear-soft: hsla(358, 68%, 48%, 0.1);
+  --neutral-soft: hsla(42, 100%, 45%, 0.1);
+  --info-soft: hsla(200, 95%, 45%, 0.1);
 
   --border-subtle: hsla(220, 30%, 20%, 0.10);
   --border-medium: hsla(220, 30%, 20%, 0.18);

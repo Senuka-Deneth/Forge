@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 const colorMap = {
+  // Trends & Momentum
   bullish: 'var(--bull)',
   strong_bullish: 'var(--bull)',
   bearish: 'var(--bear)',
@@ -10,28 +11,68 @@ const colorMap = {
   long: 'var(--bull)',
   short: 'var(--bear)',
   wait: 'var(--neutral)',
+  
+  // RSI / Indicators
   overbought: 'var(--bear)',
   oversold: 'var(--bull)',
+  bullish_momentum: 'var(--bull)',
+  bearish_momentum: 'var(--bear)',
   bullish_zone: 'var(--bull)',
   bearish_zone: 'var(--bear)',
+  above: 'var(--bull)',
+  below: 'var(--bear)',
+  
+  // Wyckoff Phases
+  accumulation: 'var(--neutral)',
+  markup: 'var(--bull)',
+  distribution: 'var(--neutral)',
+  markdown: 'var(--bear)',
+  
+  // Significance / Severity
   high: 'var(--bear)',
   medium: 'var(--neutral)',
-  low: 'var(--bull)',
+  low: 'var(--info)',
+  
+  // Regimes
   trending: 'var(--info)',
   ranging: 'var(--neutral)',
-  breakout: 'var(--accent)',
+  breakout: 'var(--accent-primary)',
   reversal: 'var(--neutral)',
+  
+  // Zones
+  between_pp_r1: 'var(--bull)',
+  between_r1_r2: 'var(--bull)',
+  between_r2_r3: 'var(--bull)',
+  above_r3: 'var(--bull)',
+  between_s1_pp: 'var(--bear)',
+  between_s2_s1: 'var(--bear)',
+  between_s3_s2: 'var(--bear)',
+  below_s3: 'var(--bear)',
+  
   none: 'transparent',
 }
 
 function StatusPill({ value }) {
-  if (value == null) return <span className="status-pill" style={{ color: 'inherit', border: '1px solid var(--border-default)' }}>—</span>
-  const display = String(value).replace(/_/g, ' ')
-  const bg = colorMap[value] ?? 'transparent'
+  if (value == null) return <span className="status-pill" style={{ color: 'inherit', opacity: 0.5 }}>—</span>
+  
+  const valStr = String(value).toLowerCase()
+  const display = String(value).replace(/_/g, ' ').toUpperCase()
+  const color = colorMap[valStr] ?? 'var(--text-muted)'
+  
+  const isTransparent = color === 'transparent'
+  
   return (
     <span className="status-pill" style={{ 
-      backgroundColor: bg !== 'transparent' ? bg : 'rgba(255,255,255,0.1)', 
-      color: bg !== 'transparent' ? '#fff' : 'inherit' 
+      backgroundColor: isTransparent ? 'rgba(255,255,255,0.05)' : `var(--${color.replace('var(--', '').replace(')', '')}-soft, rgba(255,255,255,0.1))`,
+      color: color,
+      border: `1px solid ${isTransparent ? 'var(--border-subtle)' : color}`,
+      padding: '2px 8px',
+      borderRadius: '4px',
+      fontSize: '10px',
+      fontWeight: '700',
+      letterSpacing: '0.02em',
+      display: 'inline-flex',
+      alignItems: 'center'
     }}>
       {display}
     </span>
@@ -272,13 +313,13 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
                 </div>
                 <div className="ai-row">
                   <span>Bull Target</span>
-                  <span id="ai-pivot-target-bull" className="bull">
+                  <span id="ai-pivot-target-bull" style={{ color: 'var(--bull)', fontWeight: '600' }}>
                     {a.pivot_analysis.pivot_target_bull ? `${a.pivot_analysis.pivot_target_bull.label} @ ${a.pivot_analysis.pivot_target_bull.value}` : '—'}
                   </span>
                 </div>
                 <div className="ai-row">
                   <span>Bear Target</span>
-                  <span id="ai-pivot-target-bear" className="bear">
+                  <span id="ai-pivot-target-bear" style={{ color: 'var(--bear)', fontWeight: '600' }}>
                     {a.pivot_analysis.pivot_target_bear ? `${a.pivot_analysis.pivot_target_bear.label} @ ${a.pivot_analysis.pivot_target_bear.value}` : '—'}
                   </span>
                 </div>
@@ -300,14 +341,14 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
             <div className="ai-card-header">AI Trade Logic</div>
             <div className="trade-scenarios">
               <div className="scenario bull-scenario">
-                <div className="scenario-header">Bullish Scenario</div>
+                <div className="scenario-header" style={{ color: 'var(--bull)' }}>Bullish Scenario</div>
                 <p id="ai-bull-scenario">{a.trade_logic?.bullish_scenario ?? '—'}</p>
-                <small>Invalidation: <strong id="ai-invalidation-bull" className="bear">{a.trade_logic?.invalidation_bull ?? '—'}</strong></small>
+                <small>Invalidation: <strong id="ai-invalidation-bull" style={{ color: 'var(--bear)' }}>{a.trade_logic?.invalidation_bull ?? '—'}</strong></small>
               </div>
               <div className="scenario bear-scenario">
-                <div className="scenario-header">Bearish Scenario</div>
+                <div className="scenario-header" style={{ color: 'var(--bear)' }}>Bearish Scenario</div>
                 <p id="ai-bear-scenario">{a.trade_logic?.bearish_scenario ?? '—'}</p>
-                <small>Invalidation: <strong id="ai-invalidation-bear" className="bull">{a.trade_logic?.invalidation_bear ?? '—'}</strong></small>
+                <small>Invalidation: <strong id="ai-invalidation-bear" style={{ color: 'var(--bull)' }}>{a.trade_logic?.invalidation_bear ?? '—'}</strong></small>
               </div>
             </div>
             {a.trade_logic?.risk_note && (

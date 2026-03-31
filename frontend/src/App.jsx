@@ -4,6 +4,7 @@ import StatusBar from './components/StatusBar'
 import ChartPanel from './components/ChartPanel'
 import AnalysisPanel from './components/AnalysisPanel'
 import AIAnalysisPanel from './components/AIAnalysisPanel'
+import EducationPanel from './components/EducationPanel'
 
 const BACKEND_URL = 'http://127.0.0.1:5000'
 const COMMON_QUOTES = ['USDT', 'BUSD', 'BTC', 'ETH', 'FDUSD']
@@ -100,7 +101,20 @@ export default function App() {
   const [status, setStatus] = useState('Idle')
   const [isLive, setIsLive] = useState(false)
 
-  const [activeTab, setActiveTab] = useState('dashboard')
+  const getInitialTab = () => {
+    const params = new URLSearchParams(window.location.search);
+    const tabName = params.get('tab');
+    return tabName && ['dashboard', 'analysis', 'learning'].includes(tabName) ? tabName : 'dashboard';
+  };
+  const [activeTab, setActiveTabState] = useState(getInitialTab);
+
+  const setActiveTab = (tab) => {
+    setActiveTabState(tab);
+    const newUrl = new URL(window.location);
+    newUrl.searchParams.set('tab', tab);
+    window.history.replaceState(null, '', newUrl.toString());
+  };
+
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true)
 
   const [analysis, setAnalysis] = useState(null)
@@ -479,7 +493,7 @@ export default function App() {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path><path d="M5 3v4"></path><path d="M19 17v4"></path><path d="M3 5h4"></path><path d="M17 19h4"></path></svg>
             <span className="nav-item-text">Analysis</span>
           </a>
-          <a className="nav-item" href="education.html">
+          <a className={`nav-item ${activeTab === 'learning' ? 'active' : ''}`} onClick={() => setActiveTab('learning')}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
             <span className="nav-item-text">Learning</span>
           </a>
@@ -501,24 +515,28 @@ export default function App() {
         </div>
       </aside>
 
-      <div className="main-content">
-        <HeaderControls
-          symbolInput={symbolInput}
-          setSymbolInput={setSymbolInput}
-          interval={interval}
-          setInterval={setInterval}
-          onLoad={() => loadChart(symbolInput, interval)}
-          isLive={isLive}
-          toggleTheme={toggleTheme}
-          theme={theme}
-        />
+      <div className="main-content" style={{ padding: activeTab === 'learning' ? 0 : undefined }}>
+        {activeTab !== 'learning' && (
+          <>
+            <HeaderControls
+              symbolInput={symbolInput}
+              setSymbolInput={setSymbolInput}
+              interval={interval}
+              setInterval={setInterval}
+              onLoad={() => loadChart(symbolInput, interval)}
+              isLive={isLive}
+              toggleTheme={toggleTheme}
+              theme={theme}
+            />
 
-        <StatusBar
-          latestPrice={latestPrice}
-          priceChange={priceChange}
-          latestCandle={latestCandle}
-          aiAnalysis={aiAnalysis}
-        />
+            <StatusBar
+              latestPrice={latestPrice}
+              priceChange={priceChange}
+              latestCandle={latestCandle}
+              aiAnalysis={aiAnalysis}
+            />
+          </>
+        )}
 
         {activeTab === 'dashboard' && (
           <div className="dashboard-grid">
@@ -552,14 +570,17 @@ export default function App() {
         {activeTab === 'analysis' && (
           <div className="dashboard-grid">
             <AIAnalysisPanel
-              aiAnalysis={aiAnalysis}
-              aiLoading={aiLoading}
-              aiError={aiError}
-              onRefresh={() => runAIAnalysis(candles)}
+               aiAnalysis={aiAnalysis}
+               aiLoading={aiLoading}
+               aiError={aiError}
+               onRefresh={() => runAIAnalysis(candles)}
             />
           </div>
         )}
 
+        {activeTab === 'learning' && (
+          <EducationPanel />
+        )}
 
       </div>
     </>

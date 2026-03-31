@@ -442,41 +442,36 @@ export default function App() {
     setTheme(newTheme)
   }
 
+  const logout = () => {
+    localStorage.removeItem('vcb_auth_token')
+    localStorage.removeItem('vcb_user')
+    sessionStorage.removeItem('vcb_auth_token')
+    sessionStorage.removeItem('vcb_user')
+    window.location.href = 'welcome.html'
+  }
+
   return (
     <>
       <aside className="sidebar">
-        <div className="sidebar-brand">
-          <div className="brand-text" style={{ paddingLeft: '8px' }}>
-            <span className="brand-name">Vision Chart</span>
-            <span className="brand-sub">Binance Spot · AI Analysis</span>
+        <a href="welcome.html" className="sidebar-brand" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}>
+          <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'var(--accent-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg viewBox="0 0 24 24" style={{width:'16px', height:'16px', fill:'none', stroke:'var(--accent-primary)', strokeWidth:1.5}}><path d="M3 3v18h18M9 15l3-3 4 4 5-5"/></svg>
           </div>
-        </div>
+          <span className="brand-name" style={{ fontFamily: 'var(--font-ui)', fontWeight: 600, fontSize: '15px', color: 'var(--text-primary)' }}>Vision Chart</span>
+        </a>
 
         <nav className="sidebar-nav">
-          <div className="nav-section-label">MAIN</div>
-          <a 
-            className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} 
-            onClick={() => setActiveTab('dashboard')}
-            style={{ cursor: 'pointer' }}
-          >
-            <svg viewBox="0 0 24 24"><path d="M4 4h4v4H4zm12 0h4v4h-4zM4 16h4v4H4zm12 0h4v4h-4zM10 4h4v4h-4zm0 12h4v4h-4zm-6-6h4v4H4zm12 0h4v4h-4zm-6 0h4v4h-4z"/></svg>
-            <span>Dashboard</span>
+          <a className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>
+            Dashboard
           </a>
-          <a 
-            className={`nav-item ${activeTab === 'analysis' ? 'active' : ''}`} 
-            onClick={() => setActiveTab('analysis')}
-            style={{ cursor: 'pointer' }}
-          >
-            <svg viewBox="0 0 24 24"><path d="M3 3v18h18M9 15l3-3 4 4 5-5"/></svg>
-            <span>Analysis</span>
+          <a className={`nav-item ${activeTab === 'analysis' ? 'active' : ''}`} onClick={() => setActiveTab('analysis')}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path><path d="M5 3v4"></path><path d="M19 17v4"></path><path d="M3 5h4"></path><path d="M17 19h4"></path></svg>
+            Analysis
           </a>
-          <a 
-            className={`nav-item ${activeTab === 'signals' ? 'active' : ''}`} 
-            onClick={() => setActiveTab('signals')}
-            style={{ cursor: 'pointer' }}
-          >
-            <svg viewBox="0 0 24 24"><path d="M4 2v20h16V2H4zm14 18H6V4h12v16zM8 6h8v2H8V6zm0 4h8v2H8v-2zm0 4h5v2H8v-2z"/></svg>
-            <span>Signals</span>
+          <a className="nav-item" href="education.html" target="_blank" rel="noopener noreferrer">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
+            Learning
           </a>
         </nav>
 
@@ -486,6 +481,10 @@ export default function App() {
               <span className="theme-toggle-label" id="theme-toggle-label">{theme === 'dark' ? 'Light' : 'Dark'}</span>
             </button>
           </div>
+          <button className="btn-logout" onClick={logout} style={{ width: '100%', marginTop: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: '16px', height: '16px' }}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+            Sign out
+          </button>
         </div>
       </aside>
 
@@ -509,7 +508,7 @@ export default function App() {
         />
 
         {activeTab === 'dashboard' && (
-          <div className="dashboard-grid glass-layout">
+          <div className="dashboard-grid">
             <div className="charts-column">
               <ChartPanel
                 symbol={symbol}
@@ -538,7 +537,7 @@ export default function App() {
         )}
 
         {activeTab === 'analysis' && (
-          <div className="dashboard-grid glass-layout">
+          <div className="dashboard-grid">
             <AIAnalysisPanel
               aiAnalysis={aiAnalysis}
               aiLoading={aiLoading}
@@ -548,11 +547,7 @@ export default function App() {
           </div>
         )}
 
-        {activeTab === 'signals' && (
-          <div className="dashboard-grid glass-layout" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh', color: 'var(--text-muted)' }}>
-            <h2>Signals Module Coming Soon</h2>
-          </div>
-        )}
+
       </div>
     </>
   )

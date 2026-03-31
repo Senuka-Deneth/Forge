@@ -102,18 +102,30 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
       </div>
 
       {aiLoading && (
-        <div id="ai-loading" className="ai-loading">
-          <div className="loading-spinner"></div>
-          <div className="loading-text">
-            <span id="ai-loading-msg">{loadingMsg}</span>
-            <span className="loading-sub">This takes 15–30 seconds</span>
+        <div id="ai-loading" className="ai-loading fade-in">
+          <div className="ai-loading-header">
+            <div className="ai-loading-dots">
+              <span></span><span></span><span></span>
+            </div>
+            <span className="ai-loading-text-label">Analyzing chart...</span>
           </div>
+          <div className="ai-skeleton-line w-100"></div>
+          <div className="ai-skeleton-line w-85"></div>
+          <div className="ai-skeleton-line w-100"></div>
+          <div className="ai-skeleton-line w-60"></div>
         </div>
       )}
 
       {aiError && !aiLoading && (
-        <div id="ai-error" className="ai-error-box">
-          <strong>AI Error:</strong> {aiError}
+        <div id="ai-error" className="ai-error-box fade-in" style={{
+          display: 'flex', alignItems: 'center', gap: '8px', 
+          color: 'var(--color-bear)', fontFamily: 'var(--font-ui)', fontSize: '14px'
+        }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{width:'16px', height:'16px'}}>
+            <circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+          <span>Analysis failed. Try again.</span>
+          <button className="btn-ghost" onClick={onRefresh} style={{marginLeft: 'auto'}}>Retry</button>
         </div>
       )}
 
@@ -141,9 +153,9 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
       )}
 
       {!aiLoading && a && (
-        <div id="ai-content" className="ai-content-grid">
+        <div id="ai-content" className="ai-content-grid fade-in">
 
-          <div className="ai-card wide glass-card">
+          <div className="ai-card wide">
             <div className="ai-card-header">Market Intelligence</div>
             <div className="ai-summary-strip">
               <div className="ai-kpi">
@@ -182,7 +194,7 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
             )}
           </div>
 
-          <div className="ai-card glass-card">
+          <div className="ai-card">
             <div className="ai-card-header">Indicator Readings</div>
             <div className="ai-rows">
               <div className="ai-row">
@@ -213,7 +225,7 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
 
           {/* Pivot Intelligence */}
           {a.pivot_analysis && (
-            <div className="ai-card glass-card">
+            <div className="ai-card">
               <div className="ai-card-header">Pivot Intelligence</div>
               <div className="ai-rows">
                 <div className="ai-row">
@@ -254,7 +266,7 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
             </div>
           )}
 
-          <div className="ai-card wide glass-card">
+          <div className="ai-card wide">
             <div className="ai-card-header">AI Trade Logic</div>
             <div className="trade-scenarios">
               <div className="scenario bull-scenario">
@@ -276,7 +288,7 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
             )}
           </div>
 
-          <div className="ai-card glass-card">
+          <div className="ai-card tall-card">
             <div className="ai-card-header">Pivot Confluences</div>
             <div id="ai-confluences" className="confluence-list">
               {a.pivot_analysis?.confluences?.length > 0 ? (
@@ -293,7 +305,7 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
             </div>
           </div>
 
-          <div className="ai-card glass-card">
+          <div className="ai-card tall-card">
             <div className="ai-card-header">Anomalies &amp; Alerts</div>
             <div id="ai-anomalies" className="anomaly-list">
               {a.anomalies?.filter((x) => x.type !== 'none').length > 0 ? (

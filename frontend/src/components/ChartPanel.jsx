@@ -507,7 +507,7 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
   }, [showResistance])
 
   return (
-    <div className="chart-card glass-card">
+    <div className="chart-card">
       <div className="chart-card-header">
         <div className="chart-card-title">
           <span id="chart-symbol-display">{symbol}</span>

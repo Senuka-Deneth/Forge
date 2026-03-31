@@ -3,1125 +3,562 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Vision Chart Bot - AI-Powered Crypto Analysis</title>
-  <meta name="description" content="Vision Chart Bot delivers real-time AI-powered crypto market analysis with pivot points, technical indicators, and trade logic. Analyze Binance Spot markets with confidence." />
+  <title>Vision Chart Bot - Real-Time Analysis</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
   <style>
-    /* ── RESETS & TOKENS ── */
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
+    /* ── BASE SYSTEM ── */
     :root {
-      --font-sans: 'Geist', ui-sans-serif, system-ui, -apple-system, sans-serif;
-      --bg-app: #080b0f;
-      --bg-sidebar: #0c1018;
-      --bg-card: rgba(16, 22, 32, 0.85);
-      --bg-card-hover: rgba(20, 28, 40, 0.95);
-      --bg-input: rgba(20, 28, 40, 0.7);
-      --bg-glass: rgba(14, 20, 30, 0.6);
-      --border-subtle: rgba(255,255,255,0.04);
-      --border-default: rgba(255,255,255,0.08);
-      --border-strong: rgba(255,255,255,0.14);
-      --text-primary: #f2f4f7;
-      --text-secondary: #8a9ab0;
-      --text-muted: #4a5568;
-      --accent: #0eb882;
-      --accent-hover: #0da070;
-      --accent-glow: rgba(14,184,130,0.15);
-      --accent-soft: rgba(14,184,130,0.10);
-      --bull: #0eb882;
-      --bull-soft: rgba(14,184,130,0.12);
-      --bear: #e05252;
-      --bear-soft: rgba(224,82,82,0.12);
-      --neutral: #e09a2e;
-      --neutral-soft: rgba(224,154,46,0.12);
-      --glass-blur: blur(16px);
-      --glass-border: rgba(255,255,255,0.08);
-      --glass-shadow: 0 4px 24px rgba(0,0,0,0.4);
+      --font-display: 'Instrument Serif', Georgia, serif;
+      --font-ui: 'DM Sans', system-ui, sans-serif;
+      --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+      /* Dark Theme Default */
+      --bg-base:    hsl(222, 20%, 7%);
+      --bg-surface: hsl(222, 18%, 10%);
+      --bg-raised:  hsl(222, 16%, 13%);
+      
+      --accent-primary: hsl(158, 64%, 52%);
+      --accent-hover:   hsl(158, 64%, 44%);
+      --accent-subtle:  hsla(158, 64%, 52%, 0.08);
+
+      --text-primary:   hsl(220, 20%, 92%);
+      --text-secondary: hsl(220, 12%, 60%);
+      --text-muted:     hsl(220, 10%, 40%);
+      --text-inverse:   hsl(222, 20%, 7%);
+
+      --color-bull:  hsl(158, 55%, 48%);
+      --color-bear:  hsl(358, 68%, 58%);
+
+      --border-subtle: hsla(220, 20%, 50%, 0.10);
+      --border-medium: hsla(220, 20%, 50%, 0.18);
     }
 
-    html { scroll-behavior: smooth; }
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
     body {
-      font-family: var(--font-sans);
-      background: var(--bg-app);
+      background-color: var(--bg-base);
       color: var(--text-primary);
-      line-height: 1.6;
+      font-family: var(--font-ui);
+      line-height: 1.7;
       -webkit-font-smoothing: antialiased;
-      overflow-x: hidden;
     }
 
-    a { color: inherit; text-decoration: none; }
+    a { text-decoration: none; color: inherit; }
 
-    /* ── ANIMATED BACKGROUND ── */
-    .mesh-bg {
-      position: fixed;
-      inset: 0;
-      z-index: 0;
-      overflow: hidden;
+    /* ── EDITORIAL GRID ── */
+    .container {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 0 clamp(1.5rem, 5vw, 4rem);
     }
 
-    .mesh-bg .orb {
-      position: absolute;
-      border-radius: 50%;
-      filter: blur(100px);
-      opacity: 0.35;
-      animation: orb-float 20s ease-in-out infinite alternate;
+    /* ── TYPOGRAPHY ── */
+    .font-display { font-family: var(--font-display); font-weight: 400; letter-spacing: -0.03em; }
+    .font-mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+    .label-caps {
+      font-family: var(--font-ui);
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      font-size: 0.7rem;
     }
-
-    .mesh-bg .orb-1 {
-      width: 600px; height: 600px;
-      background: radial-gradient(circle, rgba(14,184,130,0.5), transparent 70%);
-      top: -10%; left: -5%;
-      animation-duration: 25s;
-    }
-
-    .mesh-bg .orb-2 {
-      width: 500px; height: 500px;
-      background: radial-gradient(circle, rgba(74,144,217,0.4), transparent 70%);
-      top: 40%; right: -10%;
-      animation-duration: 30s;
-      animation-delay: -5s;
-    }
-
-    .mesh-bg .orb-3 {
-      width: 400px; height: 400px;
-      background: radial-gradient(circle, rgba(167,139,250,0.35), transparent 70%);
-      bottom: -5%; left: 30%;
-      animation-duration: 22s;
-      animation-delay: -10s;
-    }
-
-    .mesh-bg .orb-4 {
-      width: 350px; height: 350px;
-      background: radial-gradient(circle, rgba(14,184,130,0.3), transparent 70%);
-      top: 20%; left: 50%;
-      animation-duration: 28s;
-      animation-delay: -8s;
-    }
-
-    @keyframes orb-float {
-      0% { transform: translate(0, 0) scale(1); }
-      25% { transform: translate(60px, -40px) scale(1.08); }
-      50% { transform: translate(-30px, 50px) scale(0.95); }
-      75% { transform: translate(40px, 20px) scale(1.05); }
-      100% { transform: translate(-50px, -30px) scale(1); }
-    }
-
-    .page-content { position: relative; z-index: 1; }
 
     /* ── NAV ── */
-    .w-nav {
+    .nav {
       position: fixed;
-      top: 0; left: 0; right: 0;
-      z-index: 100;
-      padding: 16px 40px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      transition: background 0.3s, border-color 0.3s, backdrop-filter 0.3s;
-      border-bottom: 1px solid transparent;
-    }
-
-    .w-nav.scrolled {
-      background: rgba(8, 11, 15, 0.8);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      border-bottom-color: var(--border-default);
-    }
-
-    .w-nav-brand {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .w-nav-brand .brand-mark {
-      width: 36px; height: 36px;
-      background: var(--accent);
-      border-radius: 10px;
-      display: grid;
-      place-items: center;
-    }
-
-    .w-nav-brand .brand-mark svg {
-      width: 20px; height: 20px;
-      fill: #fff;
-    }
-
-    .w-nav-brand span {
-      font-size: 17px;
-      font-weight: 700;
-      color: var(--text-primary);
-    }
-
-    .w-nav-links {
-      display: flex;
-      align-items: center;
-      gap: 28px;
-    }
-
-    .w-nav-links a {
-      font-size: 14px;
-      font-weight: 500;
-      color: var(--text-secondary);
-      transition: color 0.15s;
-    }
-
-    .w-nav-links a:hover { color: var(--text-primary); }
-
-    .btn-nav-primary {
-      background: var(--accent);
-      color: #fff !important;
-      border: none;
-      border-radius: 8px;
-      padding: 8px 20px;
-      font-size: 14px;
-      font-weight: 600;
-      font-family: var(--font-sans);
-      cursor: pointer;
-      transition: background 0.15s, transform 0.1s;
-    }
-
-    .btn-nav-primary:hover { background: var(--accent-hover); }
-    .btn-nav-primary:active { transform: scale(0.97); }
-
-    /* ── HERO ── */
-    .hero {
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      padding: 120px 40px 80px;
-      gap: 32px;
-    }
-
-    .hero-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 12px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      color: var(--accent);
-      background: var(--accent-soft);
-      border: 1px solid var(--accent-glow);
-      padding: 6px 16px;
-      border-radius: 40px;
-      opacity: 0;
-      transform: translateY(20px);
-      animation: fade-in-up 0.6s ease forwards;
-    }
-
-    .hero h1 {
-      font-size: clamp(40px, 6vw, 72px);
-      font-weight: 800;
-      line-height: 1.05;
-      max-width: 800px;
-      letter-spacing: -0.03em;
-      opacity: 0;
-      transform: translateY(20px);
-      animation: fade-in-up 0.6s ease forwards 0.15s;
-    }
-
-    .hero h1 .accent-text {
-      background: linear-gradient(135deg, var(--accent), #4a90d9);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-
-    .hero-desc {
-      font-size: 17px;
-      color: var(--text-secondary);
-      max-width: 560px;
-      line-height: 1.7;
-      opacity: 0;
-      transform: translateY(20px);
-      animation: fade-in-up 0.6s ease forwards 0.3s;
-    }
-
-    .hero-cta-group {
-      display: flex;
-      gap: 14px;
-      opacity: 0;
-      transform: translateY(20px);
-      animation: fade-in-up 0.6s ease forwards 0.45s;
-    }
-
-    .btn-cta {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 14px 32px;
-      border-radius: 10px;
-      font-size: 15px;
-      font-weight: 600;
-      font-family: var(--font-sans);
-      cursor: pointer;
-      transition: all 0.2s;
-      border: none;
-    }
-
-    .btn-cta-primary {
-      background: var(--accent);
-      color: #fff;
-      box-shadow: 0 4px 20px rgba(14,184,130,0.3);
-    }
-
-    .btn-cta-primary:hover {
-      background: var(--accent-hover);
-      box-shadow: 0 6px 28px rgba(14,184,130,0.4);
-      transform: translateY(-2px);
-    }
-
-    .btn-cta-ghost {
+      top: 0; width: 100%;
       background: transparent;
-      border: 1px solid var(--border-strong);
-      color: var(--text-primary);
+      transition: background 0.3s, border-color 0.3s;
+      z-index: 100;
     }
 
-    .btn-cta-ghost:hover {
-      border-color: var(--accent);
-      color: var(--accent);
-      transform: translateY(-2px);
-    }
-
-    .hero-mockup {
-      width: 100%;
-      max-width: 900px;
-      margin-top: 32px;
-      opacity: 0;
-      transform: translateY(30px);
-      animation: fade-in-up 0.8s ease forwards 0.6s;
-    }
-
-    .mockup-frame {
-      background: var(--bg-glass);
-      border: 1px solid var(--glass-border);
-      border-radius: 16px;
-      padding: 20px;
-      backdrop-filter: blur(16px);
-      box-shadow: 0 20px 60px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.07);
-      overflow: hidden;
-    }
-
-    .mockup-header {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin-bottom: 16px;
-    }
-
-    .mockup-dot {
-      width: 10px; height: 10px;
-      border-radius: 50%;
-    }
-
-    .mockup-dot:nth-child(1) { background: #ff5f57; }
-    .mockup-dot:nth-child(2) { background: #febc2e; }
-    .mockup-dot:nth-child(3) { background: #28c840; }
-
-    .mockup-body {
-      display: grid;
-      grid-template-columns: 180px 1fr;
-      gap: 12px;
-      min-height: 300px;
-    }
-
-    .mockup-sidebar {
-      background: rgba(255,255,255,0.03);
-      border-radius: 10px;
-      padding: 16px;
-    }
-
-    .mockup-sidebar-item {
-      height: 10px;
-      background: rgba(255,255,255,0.06);
-      border-radius: 4px;
-      margin-bottom: 10px;
-    }
-
-    .mockup-sidebar-item.active {
-      background: var(--accent-soft);
-      border-left: 2px solid var(--accent);
-    }
-
-    .mockup-main {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    .mockup-kpi-strip {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 8px;
-    }
-
-    .mockup-kpi {
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.06);
-      border-radius: 8px;
-      padding: 10px;
-    }
-
-    .mockup-kpi-label {
-      height: 6px; width: 40%;
-      background: rgba(255,255,255,0.08);
-      border-radius: 3px;
-      margin-bottom: 6px;
-    }
-
-    .mockup-kpi-val {
-      height: 14px; width: 65%;
-      background: rgba(255,255,255,0.12);
-      border-radius: 4px;
-    }
-
-    .mockup-chart {
-      flex: 1;
-      background: rgba(255,255,255,0.02);
-      border: 1px solid rgba(255,255,255,0.05);
-      border-radius: 10px;
-      position: relative;
-      overflow: hidden;
-      min-height: 180px;
-    }
-
-    .mockup-chart svg {
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      width: 100%;
-      height: 70%;
-    }
-
-    @keyframes fade-in-up {
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    /* ── FEATURE STRIP ── */
-    .feature-strip {
-      padding: 60px 0;
-      overflow: hidden;
-      border-top: 1px solid var(--border-subtle);
+    .nav.scrolled {
+      background: var(--bg-surface);
       border-bottom: 1px solid var(--border-subtle);
     }
 
-    .feature-strip-label {
-      text-align: center;
-      font-size: 11px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-      color: var(--text-muted);
-      margin-bottom: 32px;
-    }
-
-    .feature-scroll-track {
+    .nav-inner {
       display: flex;
-      gap: 24px;
-      animation: scroll-strip 30s linear infinite;
-      width: max-content;
+      justify-content: space-between;
+      align-items: center;
+      height: 80px;
     }
 
-    .feature-scroll-track:hover {
-      animation-play-state: paused;
-    }
-
-    .feature-chip {
+    .nav-brand {
       display: flex;
       align-items: center;
-      gap: 10px;
-      flex-shrink: 0;
-      padding: 14px 24px;
-      background: var(--bg-glass);
-      border: 1px solid var(--glass-border);
-      border-radius: 12px;
-      backdrop-filter: blur(10px);
-      transition: border-color 0.2s, transform 0.2s;
-    }
-
-    .feature-chip:hover {
-      border-color: var(--accent-glow);
-      transform: translateY(-3px);
-    }
-
-    .feature-chip-icon {
-      width: 36px; height: 36px;
-      background: var(--accent-soft);
-      border-radius: 8px;
-      display: grid;
-      place-items: center;
-      flex-shrink: 0;
-    }
-
-    .feature-chip-icon svg {
-      width: 18px; height: 18px;
-      fill: var(--accent);
-    }
-
-    .feature-chip-text {
-      font-size: 14px;
-      font-weight: 600;
+      gap: 12px;
+      font-weight: 500;
       color: var(--text-primary);
-      white-space: nowrap;
     }
 
-    .feature-chip-sub {
-      font-size: 12px;
+    .nav-brand svg {
+      width: 20px; height: 20px;
+      fill: none; stroke: currentColor; stroke-width: 2;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+    }
+
+    .nav-link {
+      color: var(--text-secondary);
+      font-weight: 500;
+      font-size: 14px;
+      transition: color 0.18s ease;
+    }
+
+    .nav-link:hover { color: var(--text-primary); }
+
+    .btn-primary {
+      background: var(--accent-primary);
+      color: var(--text-inverse) !important;
+      padding: 10px 24px;
+      border-radius: 4px;
+      font-weight: 600;
+      font-size: 14px;
+      transition: background 0.18s ease;
+    }
+
+    .btn-primary:hover { background: var(--accent-hover); }
+
+    /* ── HERO ── */
+    .hero {
+      padding-top: 180px;
+      padding-bottom: 100px;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 55% 45%;
+      gap: 60px;
+      align-items: center;
+    }
+
+    .hero-content {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .hero-eyebrow {
+      color: var(--accent-primary);
+      margin-bottom: 24px;
+    }
+
+    .hero-title {
+      font-size: clamp(3rem, 6vw, 5.5rem);
+      line-height: 1;
+      margin-bottom: 24px;
+    }
+
+    .hero-title i {
+      display: block;
+      font-style: italic;
+      margin-left: 1.5rem;
+    }
+
+    .hero-desc {
+      font-size: 18px;
+      color: var(--text-secondary);
+      max-width: 480px;
+      margin-bottom: 40px;
+    }
+
+    .hero-ctas {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+
+    .btn-secondary {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-primary);
+      font-weight: 500;
+      transition: color 0.18s ease;
+    }
+    .btn-secondary:hover { color: var(--accent-primary); }
+
+    /* ── HERO VISUAL (Live Data Panel) ── */
+    .hero-visual {
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .data-panel {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 32px;
+      width: 100%;
+      max-width: 420px;
+    }
+
+    .dp-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 24px;
+    }
+
+    .dp-symbol { font-weight: 600; font-size: 16px; margin-bottom: 4px; }
+    .dp-name { color: var(--text-secondary); font-size: 14px; }
+    
+    .dp-price {
+      font-size: 32px;
+      margin-bottom: 8px;
+      line-height: 1;
+    }
+
+    .dp-delta {
+      color: var(--color-bull);
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .dp-chart {
+      margin-top: 32px;
+      height: 80px;
+      position: relative;
+    }
+
+    .dp-chart svg { width: 100%; height: 100%; overflow: visible; }
+    .dp-chart path { fill: none; stroke: var(--color-bull); stroke-width: 2; }
+
+    /* ── SOCIAL PROOF BAR ── */
+    .social-proof {
+      border-top: 1px solid var(--border-subtle);
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 24px 0;
+      margin-top: 60px;
+    }
+
+    .social-proof p {
       color: var(--text-muted);
-      white-space: nowrap;
+      font-size: 14px;
+      font-weight: 400;
     }
 
-    @keyframes scroll-strip {
-      0% { transform: translateX(0); }
-      100% { transform: translateX(-50%); }
+    /* ── FEATURES GRID ── */
+    .features-section {
+      padding: 120px 0;
     }
 
-    /* ── DEMO TABS ── */
-    .demo-section {
-      padding: 100px 40px;
-      max-width: 1100px;
-      margin: 0 auto;
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
     }
 
-    .section-label {
-      font-size: 11px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-      color: var(--accent);
-      margin-bottom: 10px;
+    .feature-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      padding: 40px;
+      border-radius: 8px;
+      transition: background 0.18s;
     }
 
-    .section-title {
-      font-size: clamp(28px, 4vw, 40px);
-      font-weight: 800;
-      letter-spacing: -0.02em;
+    .feature-card:hover {
+      background: var(--bg-raised);
+    }
+
+    .fc-icon {
+      margin-bottom: 24px;
+    }
+    .fc-icon svg {
+      width: 20px; height: 20px;
+      stroke: var(--accent-primary); fill: none; stroke-width: 2;
+    }
+
+    .fc-title {
+      font-size: 18px;
+      font-weight: 600;
       margin-bottom: 12px;
     }
 
-    .section-desc {
-      font-size: 16px;
+    .fc-desc {
       color: var(--text-secondary);
-      max-width: 600px;
-      margin-bottom: 40px;
-      line-height: 1.7;
-    }
-
-    .demo-tabs {
-      display: flex;
-      gap: 4px;
-      background: var(--bg-input);
-      border: 1px solid var(--border-default);
-      border-radius: 10px;
-      padding: 4px;
-      margin-bottom: 28px;
-      width: fit-content;
-    }
-
-    .demo-tab {
-      padding: 8px 20px;
-      font-size: 13px;
-      font-weight: 600;
-      font-family: var(--font-sans);
-      color: var(--text-muted);
-      background: transparent;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-
-    .demo-tab.active {
-      background: var(--accent-soft);
-      color: var(--accent);
-    }
-
-    .demo-tab:hover:not(.active) { color: var(--text-primary); }
-
-    .demo-panel {
-      display: none;
-      background: var(--bg-glass);
-      border: 1px solid var(--glass-border);
-      border-radius: 16px;
-      padding: 32px;
-      backdrop-filter: blur(16px);
-      box-shadow: var(--glass-shadow), inset 0 1px 0 rgba(255,255,255,0.07);
-      animation: fade-in 0.4s ease;
-    }
-
-    .demo-panel.active { display: block; }
-
-    @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-
-    .demo-panel h3 {
-      font-size: 18px;
-      font-weight: 700;
-      margin-bottom: 10px;
-      color: var(--text-primary);
-    }
-
-    .demo-panel p {
       font-size: 14px;
-      color: var(--text-secondary);
-      line-height: 1.7;
-      margin-bottom: 20px;
-    }
-
-    .demo-visual {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 12px;
-    }
-
-    .demo-card {
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.06);
-      border-radius: 10px;
-      padding: 16px;
-    }
-
-    .demo-card-label {
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--text-muted);
-      margin-bottom: 6px;
-    }
-
-    .demo-card-value {
-      font-size: 22px;
-      font-weight: 700;
-      font-variant-numeric: tabular-nums;
+      line-height: 1.6;
     }
 
     /* ── HOW IT WORKS ── */
     .how-section {
-      padding: 100px 40px;
-      max-width: 1100px;
-      margin: 0 auto;
+      padding: 120px 0;
+      border-top: 1px solid var(--border-subtle);
     }
 
-    .steps-grid {
+    .how-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 24px;
-      margin-top: 48px;
-    }
-
-    .step-card {
-      background: var(--bg-glass);
-      border: 1px solid var(--glass-border);
-      border-radius: 16px;
-      padding: 32px;
-      backdrop-filter: blur(16px);
-      box-shadow: var(--glass-shadow), inset 0 1px 0 rgba(255,255,255,0.07);
-      opacity: 0;
-      transform: translateY(30px);
-      transition: opacity 0.6s ease, transform 0.6s ease, border-color 0.2s;
-    }
-
-    .step-card.visible {
-      opacity: 1;
-      transform: translateY(0);
-    }
-
-    .step-card:hover {
-      border-color: var(--accent-glow);
-    }
-
-    .step-number {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 40px; height: 40px;
-      background: var(--accent);
-      color: #fff;
-      border-radius: 10px;
-      font-size: 16px;
-      font-weight: 800;
-      margin-bottom: 20px;
-    }
-
-    .step-title {
-      font-size: 18px;
-      font-weight: 700;
-      margin-bottom: 10px;
-    }
-
-    .step-desc {
-      font-size: 14px;
-      color: var(--text-secondary);
-      line-height: 1.7;
-    }
-
-    /* ── FOOTER ── */
-    .w-footer {
-      border-top: 1px solid var(--border-subtle);
-      padding: 60px 40px 40px;
-      max-width: 1100px;
-      margin: 0 auto;
-    }
-
-    .footer-grid {
-      display: grid;
-      grid-template-columns: 2fr 1fr 1fr 1fr;
       gap: 40px;
-      margin-bottom: 40px;
+      position: relative;
     }
 
-    .footer-brand { display: flex; flex-direction: column; gap: 12px; }
-
-    .footer-brand-name {
-      font-size: 17px;
-      font-weight: 700;
+    .how-step {
+      position: relative;
+      padding: 40px 0;
     }
 
-    .footer-brand-desc {
-      font-size: 13px;
+    .how-numeral {
+      position: absolute;
+      top: 0; left: 0;
+      font-size: 180px;
+      line-height: 0.8;
       color: var(--text-muted);
-      line-height: 1.6;
-      max-width: 280px;
+      opacity: 0.1;
+      z-index: 0;
     }
 
-    .footer-col-title {
-      font-size: 11px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      color: var(--text-muted);
+    .how-content {
+      position: relative;
+      z-index: 1;
+      padding-top: 60px;
+    }
+
+    .how-title {
+      font-size: 20px;
       margin-bottom: 16px;
     }
 
-    .footer-col a {
-      display: block;
-      font-size: 13px;
+    .how-desc {
       color: var(--text-secondary);
-      margin-bottom: 10px;
-      transition: color 0.15s;
+      font-size: 15px;
     }
 
-    .footer-col a:hover { color: var(--accent); }
+    /* ── FOOTER ── */
+    .footer {
+      border-top: 1px solid var(--border-subtle);
+      padding: 80px 0 40px;
+    }
+
+    .footer-flex {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 60px;
+    }
+
+    .footer-brand .brand {
+      font-weight: 600;
+      font-size: 16px;
+      margin-bottom: 12px;
+    }
+
+    .footer-brand p {
+      color: var(--text-muted);
+      font-size: 14px;
+      max-width: 300px;
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 80px;
+    }
+
+    .fl-col span {
+      display: block;
+      color: var(--text-primary);
+      margin-bottom: 20px;
+    }
+
+    .fl-col a {
+      display: block;
+      color: var(--text-secondary);
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+    .fl-col a:hover { color: var(--accent-primary); }
 
     .footer-bottom {
       border-top: 1px solid var(--border-subtle);
       padding-top: 24px;
-      font-size: 12px;
       color: var(--text-muted);
-      text-align: center;
+      font-size: 13px;
     }
 
-    /* ── RESPONSIVE ── */
-    @media (max-width: 768px) {
-      .w-nav { padding: 12px 20px; }
-      .w-nav-links { gap: 16px; }
-      .hero { padding: 100px 20px 60px; }
-      .hero-cta-group { flex-direction: column; align-items: center; }
-      .mockup-body { grid-template-columns: 1fr; }
-      .mockup-sidebar { display: none; }
-      .steps-grid { grid-template-columns: 1fr; }
-      .footer-grid { grid-template-columns: 1fr; }
-      .demo-section, .how-section { padding: 60px 20px; }
+    @media (max-width: 900px) {
+      .hero-grid { grid-template-columns: 1fr; }
+      .hero-title i { margin-left: 0; }
+      .features-grid { grid-template-columns: 1fr; }
+      .how-grid { grid-template-columns: 1fr; }
+      .footer-flex { flex-direction: column; gap: 40px; }
+      .footer-links { flex-direction: column; gap: 40px; }
     }
   </style>
 </head>
 <body>
-  <!-- Animated mesh gradient background -->
-  <div class="mesh-bg">
-    <div class="orb orb-1"></div>
-    <div class="orb orb-2"></div>
-    <div class="orb orb-3"></div>
-    <div class="orb orb-4"></div>
+
+  <!-- NAV -->
+  <nav class="nav" id="nav">
+    <div class="container nav-inner">
+      <a href="welcome.html" class="nav-brand">
+        <svg viewBox="0 0 24 24"><path d="M3 3v18h18M9 15l3-3 4 4 5-5"/></svg>
+        Vision Chart
+      </a>
+      <div class="nav-links">
+        <a href="#features" class="nav-link">Features</a>
+        <a href="education.html" class="nav-link">Education</a>
+        <a href="login.html" class="nav-link" style="color:var(--text-primary)">Sign In</a>
+        <a href="login.html" class="btn-primary" id="navActionBtn">Get Started</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="container hero-grid">
+      <div class="hero-content">
+        <div class="hero-eyebrow label-caps">Real-Time Analysis</div>
+        <h1 class="font-display hero-title">
+          Trade with <i>Precision.</i>
+        </h1>
+        <p class="hero-desc">
+          High-performance technical tracking combined with logical AI market insights. Make confident decisions based on data, not guesswork.
+        </p>
+        <div class="hero-ctas">
+          <a href="login.html" class="btn-primary">Launch Dashboard</a>
+          <a href="education.html" class="btn-secondary">
+            Read the Docs
+            <span style="font-family:var(--font-mono)">→</span>
+          </a>
+        </div>
+      </div>
+
+      <div class="hero-visual">
+        <div class="data-panel">
+          <div class="dp-header">
+            <div>
+              <div class="dp-symbol font-mono">BTCUSDT</div>
+              <div class="dp-name">Bitcoin / Tether US</div>
+            </div>
+            <div class="label-caps" style="color:var(--text-muted)">Live</div>
+          </div>
+          <div class="dp-price font-mono">68,429.50</div>
+          <div class="dp-delta font-mono">
+            ↑ +2.4% (24H)
+          </div>
+          <div class="dp-chart">
+            <svg viewBox="0 0 200 40" preserveAspectRatio="none">
+              <path d="M 0 30 Q 20 20 40 25 T 80 15 T 120 20 T 160 5 T 200 10"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SOCIAL PROOF -->
+  <div class="social-proof">
+    <div class="container">
+      <p>Analyzing 200+ trading pairs across 5 timeframes — strictly tracking momentum and pivot shifts.</p>
+    </div>
   </div>
 
-  <div class="page-content">
-    <!-- ── NAVBAR ── -->
-    <nav class="w-nav" id="w-nav">
-      <a href="welcome.html" class="w-nav-brand">
-        <div class="brand-mark">
-          <svg viewBox="0 0 24 24"><path d="M3 3v18h18M9 15l3-3 4 4 5-5"/></svg>
+  <!-- FEATURES -->
+  <section class="features-section" id="features">
+    <div class="container">
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="fc-icon"><svg viewBox="0 0 24 24"><path d="M3 3v18h18M9 15l3-3 4 4 5-5"/></svg></div>
+          <h3 class="fc-title">Live Datastreams</h3>
+          <p class="fc-desc">Direct WebSocket connections pull price action tick-by-tick from Binance Spot without middleman delay.</p>
         </div>
-        <span>Vision Chart</span>
-      </a>
-      <div class="w-nav-links">
-        <a href="#features">Features</a>
-        <a href="#how-it-works">How It Works</a>
-        <a href="education.html">Education</a>
-        <a href="login.html" class="btn-nav-primary">Sign In</a>
+        <div class="feature-card">
+          <div class="fc-icon"><svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
+          <h3 class="fc-title">Pivot Intelligence</h3>
+          <p class="fc-desc">Mathematical calculation of Classic and Fibonacci pivot points to objectively identify support and resistance zones.</p>
+        </div>
+        <div class="feature-card">
+          <div class="fc-icon"><svg viewBox="0 0 24 24"><path d="M4 4h4v4H4zm12 0h4v4h-4zM4 16h4v4H4zm12 0h4v4h-4z"/></svg></div>
+          <h3 class="fc-title">Logical Breakdown</h3>
+          <p class="fc-desc">Nemotron 120B AI conducts a two-stage reasoning chain on raw technical data to separate narrative from math.</p>
+        </div>
       </div>
-    </nav>
+    </div>
+  </section>
 
-    <!-- ── HERO ── -->
-    <section class="hero" id="hero">
-      <div class="hero-badge">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--accent)"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-        Powered by Nemotron 120B AI
-      </div>
-
-      <h1>
-        Smarter Trading<br/>
-        Starts with <span class="accent-text">AI Insight</span>
-      </h1>
-
-      <p class="hero-desc">
-        Real-time Binance Spot analysis with pivot points, technical indicators,
-        and AI-powered trade logic. Make confident decisions, not guesses.
-      </p>
-
-      <div class="hero-cta-group">
-        <a href="login.html" class="btn-cta btn-cta-primary">
-          Get Started Free
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-        </a>
-        <a href="education.html" class="btn-cta btn-cta-ghost">
-          Learn the Indicators
-        </a>
-      </div>
-
-      <div class="hero-mockup">
-        <div class="mockup-frame">
-          <div class="mockup-header">
-            <div class="mockup-dot"></div>
-            <div class="mockup-dot"></div>
-            <div class="mockup-dot"></div>
+  <!-- HOW IT WORKS -->
+  <section class="how-section">
+    <div class="container">
+      <div class="how-grid">
+        <div class="how-step">
+          <div class="font-display how-numeral">1</div>
+          <div class="how-content">
+            <h3 class="how-title">Select Pair</h3>
+            <p class="how-desc">Choose any supported Binance pair and set your analytical timeframe. The dashboard immediately provisions historical depth.</p>
           </div>
-          <div class="mockup-body">
-            <div class="mockup-sidebar">
-              <div class="mockup-sidebar-item active"></div>
-              <div class="mockup-sidebar-item"></div>
-              <div class="mockup-sidebar-item"></div>
-              <div class="mockup-sidebar-item" style="margin-top:20px;"></div>
-              <div class="mockup-sidebar-item"></div>
-            </div>
-            <div class="mockup-main">
-              <div class="mockup-kpi-strip">
-                <div class="mockup-kpi">
-                  <div class="mockup-kpi-label"></div>
-                  <div class="mockup-kpi-val" style="background:rgba(14,184,130,0.25)"></div>
-                </div>
-                <div class="mockup-kpi">
-                  <div class="mockup-kpi-label"></div>
-                  <div class="mockup-kpi-val"></div>
-                </div>
-                <div class="mockup-kpi">
-                  <div class="mockup-kpi-label"></div>
-                  <div class="mockup-kpi-val"></div>
-                </div>
-                <div class="mockup-kpi">
-                  <div class="mockup-kpi-label"></div>
-                  <div class="mockup-kpi-val" style="background:rgba(14,184,130,0.25)"></div>
-                </div>
-              </div>
-              <div class="mockup-chart">
-                <svg viewBox="0 0 400 120" preserveAspectRatio="none">
-                  <defs>
-                    <linearGradient id="cg" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stop-color="rgba(14,184,130,0.3)"/>
-                      <stop offset="100%" stop-color="rgba(14,184,130,0)"/>
-                    </linearGradient>
-                  </defs>
-                  <path d="M0 100 Q50 80 100 60 T200 50 T300 30 T400 20 V120 H0 Z" fill="url(#cg)"/>
-                  <path d="M0 100 Q50 80 100 60 T200 50 T300 30 T400 20" fill="none" stroke="var(--accent)" stroke-width="2"/>
-                </svg>
-              </div>
-            </div>
+        </div>
+        <div class="how-step">
+          <div class="font-display how-numeral">2</div>
+          <div class="how-content">
+            <h3 class="how-title">Read Structure</h3>
+            <p class="how-desc">Inspect cleanly rendered indicators including EMAs, MACD, and RSI. No visual clutter, just raw structural data.</p>
+          </div>
+        </div>
+        <div class="how-step">
+          <div class="font-display how-numeral">3</div>
+          <div class="how-content">
+            <h3 class="how-title">Run Logic</h3>
+            <p class="how-desc">Trigger standard AI evaluations to synthesize momentum, pivots, and anomalous volume into a coherent directional bias.</p>
           </div>
         </div>
       </div>
-    </section>
+    </div>
+  </section>
 
-    <!-- ── FEATURE STRIP ── -->
-    <section class="feature-strip" id="features">
-      <div class="feature-strip-label">Built for Serious Analysis</div>
-      <div class="feature-scroll-track" id="feature-track">
-        <!-- Duplicated for seamless loop -->
-        <div class="feature-chip">
-          <div class="feature-chip-icon"><svg viewBox="0 0 24 24"><path d="M3 3v18h18M9 15l3-3 4 4 5-5"/></svg></div>
-          <div><div class="feature-chip-text">Live Candlestick Charts</div><div class="feature-chip-sub">Real-time Binance WebSocket</div></div>
-        </div>
-        <div class="feature-chip">
-          <div class="feature-chip-icon"><svg viewBox="0 0 24 24"><path d="M2 12h4l3-9 4 18 3-9h4"/></svg></div>
-          <div><div class="feature-chip-text">EMA 20 &amp; 50</div><div class="feature-chip-sub">Trend direction overlays</div></div>
-        </div>
-        <div class="feature-chip">
-          <div class="feature-chip-icon"><svg viewBox="0 0 24 24"><path d="M12 2v20M2 12h20"/></svg></div>
-          <div><div class="feature-chip-text">RSI 14</div><div class="feature-chip-sub">Overbought/oversold zones</div></div>
-        </div>
-        <div class="feature-chip">
-          <div class="feature-chip-icon"><svg viewBox="0 0 24 24"><path d="M3 12h18M3 6h18M3 18h18"/></svg></div>
-          <div><div class="feature-chip-text">MACD</div><div class="feature-chip-sub">Momentum crossover detection</div></div>
-        </div>
-        <div class="feature-chip">
-          <div class="feature-chip-icon"><svg viewBox="0 0 24 24"><path d="M4 4h4v4H4zm12 0h4v4h-4zM4 16h4v4H4zm12 0h4v4h-4z"/></svg></div>
-          <div><div class="feature-chip-text">Pivot Points</div><div class="feature-chip-sub">Classic &amp; Fibonacci levels</div></div>
-        </div>
-        <div class="feature-chip">
-          <div class="feature-chip-icon"><svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
-          <div><div class="feature-chip-text">AI Trade Logic</div><div class="feature-chip-sub">Nemotron 120B 2-turn reasoning</div></div>
-        </div>
-        <div class="feature-chip">
-          <div class="feature-chip-icon"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
-          <div><div class="feature-chip-text">Support &amp; Resistance</div><div class="feature-chip-sub">Swing point detection</div></div>
-        </div>
-        <div class="feature-chip">
-          <div class="feature-chip-icon"><svg viewBox="0 0 24 24"><path d="M3 3h18v18H3V3zm4 14V7m4 10V10m4 7v-4m4 4V5"/></svg></div>
-          <div><div class="feature-chip-text">Volume Analysis</div><div class="feature-chip-sub">Buy/sell pressure insight</div></div>
-        </div>
-        <!-- Duplicate set for seamless scrolling -->
-        <div class="feature-chip">
-          <div class="feature-chip-icon"><svg viewBox="0 0 24 24"><path d="M3 3v18h18M9 15l3-3 4 4 5-5"/></svg></div>
-          <div><div class="feature-chip-text">Live Candlestick Charts</div><div class="feature-chip-sub">Real-time Binance WebSocket</div></div>
-        </div>
-        <div class="feature-chip">
-          <div class="feature-chip-icon"><svg viewBox="0 0 24 24"><path d="M2 12h4l3-9 4 18 3-9h4"/></svg></div>
-          <div><div class="feature-chip-text">EMA 20 &amp; 50</div><div class="feature-chip-sub">Trend direction overlays</div></div>
-        </div>
-        <div class="feature-chip">
-          <div class="feature-chip-icon"><svg viewBox="0 0 24 24"><path d="M12 2v20M2 12h20"/></svg></div>
-          <div><div class="feature-chip-text">RSI 14</div><div class="feature-chip-sub">Overbought/oversold zones</div></div>
-        </div>
-        <div class="feature-chip">
-          <div class="feature-chip-icon"><svg viewBox="0 0 24 24"><path d="M3 12h18M3 6h18M3 18h18"/></svg></div>
-          <div><div class="feature-chip-text">MACD</div><div class="feature-chip-sub">Momentum crossover detection</div></div>
-        </div>
-        <div class="feature-chip">
-          <div class="feature-chip-icon"><svg viewBox="0 0 24 24"><path d="M4 4h4v4H4zm12 0h4v4h-4zM4 16h4v4H4zm12 0h4v4h-4z"/></svg></div>
-          <div><div class="feature-chip-text">Pivot Points</div><div class="feature-chip-sub">Classic &amp; Fibonacci levels</div></div>
-        </div>
-        <div class="feature-chip">
-          <div class="feature-chip-icon"><svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
-          <div><div class="feature-chip-text">AI Trade Logic</div><div class="feature-chip-sub">Nemotron 120B 2-turn reasoning</div></div>
-        </div>
-        <div class="feature-chip">
-          <div class="feature-chip-icon"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
-          <div><div class="feature-chip-text">Support &amp; Resistance</div><div class="feature-chip-sub">Swing point detection</div></div>
-        </div>
-        <div class="feature-chip">
-          <div class="feature-chip-icon"><svg viewBox="0 0 24 24"><path d="M3 3h18v18H3V3zm4 14V7m4 10V10m4 7v-4m4 4V5"/></svg></div>
-          <div><div class="feature-chip-text">Volume Analysis</div><div class="feature-chip-sub">Buy/sell pressure insight</div></div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ── DEMO TABS ── -->
-    <section class="demo-section" id="demo">
-      <div class="section-label">See It In Action</div>
-      <h2 class="section-title">Every Tool You Need, One Dashboard</h2>
-      <p class="section-desc">
-        From live charts to AI-generated trade scenarios, Vision Chart Bot puts professional-grade analysis at your fingertips.
-      </p>
-
-      <div class="demo-tabs" id="demo-tabs">
-        <button class="demo-tab active" data-tab="tab-chart">Charts</button>
-        <button class="demo-tab" data-tab="tab-indicators">Indicators</button>
-        <button class="demo-tab" data-tab="tab-pivots">Pivots</button>
-        <button class="demo-tab" data-tab="tab-ai">AI Analysis</button>
-      </div>
-
-      <div class="demo-panel active" id="tab-chart">
-        <h3>Live Candlestick Charts</h3>
-        <p>Stream real-time price data directly from Binance via WebSocket. See every tick update in real-time with volume overlays, EMA lines, and support/resistance levels drawn automatically.</p>
-        <div class="demo-visual">
-          <div class="demo-card">
-            <div class="demo-card-label">Timeframes</div>
-            <div class="demo-card-value" style="color:var(--text-primary)">5</div>
-            <div style="font-size:12px;color:var(--text-muted)">15m, 1H, 4H, 1D, 1W</div>
-          </div>
-          <div class="demo-card">
-            <div class="demo-card-label">Max Candles</div>
-            <div class="demo-card-value" style="color:var(--accent)">4,000</div>
-            <div style="font-size:12px;color:var(--text-muted)">Historical depth</div>
-          </div>
-          <div class="demo-card">
-            <div class="demo-card-label">Data Feed</div>
-            <div class="demo-card-value" style="color:var(--bull);font-size:18px">Live WebSocket</div>
-            <div style="font-size:12px;color:var(--text-muted)">Sub-second updates</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="demo-panel" id="tab-indicators">
-        <h3>Technical Indicators</h3>
-        <p>Toggle between EMA 20, EMA 50, RSI 14, and MACD directly on the chart. Each indicator is calculated locally for instant responsiveness, with no server roundtrips needed.</p>
-        <div class="demo-visual">
-          <div class="demo-card">
-            <div class="demo-card-label">EMA 20</div>
-            <div class="demo-card-value" style="color:#60a5fa">Trend</div>
-            <div style="font-size:12px;color:var(--text-muted)">Short-term direction</div>
-          </div>
-          <div class="demo-card">
-            <div class="demo-card-label">EMA 50</div>
-            <div class="demo-card-value" style="color:#f59e0b">Trend</div>
-            <div style="font-size:12px;color:var(--text-muted)">Medium-term direction</div>
-          </div>
-          <div class="demo-card">
-            <div class="demo-card-label">RSI 14</div>
-            <div class="demo-card-value" style="color:#a78bfa">Momentum</div>
-            <div style="font-size:12px;color:var(--text-muted)">Overbought / Oversold</div>
-          </div>
-          <div class="demo-card">
-            <div class="demo-card-label">MACD</div>
-            <div class="demo-card-value" style="color:var(--accent)">Crossover</div>
-            <div style="font-size:12px;color:var(--text-muted)">Signal convergence</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="demo-panel" id="tab-pivots">
-        <h3>Classic &amp; Fibonacci Pivot Points</h3>
-        <p>Automatically computed pivot levels (PP, R1-R3, S1-S3) drawn on the price chart. See your current price zone, session bias, distance to nearest support/resistance, and inflection point alerts.</p>
-        <div class="demo-visual">
-          <div class="demo-card" style="border-left:3px solid var(--bear)">
-            <div class="demo-card-label">Resistance Levels</div>
-            <div class="demo-card-value" style="color:var(--bear)">R1 R2 R3</div>
-          </div>
-          <div class="demo-card" style="border-left:3px solid var(--text-primary)">
-            <div class="demo-card-label">Pivot Point</div>
-            <div class="demo-card-value" style="color:var(--text-primary)">PP</div>
-          </div>
-          <div class="demo-card" style="border-left:3px solid var(--bull)">
-            <div class="demo-card-label">Support Levels</div>
-            <div class="demo-card-value" style="color:var(--bull)">S1 S2 S3</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="demo-panel" id="tab-ai">
-        <h3>AI-Powered Trade Logic</h3>
-        <p>Nemotron 120B analyses your chart data with a 2-turn reasoning chain: first a deep-reasoning pass, then a structured verification. Get primary trend, momentum, market phase, regime, confidence scores, bullish/bearish scenarios, and risk notes.</p>
-        <div class="demo-visual">
-          <div class="demo-card">
-            <div class="demo-card-label">Model</div>
-            <div class="demo-card-value" style="color:var(--accent);font-size:16px">Nemotron 120B</div>
-          </div>
-          <div class="demo-card">
-            <div class="demo-card-label">Reasoning</div>
-            <div class="demo-card-value" style="color:var(--text-primary);font-size:16px">2-Turn Chain</div>
-          </div>
-          <div class="demo-card">
-            <div class="demo-card-label">Output</div>
-            <div class="demo-card-value" style="color:#a78bfa;font-size:16px">Structured JSON</div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ── HOW IT WORKS ── -->
-    <section class="how-section" id="how-it-works">
-      <div class="section-label">Getting Started</div>
-      <h2 class="section-title">Three Steps to Insight</h2>
-      <p class="section-desc">
-        No complex setup. Just open, load, and analyze.
-      </p>
-
-      <div class="steps-grid">
-        <div class="step-card" id="step-1">
-          <div class="step-number">1</div>
-          <h3 class="step-title">Enter a Symbol</h3>
-          <p class="step-desc">
-            Type any Binance Spot pair like BTCUSDT or ETHUSDT and choose your preferred timeframe, from 15 minutes to 1 week.
-          </p>
-        </div>
-        <div class="step-card" id="step-2">
-          <div class="step-number">2</div>
-          <h3 class="step-title">Read the Analysis</h3>
-          <p class="step-desc">
-            Instantly see market summary, key levels, pivot points, trade scenarios, and swing points. All computed from up to 4,000 candles of historical data.
-          </p>
-        </div>
-        <div class="step-card" id="step-3">
-          <div class="step-number">3</div>
-          <h3 class="step-title">Get AI Intelligence</h3>
-          <p class="step-desc">
-            Click "Create AI Analysis" to trigger a deep 2-turn reasoning chain. The AI evaluates confluence, divergence, market regime, and delivers actionable trade logic.
-          </p>
-        </div>
-      </div>
-    </section>
-
-    <!-- ── FOOTER ── -->
-    <footer class="w-footer">
-      <div class="footer-grid">
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-flex">
         <div class="footer-brand">
-          <div class="footer-brand-name">Vision Chart Bot</div>
-          <p class="footer-brand-desc">
-            AI-powered crypto analysis for Binance Spot markets. Built with real-time data, technical indicators, and advanced reasoning models.
-          </p>
+          <div class="brand">Vision Chart</div>
+          <p>Analytical tooling designed for objective market assessment structure.</p>
         </div>
-        <div class="footer-col">
-          <div class="footer-col-title">Product</div>
-          <a href="welcome.html#features">Features</a>
-          <a href="education.html">Education</a>
-          <a href="login.html">Dashboard</a>
-        </div>
-        <div class="footer-col">
-          <div class="footer-col-title">Resources</div>
-          <a href="education.html#ema">Indicator Guide</a>
-          <a href="education.html#pivot-intro">Pivot Points 101</a>
-          <a href="education.html#ai-overview">AI Analysis FAQ</a>
-        </div>
-        <div class="footer-col">
-          <div class="footer-col-title">Account</div>
-          <a href="login.html">Sign In</a>
-          <a href="login.html#signup">Create Account</a>
+        <div class="footer-links">
+          <div class="fl-col">
+            <span class="label-caps">Platform</span>
+            <a href="welcome.html">Overview</a>
+            <a href="login.html">Dashboard</a>
+          </div>
+          <div class="fl-col">
+            <span class="label-caps">Resources</span>
+            <a href="education.html">Documentation</a>
+            <a href="education.html#ai-overview">AI Logic</a>
+          </div>
         </div>
       </div>
       <div class="footer-bottom">
-        Vision Chart Bot. For educational and informational purposes only. Not financial advice.
+        &copy; 2026 Vision Chart Bot. For educational use only.
       </div>
-    </footer>
-  </div>
+    </div>
+  </footer>
 
   <script>
-    /* ── Navbar scroll effect ── */
-    const nav = document.getElementById('w-nav');
+    // Nav scroll
     window.addEventListener('scroll', () => {
-      nav.classList.toggle('scrolled', window.scrollY > 40);
+      document.getElementById('nav').classList.toggle('scrolled', window.scrollY > 20);
     });
 
-    /* ── Demo tabs ── */
-    document.querySelectorAll('.demo-tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        document.querySelectorAll('.demo-tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.demo-panel').forEach(p => p.classList.remove('active'));
-        tab.classList.add('active');
-        document.getElementById(tab.dataset.tab).classList.add('active');
-      });
-    });
-
-    /* ── Scroll reveal for step cards ── */
-    const stepObserver = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          entry.target.classList.add('visible');
-        }
-      });
-    }, { threshold: 0.2 });
-
-    document.querySelectorAll('.step-card').forEach(card => {
-      stepObserver.observe(card);
-    });
-
-    /* ── Auth check: redirect to dashboard if already logged in ── */
-    (function() {
-      const token = localStorage.getItem('vcb_auth_token') || sessionStorage.getItem('vcb_auth_token');
-      // If user is already logged in, show a "Go to Dashboard" nav link
-      if (token) {
-        const navLinks = document.querySelector('.w-nav-links');
-        const signInBtn = navLinks.querySelector('.btn-nav-primary');
-        if (signInBtn) {
-          signInBtn.textContent = 'Dashboard';
-          signInBtn.href = 'index.html';
-        }
+    // Check login state
+    if (localStorage.getItem('vcb_auth_token') || sessionStorage.getItem('vcb_auth_token')) {
+      const btn = document.getElementById('navActionBtn');
+      if(btn) {
+        btn.textContent = 'Dashboard';
+        btn.href = 'index.html';
       }
-    })();
+    }
   </script>
 </body>
 </html>

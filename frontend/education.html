@@ -3,27 +3,28 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Education - Vision Chart Bot</title>
-  <meta name="description" content="Learn every indicator, pivot point, and AI analysis feature in Vision Chart Bot." />
+  <title>Documentation - Vision Chart</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="education-styles.css" />
 </head>
 <body>
-  <nav class="edu-topnav" id="edu-topnav">
-    <a href="welcome.html" class="edu-topnav-brand">
-      <div class="brand-mark"><svg viewBox="0 0 24 24"><path d="M3 3v18h18M9 15l3-3 4 4 5-5"/></svg></div>
-      <span>Vision Chart</span>
-    </a>
-    <div class="edu-topnav-links">
-      <a href="welcome.html">Home</a>
-      <a href="login.html">Dashboard</a>
-      <a href="login.html" class="btn-nav-sm">Sign In</a>
+  <nav class="edu-nav" id="edu-nav">
+    <div class="container edu-nav-inner">
+      <a href="welcome.html" class="edu-brand">
+        <svg viewBox="0 0 24 24"><path d="M3 3v18h18M9 15l3-3 4 4 5-5"/></svg>
+        Vision Chart
+      </a>
+      <div class="edu-nav-links">
+        <a href="welcome.html">Overview</a>
+        <a href="login.html">Dashboard</a>
+        <a href="login.html" class="btn-primary" id="navActionBtn">Sign In</a>
+      </div>
     </div>
   </nav>
 
-  <div class="edu-layout">
-    <nav class="edu-sidebar" id="edu-sidebar"></nav>
+  <div class="container edu-layout">
+    <aside class="edu-sidebar" id="edu-sidebar"></aside>
     <main class="edu-content" id="edu-content"></main>
   </div>
 

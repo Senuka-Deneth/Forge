@@ -453,48 +453,21 @@ export default function App() {
   return (
     <>
       <aside className="sidebar">
-        <div className="sidebar-brand">
-          <div className="brand-text" style={{ paddingLeft: '8px' }}>
-            <span className="brand-name">Vision Chart</span>
-            <span className="brand-sub">Binance Spot · AI Analysis</span>
-          </div>
-        </div>
+        <a href="welcome.html" className="sidebar-brand">
+          <svg viewBox="0 0 24 24" style={{width:'20px', height:'20px', fill:'none', stroke:'currentColor', strokeWidth:2}}><path d="M3 3v18h18M9 15l3-3 4 4 5-5"/></svg>
+          <span className="brand-name">Vision Chart</span>
+        </a>
 
         <nav className="sidebar-nav">
           <div className="nav-section-label">MAIN</div>
-          <a 
-            className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} 
-            onClick={() => setActiveTab('dashboard')}
-            style={{ cursor: 'pointer' }}
-          >
-            <svg viewBox="0 0 24 24"><path d="M4 4h4v4H4zm12 0h4v4h-4zM4 16h4v4H4zm12 0h4v4h-4zM10 4h4v4h-4zm0 12h4v4h-4zm-6-6h4v4H4zm12 0h4v4h-4zm-6 0h4v4h-4z"/></svg>
-            <span>Dashboard</span>
+          <a className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>
+            Dashboard
           </a>
-          <a 
-            className={`nav-item ${activeTab === 'analysis' ? 'active' : ''}`} 
-            onClick={() => setActiveTab('analysis')}
-            style={{ cursor: 'pointer' }}
-          >
-            <svg viewBox="0 0 24 24"><path d="M3 3v18h18M9 15l3-3 4 4 5-5"/></svg>
-            <span>Analysis</span>
+          <a className={`nav-item ${activeTab === 'analysis' ? 'active' : ''}`} onClick={() => setActiveTab('analysis')}>
+            Analysis
           </a>
-          <a 
-            className={`nav-item ${activeTab === 'signals' ? 'active' : ''}`} 
-            onClick={() => setActiveTab('signals')}
-            style={{ cursor: 'pointer' }}
-          >
-            <svg viewBox="0 0 24 24"><path d="M4 2v20h16V2H4zm14 18H6V4h12v16zM8 6h8v2H8V6zm0 4h8v2H8v-2zm0 4h5v2H8v-2z"/></svg>
-            <span>Signals</span>
-          </a>
-          <a 
-            className="nav-item"
-            href="education.html"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ cursor: 'pointer' }}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5-10-5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
-            <span>Learning</span>
+          <a className="nav-item" href="education.html" target="_blank" rel="noopener noreferrer">
+            Learning
           </a>
         </nav>
 
@@ -504,7 +477,7 @@ export default function App() {
               <span className="theme-toggle-label" id="theme-toggle-label">{theme === 'dark' ? 'Light' : 'Dark'}</span>
             </button>
           </div>
-          <button className="btn-ghost sidebar-logout" onClick={logout} style={{ width: '100%', marginTop: '12px', justifyContent: 'center' }}>
+          <button className="btn-secondary sidebar-logout" onClick={logout} style={{ width: '100%', marginTop: '12px', justifyContent: 'center' }}>
             Sign out
           </button>
         </div>
@@ -530,7 +503,7 @@ export default function App() {
         />
 
         {activeTab === 'dashboard' && (
-          <div className="dashboard-grid glass-layout">
+          <div className="dashboard-grid">
             <div className="charts-column">
               <ChartPanel
                 symbol={symbol}
@@ -559,7 +532,7 @@ export default function App() {
         )}
 
         {activeTab === 'analysis' && (
-          <div className="dashboard-grid glass-layout">
+          <div className="dashboard-grid">
             <AIAnalysisPanel
               aiAnalysis={aiAnalysis}
               aiLoading={aiLoading}
@@ -569,11 +542,7 @@ export default function App() {
           </div>
         )}
 
-        {activeTab === 'signals' && (
-          <div className="dashboard-grid glass-layout" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh', color: 'var(--text-muted)' }}>
-            <h2>Signals Module Coming Soon</h2>
-          </div>
-        )}
+
       </div>
     </>
   )

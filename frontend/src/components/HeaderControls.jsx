@@ -11,13 +11,14 @@ export default function HeaderControls({
   return (
     <header className="topbar">
       <div className="topbar-left">
+        <label className="label-caps" style={{marginRight:'12px', color:'var(--text-muted)'}}>Pair</label>
         <div className="symbol-selector-wrap">
           <input
             id="symbol-input"
             className="symbol-input"
             value={symbolInput}
             onChange={(e) => setSymbolInput(e.target.value.toUpperCase())}
-            placeholder="Symbol..."
+            placeholder="BTCUSDT"
           />
           <select
             id="timeframe-select"
@@ -32,7 +33,7 @@ export default function HeaderControls({
             <option value="1w">1W</option>
           </select>
           <button id="load-chart-btn" className="btn-primary" onClick={onLoad}>
-            Load Chart
+            Load
           </button>
         </div>
       </div>
@@ -44,9 +45,6 @@ export default function HeaderControls({
             <span>Live</span>
           </div>
         )}
-        <button className="theme-toggle-btn" onClick={toggleTheme} title="Toggle theme">
-          <span id="theme-icon-topbar">{theme === 'dark' ? 'Dark' : 'Light'}</span>
-        </button>
       </div>
     </header>
   )

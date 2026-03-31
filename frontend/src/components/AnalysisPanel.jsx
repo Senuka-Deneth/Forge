@@ -70,25 +70,37 @@ export default function AnalysisPanel({
         </div>
       </div>
 
-      <div className="panel-card">
+      <div className="panel-card" id="key-levels-panel">
         <div className="panel-card-header">
           <span className="panel-title">Key Levels</span>
         </div>
         <div className="levels-grid">
           <div className="level-item">
-            <span className="level-label">EMA 20</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              <span className="level-label">EMA 20</span>
+              <span style={{ fontFamily: 'var(--font-ui)', fontSize: '11px', color: 'var(--text-muted)' }}>Short-term MA</span>
+            </div>
             <span className="level-value" id="level-ema20">{formatValue(analysis?.ema20)}</span>
           </div>
           <div className="level-item">
-            <span className="level-label">EMA 50</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              <span className="level-label">EMA 50</span>
+              <span style={{ fontFamily: 'var(--font-ui)', fontSize: '11px', color: 'var(--text-muted)' }}>Medium-term MA</span>
+            </div>
             <span className="level-value" id="level-ema50">{formatValue(analysis?.ema50)}</span>
           </div>
           <div className="level-item">
-            <span className="level-label">Support</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              <span className="level-label">Support</span>
+              <span style={{ fontFamily: 'var(--font-ui)', fontSize: '11px', color: 'var(--text-muted)' }}>Nearest floor</span>
+            </div>
             <span className="level-value bull" id="level-support">{formatLevel(analysis?.nearestSupport)}</span>
           </div>
           <div className="level-item">
-            <span className="level-label">Resistance</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              <span className="level-label">Resistance</span>
+              <span style={{ fontFamily: 'var(--font-ui)', fontSize: '11px', color: 'var(--text-muted)' }}>Nearest ceiling</span>
+            </div>
             <span className="level-value bear" id="level-resistance">{formatLevel(analysis?.nearestResistance)}</span>
           </div>
         </div>
@@ -179,28 +191,38 @@ export default function AnalysisPanel({
         </div>
       </div>
 
-      <div className="panel-card wide tall-dashboard-panel">
+      <div className="panel-card wide tall-dashboard-panel" id="trade-logic-panel">
         <div className="panel-card-header">
           <span className="panel-title">Trade Logic</span>
         </div>
         <div className="trade-scenarios">
           <div className="scenario bull-scenario">
-            <div className="scenario-header">Bullish</div>
-            <p id="trade-bull">{analysis?.bullishScenario || '—'}</p>
+            <div className="scenario-header">Bullish Scenario</div>
+            <p id="trade-bull">{analysis?.bullishScenario || 'Awaiting analysis...'}</p>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              padding: '8px 10px',
+              background: 'hsla(358, 68%, 58%, 0.08)',
+              borderRadius: '5px',
+              borderLeft: '2px solid var(--color-bear)',
+            }}>
+              <span style={{ fontFamily: 'var(--font-ui)', fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-bear)', whiteSpace: 'nowrap' }}>Invalidates if</span>
+              <span id="inv-bull" style={{ fontFamily: 'var(--font-ui)', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{analysis?.invalidation || '—'}</span>
+            </div>
           </div>
           <div className="scenario bear-scenario">
-            <div className="scenario-header">Bearish</div>
-            <p id="trade-bear">{analysis?.bearishScenario || '—'}</p>
-          </div>
-        </div>
-        <div className="invalidation-row">
-          <div className="inv-item">
-            <span className="summary-label">Bull invalidation</span>
-            <span id="inv-bull" className="bear">{analysis?.invalidation || '—'}</span>
-          </div>
-          <div className="inv-item">
-            <span className="summary-label">Bear invalidation</span>
-            <span id="inv-bear" className="bull">{analysis?.invalidation || '—'}</span>
+            <div className="scenario-header">Bearish Scenario</div>
+            <p id="trade-bear">{analysis?.bearishScenario || 'Awaiting analysis...'}</p>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              padding: '8px 10px',
+              background: 'hsla(158, 55%, 48%, 0.08)',
+              borderRadius: '5px',
+              borderLeft: '2px solid var(--color-bull)',
+            }}>
+              <span style={{ fontFamily: 'var(--font-ui)', fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-bull)', whiteSpace: 'nowrap' }}>Invalidates if</span>
+              <span id="inv-bear" style={{ fontFamily: 'var(--font-ui)', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{analysis?.invalidation || '—'}</span>
+            </div>
           </div>
         </div>
       </div>

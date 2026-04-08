@@ -1,10 +1,21 @@
 {
   "demo_1775636714572": {
     "showCandles": true,
+    "showEma20": true,
+    "showEma50": true,
+    "showRsi": true,
+    "showMacd": true,
+    "showSupport": false,
+    "showResistance": false,
+    "showPivots": false,
+    "showStandardPivots": false
+  },
+  "test@email.com": {
+    "showCandles": true,
     "showEma20": false,
     "showEma50": false,
-    "showRsi": false,
-    "showMacd": false,
+    "showRsi": true,
+    "showMacd": true,
     "showSupport": false,
     "showResistance": false,
     "showPivots": false,

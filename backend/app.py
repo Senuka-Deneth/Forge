@@ -2,11 +2,23 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
 import re
+import os
+import json
+from pathlib import Path
 from services.openrouter_service import analyze_market, check_openrouter_health
-from utils.pivotPoints import compute_pivots, analyze_price_vs_pivots
+from utils.pivotPoints import (
+    compute_pivots,
+    analyze_price_vs_pivots,
+    get_pivot_period,
+    get_recent_completed_period_candles,
+    calculate_traditional_pivots,
+)
 
 app = Flask(__name__)
 CORS(app)
+
+BACKEND_HOST = os.getenv("BACKEND_HOST", "127.0.0.1")
+BACKEND_PORT = int(os.getenv("BACKEND_PORT", "5050"))
 
 # Check OpenRouter availability at startup
 check_openrouter_health()
@@ -20,6 +32,59 @@ ALLOWED_INTERVALS = {
 }
 
 SYMBOL_REGEX = re.compile(r"^[A-Z0-9]{5,20}$")
+USER_KEY_REGEX = re.compile(r"^[a-zA-Z0-9_.@-]{3,128}$")
+PREFERENCES_FILE = Path(__file__).resolve().parent / "data" / "user_preferences.json"
+
+DEFAULT_CHART_PREFERENCES = {
+    "showCandles": True,
+    "showEma20": False,
+    "showEma50": False,
+    "showRsi": False,
+    "showMacd": False,
+    "showSupport": False,
+    "showResistance": False,
+    "showPivots": False,
+    "showStandardPivots": False,
+}
+
+
+def normalize_user_key(user_key_raw: str) -> str:
+    user_key = (user_key_raw or "").strip().lower()
+    if not USER_KEY_REGEX.fullmatch(user_key):
+        return "guest"
+    return user_key
+
+
+def load_preferences_store():
+    if not PREFERENCES_FILE.exists():
+        return {}
+
+    try:
+        with PREFERENCES_FILE.open("r", encoding="utf-8") as f:
+            content = json.load(f)
+            if isinstance(content, dict):
+                return content
+    except Exception:
+        return {}
+
+    return {}
+
+
+def save_preferences_store(store):
+    PREFERENCES_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with PREFERENCES_FILE.open("w", encoding="utf-8") as f:
+        json.dump(store, f, ensure_ascii=True, indent=2)
+
+
+def sanitize_preferences(payload):
+    if not isinstance(payload, dict):
+        return DEFAULT_CHART_PREFERENCES.copy()
+
+    sanitized = DEFAULT_CHART_PREFERENCES.copy()
+    for key in DEFAULT_CHART_PREFERENCES:
+        if key in payload:
+            sanitized[key] = bool(payload[key])
+    return sanitized
 
 
 def validate_symbol(symbol: str) -> bool:
@@ -30,14 +95,21 @@ def calculate_ema(values, period):
     if not values:
         return []
 
-    ema = []
+    if period <= 0:
+        raise ValueError("EMA period must be greater than 0")
+
+    if len(values) < period:
+        return [None] * len(values)
+
+    ema = [None] * len(values)
     multiplier = 2 / (period + 1)
 
-    for i, value in enumerate(values):
-        if i == 0:
-            ema.append(value)
-        else:
-            ema.append((value - ema[-1]) * multiplier + ema[-1])
+    # Standard EMA seed uses SMA(period) at index period-1.
+    seed = sum(values[:period]) / period
+    ema[period - 1] = seed
+
+    for i in range(period, len(values)):
+        ema[i] = (values[i] - ema[i - 1]) * multiplier + ema[i - 1]
 
     return ema
 
@@ -76,9 +148,27 @@ def calculate_macd(values, fast=12, slow=26, signal=9):
     ema_fast = calculate_ema(values, fast)
     ema_slow = calculate_ema(values, slow)
 
-    macd_line = [ema_fast[i] - ema_slow[i] for i in range(len(values))]
-    signal_line = calculate_ema(macd_line, signal)
-    histogram = [macd_line[i] - signal_line[i] for i in range(len(values))]
+    macd_line = [
+        (ema_fast[i] - ema_slow[i]) if ema_fast[i] is not None and ema_slow[i] is not None else None
+        for i in range(len(values))
+    ]
+
+    compact_macd = [v for v in macd_line if v is not None]
+    compact_signal = calculate_ema(compact_macd, signal)
+
+    signal_line = [None] * len(values)
+    histogram = [None] * len(values)
+    compact_idx = 0
+
+    for i in range(len(values)):
+        if macd_line[i] is None:
+            continue
+
+        sig = compact_signal[compact_idx]
+        signal_line[i] = sig
+        if sig is not None:
+            histogram[i] = macd_line[i] - sig
+        compact_idx += 1
 
     return macd_line, signal_line, histogram
 
@@ -314,7 +404,8 @@ def home():
             "/api/health",
             "/api/klines?symbol=BTCUSDT&interval=4h&limit=300",
             "/api/analyze?symbol=BTCUSDT&interval=4h&limit=300"
-        ]
+        ],
+        "base_url": f"http://{BACKEND_HOST}:{BACKEND_PORT}"
     })
 
 
@@ -453,6 +544,7 @@ def get_pivots():
 
         classic_pivots = compute_pivots(candles, timeframe, "classic")
         fib_pivots = compute_pivots(candles, timeframe, "fibonacci")
+        traditional_pivots = compute_pivots(candles, timeframe, "traditional")
 
         if not classic_pivots or not fib_pivots:
             return jsonify({
@@ -462,6 +554,23 @@ def get_pivots():
 
         classic_analysis = analyze_price_vs_pivots(current_price, classic_pivots)
         fib_analysis = analyze_price_vs_pivots(current_price, fib_pivots)
+        traditional_analysis = analyze_price_vs_pivots(current_price, traditional_pivots)
+
+        standard_period = get_pivot_period(timeframe)
+        completed_periods = get_recent_completed_period_candles(candles, standard_period, count=3)
+        standard_periods = []
+        for period_candle in completed_periods:
+            pivots = calculate_traditional_pivots(
+                period_candle["high"],
+                period_candle["low"],
+                period_candle["close"]
+            )
+            standard_periods.append({
+                "period": period_candle["period"],
+                "startTime": period_candle["startTime"],
+                "endTime": period_candle["endTime"],
+                "pivots": pivots,
+            })
 
         return jsonify({
             "success": True,
@@ -470,10 +579,51 @@ def get_pivots():
             "currentPrice": current_price,
             "classic": {"pivots": classic_pivots, "analysis": classic_analysis},
             "fibonacci": {"pivots": fib_pivots, "analysis": fib_analysis},
+            "traditional": {"pivots": traditional_pivots, "analysis": traditional_analysis},
+            "binance": {"pivots": traditional_pivots, "analysis": traditional_analysis},
+            "standardPeriods": {
+                "periodType": standard_period,
+                "items": standard_periods,
+            },
         })
 
     except Exception as exc:
         print(f"Pivot error: {exc}")
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@app.route("/api/user-preferences", methods=["GET"])
+def get_user_preferences():
+    try:
+        user_key = normalize_user_key(request.args.get("userKey", "guest"))
+        store = load_preferences_store()
+        preferences = sanitize_preferences(store.get(user_key, {}))
+        return jsonify({
+            "success": True,
+            "userKey": user_key,
+            "preferences": preferences,
+        })
+    except Exception as exc:
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@app.route("/api/user-preferences", methods=["POST"])
+def save_user_preferences():
+    try:
+        payload = request.get_json(silent=True) or {}
+        user_key = normalize_user_key(payload.get("userKey", "guest"))
+        preferences = sanitize_preferences(payload.get("preferences", {}))
+
+        store = load_preferences_store()
+        store[user_key] = preferences
+        save_preferences_store(store)
+
+        return jsonify({
+            "success": True,
+            "userKey": user_key,
+            "preferences": preferences,
+        })
+    except Exception as exc:
         return jsonify({"success": False, "error": str(exc)}), 500
 
 
@@ -535,4 +685,4 @@ def validate_env():
 validate_env()
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    app.run(host=BACKEND_HOST, port=BACKEND_PORT, debug=True)

@@ -7,16 +7,32 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-OPENROUTER_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1/chat/completions")
+
+def _resolve_openrouter_url(raw_url: str) -> str:
+    base = (raw_url or "").strip().rstrip("/")
+    if not base:
+        base = "https://openrouter.ai/api/v1"
+
+    # Support both styles:
+    # - https://openrouter.ai/api/v1
+    # - https://openrouter.ai/api/v1/chat/completions
+    if base.endswith("/chat/completions"):
+        return base
+    return f"{base}/chat/completions"
+
+
+OPENROUTER_URL = _resolve_openrouter_url(os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"))
 API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 MODEL = os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3-super-120b-a12b:free")
+BACKEND_PORT = os.getenv("BACKEND_PORT", "5050")
 
 BASE_HEADERS = {
     "Authorization": f"Bearer {API_KEY}",
     "Content-Type": "application/json",
-    "HTTP-Referer": "http://localhost:5000",   # required by OpenRouter
+    "HTTP-Referer": f"http://localhost:{BACKEND_PORT}",   # required by OpenRouter
     "X-Title": "Vision Chart Bot"              # shows in OpenRouter dashboard
 }
+
 
 def extract_json(raw_text):
     if not raw_text:
@@ -39,12 +55,12 @@ def extract_json(raw_text):
     # Try extracting raw JSON object using brace counting
     best = None
     cleaned = raw_text.strip()
-    for start in [m.start() for m in re.finditer(r'\{', cleaned)]:
+    for start in [m.start() for m in re.finditer(r"\{", cleaned)]:
         depth = 0
         for i, ch in enumerate(cleaned[start:], start):
-            if ch == '{':
+            if ch == "{":
                 depth += 1
-            elif ch == '}':
+            elif ch == "}":
                 depth -= 1
                 if depth == 0:
                     candidate = cleaned[start:i + 1]
@@ -61,345 +77,568 @@ def extract_json(raw_text):
 
     raise ValueError("Model did not return parseable JSON. Raw: " + raw_text[:300])
 
-def build_system_prompt():
-    return """You are an elite quantitative trading analyst and market microstructure expert.
 
-You specialize in:
-- Multi-timeframe technical analysis
-- Pivot point theory and confluence detection
-- Market microstructure (order flow, funding rates, open interest)
-- Risk-defined trade scenario construction
+def _safe_float(value, default=None):
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
-Your job is to receive structured live market data and return a precise analysis.
 
-CRITICAL: For this first step, provide your step-by-step reasoning and market analysis. Keep it concise (under 200 words). Do NOT manually calculate every pivot confluence step-by-step.
+def _safe_int(value, default=0):
+    try:
+        if value is None:
+            return default
+        return int(round(float(value)))
+    except (TypeError, ValueError):
+        return default
 
-DO NOT output JSON yet. Just provide your analytical thought process.
-6. Pivot point rules you MUST apply:
-   - Price above PP = session bullish bias
-   - Price below PP = session bearish bias
-   - Price within 0.3% of any pivot level = inflection point → flag it
-   - Pivot level aligning with EMA within 0.5% = high-confluence level → flag it
-   - Use pivot levels as trade targets in bullish/bearish scenarios
-   - R2/S2 break = likely breakout → target R3/S3
-7. RSI rules:
-   - RSI > 70 = overbought warning even in uptrend
-   - RSI < 30 = oversold warning even in downtrend
-   - RSI divergence from price = flag as anomaly
-8. EMA rules:
-   - Price > EMA20 > EMA50 = strong bull alignment
-   - Price < EMA20 < EMA50 = strong bear alignment
-   - EMA20 crossing EMA50 = trend change signal
 
-Return exactly this JSON schema — all fields required:
+def _clamp(value, low, high):
+    return max(low, min(high, value))
 
-{
-  "summary": {
-    "primary_trend": "bullish | bearish | sideways",
-    "momentum": "strong_bullish | bullish | neutral | bearish | strong_bearish",
-    "phase": "accumulation | markup | distribution | markdown | consolidation",
-    "confidence": 0-100,
-    "bias": "long | short | neutral",
-    "reasoning": "one sentence with specific price levels"
-  },
-  "indicators": {
-    "rsi": {
-      "value": 0.0,
-      "state": "overbought | bullish_zone | neutral | bearish_zone | oversold",
-      "divergence": "bullish | bearish | none",
-      "signal": "string"
-    },
-    "macd": {
-      "macd_line": 0.0,
-      "signal_line": 0.0,
-      "histogram": 0.0,
-      "state": "bullish_crossover | bearish_crossover | bullish_momentum | bearish_momentum",
-      "signal": "string"
-    },
-    "ema": {
-      "ema20": 0.0,
-      "ema50": 0.0,
-      "alignment": "bullish | bearish | mixed",
-      "price_vs_ema20": "above | below | at",
-      "price_vs_ema50": "above | below | at",
-      "signal": "string"
-    }
-  },
-  "pivot_analysis": {
-    "pp": 0.0,
-    "current_zone": "string",
-    "session_bias": "bullish | bearish | neutral",
-    "nearest_pivot_resistance": { "label": "string", "value": 0.0 },
-    "nearest_pivot_support": { "label": "string", "value": 0.0 },
-    "distance_to_pivot_resistance_pct": 0.0,
-    "distance_to_pivot_support_pct": 0.0,
-    "at_inflection_point": false,
-    "inflection_level": "string or null",
-    "pivot_target_bull": { "label": "string", "value": 0.0 },
-    "pivot_target_bear": { "label": "string", "value": 0.0 },
-    "confluences": [
-      {
-        "level": "string",
-        "price": 0.0,
-        "confluent_with": "string",
-        "significance": "high | medium | low"
-      }
-    ],
-    "pivot_signal": "string"
-  },
-  "structure": {
-    "nearest_support": 0.0,
-    "nearest_resistance": 0.0,
-    "key_support_levels": [0.0, 0.0, 0.0],
-    "key_resistance_levels": [0.0, 0.0, 0.0],
-    "swing_highs": [0.0, 0.0],
-    "swing_lows": [0.0, 0.0],
-    "range_bound": false,
-    "breakout_watch": "bullish | bearish | none"
-  },
-  "order_flow": {
-    "obi": 0.0,
-    "tfi": 0.0,
-    "dominant_side": "buyers | sellers | neutral",
-    "interpretation": "string"
-  },
-  "trade_logic": {
-    "bullish_scenario": "string with pivot target level",
-    "bearish_scenario": "string with pivot target level",
-    "invalidation_bull": 0.0,
-    "invalidation_bear": 0.0,
-    "suggested_bias": "long | short | wait",
-    "risk_note": "string"
-  },
-  "anomalies": [
-    {
-      "type": "divergence | liquidity_trap | trend_exhaustion | pivot_confluence | volume_spike | none",
-      "description": "string",
-      "severity": "low | medium | high"
-    }
-  ],
-  "market_regime": {
-    "volatility": "low | medium | high",
-    "trend_strength": 0,
-    "is_trending": false,
-    "regime": "trending | ranging | breakout | reversal"
-  }
-}"""
 
-def build_first_user_message(data):
-    pivots_data = data.get("pivots")
-    if pivots_data:
-        pivot_section = f"""--- PIVOT POINTS (Classic) ---
-PP:  {pivots_data['classic'].get('PP', 'N/A')}
-R1:  {pivots_data['classic'].get('R1', 'N/A')}
-R2:  {pivots_data['classic'].get('R2', 'N/A')}
-R3:  {pivots_data['classic'].get('R3', 'N/A')}
-S1:  {pivots_data['classic'].get('S1', 'N/A')}
-S2:  {pivots_data['classic'].get('S2', 'N/A')}
-S3:  {pivots_data['classic'].get('S3', 'N/A')}
+def _as_enum(value, allowed, default):
+    s = str(value).strip().lower() if value is not None else ""
+    return s if s in allowed else default
 
---- PIVOT POINTS (Fibonacci) ---
-PP:  {pivots_data.get('fibonacci', {}).get('PP', 'N/A')}
-R1 (38.2%):  {pivots_data.get('fibonacci', {}).get('R1', 'N/A')}
-R2 (61.8%):  {pivots_data.get('fibonacci', {}).get('R2', 'N/A')}
-R3 (100.0%): {pivots_data.get('fibonacci', {}).get('R3', 'N/A')}
-S1 (38.2%):  {pivots_data.get('fibonacci', {}).get('S1', 'N/A')}
-S2 (61.8%):  {pivots_data.get('fibonacci', {}).get('S2', 'N/A')}
-S3 (100.0%): {pivots_data.get('fibonacci', {}).get('S3', 'N/A')}
 
---- PIVOT CONTEXT ---
-Current Zone:              {pivots_data.get('analysis', {}).get('zone', 'N/A')}
-Session Bias:              {pivots_data.get('analysis', {}).get('bias', 'N/A')}
-Nearest Pivot Resistance:  {pivots_data.get('analysis', {}).get('nearestPivotResistance', {}).get('label', 'N/A') if pivots_data.get('analysis', {}).get('nearestPivotResistance') else 'N/A'} @ {pivots_data.get('analysis', {}).get('nearestPivotResistance', {}).get('value', 'N/A') if pivots_data.get('analysis', {}).get('nearestPivotResistance') else 'N/A'}
-Nearest Pivot Support:     {pivots_data.get('analysis', {}).get('nearestPivotSupport', {}).get('label', 'N/A') if pivots_data.get('analysis', {}).get('nearestPivotSupport') else 'N/A'} @ {pivots_data.get('analysis', {}).get('nearestPivotSupport', {}).get('value', 'N/A') if pivots_data.get('analysis', {}).get('nearestPivotSupport') else 'N/A'}
-Distance to Resistance:    {pivots_data.get('analysis', {}).get('distToResistance', 'N/A')}%
-Distance to Support:       {pivots_data.get('analysis', {}).get('distToSupport', 'N/A')}%
-At Inflection Point:       {pivots_data.get('analysis', {}).get('atInflectionPoint', False)}
-Inflection Level:          {pivots_data.get('analysis', {}).get('inflectionLevel', {}).get('label', 'None') if pivots_data.get('analysis', {}).get('inflectionLevel') else 'None'} @ {pivots_data.get('analysis', {}).get('inflectionLevel', {}).get('value', 'N/A') if pivots_data.get('analysis', {}).get('inflectionLevel') else 'N/A'}
-"""
+def _normalize_label_value(item):
+    if not isinstance(item, dict):
+        return None
+    label = str(item.get("label", "")).strip() or "N/A"
+    value = _safe_float(item.get("value"), None)
+    if value is None:
+        return None
+    return {"label": label, "value": round(value, 6)}
+
+
+def _derive_rsi_state(rsi):
+    if rsi is None:
+        return "neutral"
+    if rsi >= 70:
+        return "overbought"
+    if rsi <= 30:
+        return "oversold"
+    if rsi >= 55:
+        return "bullish_zone"
+    if rsi <= 45:
+        return "bearish_zone"
+    return "neutral"
+
+
+def _derive_alignment(price, ema20, ema50):
+    if price is None or ema20 is None or ema50 is None:
+        return "mixed", "at", "at", "EMA data unavailable."
+
+    tol20 = abs(price) * 0.0001 if price else 0.0
+    tol50 = abs(price) * 0.0001 if price else 0.0
+
+    p20 = "at" if abs(price - ema20) <= tol20 else ("above" if price > ema20 else "below")
+    p50 = "at" if abs(price - ema50) <= tol50 else ("above" if price > ema50 else "below")
+
+    if price > ema20 > ema50:
+        return "bullish", p20, p50, "Price and short EMA are stacked above EMA50 (bullish alignment)."
+    if price < ema20 < ema50:
+        return "bearish", p20, p50, "Price and short EMA are stacked below EMA50 (bearish alignment)."
+    return "mixed", p20, p50, "EMA structure is mixed; no clean directional stack."
+
+
+def _build_deterministic_fallback(data, reason="fallback"):
+    price = _safe_float(data.get("price"), 0.0)
+    rsi = _safe_float(data.get("rsi"), None)
+    ema20 = _safe_float(data.get("ema20"), None)
+    ema50 = _safe_float(data.get("ema50"), None)
+
+    macd_obj = data.get("macd") or {}
+    macd_line = _safe_float(macd_obj.get("macd"), None)
+    signal_line = _safe_float(macd_obj.get("signal"), None)
+    histogram = _safe_float(macd_obj.get("histogram"), None)
+
+    pivots = (data.get("pivots") or {}).get("classic") or {}
+    pivot_analysis_raw = (data.get("pivots") or {}).get("analysis") or {}
+
+    pp = _safe_float(pivots.get("PP"), None)
+
+    alignment, p_vs_20, p_vs_50, ema_signal = _derive_alignment(price, ema20, ema50)
+
+    if alignment == "bullish":
+        primary_trend = "bullish"
+    elif alignment == "bearish":
+        primary_trend = "bearish"
     else:
-        pivot_section = "--- PIVOT POINTS ---\nNot available\n"
+        primary_trend = "sideways"
 
-    return f"""Perform a complete market analysis for the following data.
+    if macd_line is not None and signal_line is not None:
+        if macd_line > signal_line and (rsi is None or rsi >= 50):
+            momentum = "bullish"
+        elif macd_line < signal_line and (rsi is None or rsi <= 50):
+            momentum = "bearish"
+        else:
+            momentum = "neutral"
+    else:
+        momentum = "neutral"
 
-=== MARKET DATA ===
-Symbol:       {data.get('symbol')}
-Timeframe:    {data.get('timeframe')}
-Price:        {data.get('price')}
-Change:       {data.get('change')}%
-Volume:       {data.get('volume')}
+    if momentum == "bullish" and rsi is not None and rsi >= 70:
+        momentum = "strong_bullish"
+    if momentum == "bearish" and rsi is not None and rsi <= 30:
+        momentum = "strong_bearish"
 
-=== INDICATORS ===
-RSI (14):     {data.get('rsi')}
-EMA 20:       {data.get('ema20')}
-EMA 50:       {data.get('ema50')}
-MACD Line:    {data.get('macd', {}).get('macd')}
-Signal Line:  {data.get('macd', {}).get('signal')}
-Histogram:    {data.get('macd', {}).get('histogram')}
+    bias = "neutral"
+    if primary_trend == "bullish" and momentum in {"bullish", "strong_bullish"}:
+        bias = "long"
+    elif primary_trend == "bearish" and momentum in {"bearish", "strong_bearish"}:
+        bias = "short"
 
-=== PRICE STRUCTURE ===
-Swing Highs:        {json.dumps(data.get('swingHighs', []))}
-Swing Lows:         {json.dumps(data.get('swingLows', []))}
-Nearest Support:    {data.get('support')}
-Nearest Resistance: {data.get('resistance')}
-Last 5 Closes:      {json.dumps(data.get('recentCloses', []))}
-Last 5 Volumes:     {json.dumps(data.get('recentVolumes', []))}
+    nearest_res = _normalize_label_value(pivot_analysis_raw.get("nearestPivotResistance") or pivot_analysis_raw.get("nearestResistance"))
+    nearest_sup = _normalize_label_value(pivot_analysis_raw.get("nearestPivotSupport") or pivot_analysis_raw.get("nearestSupport"))
 
-=== ORDER FLOW ===
-OBI:              {data.get('obi', 'N/A') or 'N/A'}
-TFI:              {data.get('tfi', 'N/A') or 'N/A'}
-Funding Rate:     {data.get('fundingRate', 'N/A') or 'N/A'}
-OI Delta:         {data.get('oiDelta', 'N/A') or 'N/A'}
+    inflection_obj = pivot_analysis_raw.get("inflectionLevel")
+    inflection_text = None
+    if isinstance(inflection_obj, dict):
+        il = _normalize_label_value(inflection_obj)
+        if il:
+            inflection_text = f"{il['label']} @ {il['value']}"
+    elif inflection_obj:
+        inflection_text = str(inflection_obj)
 
-{pivot_section}
+    distance_res = _safe_float(pivot_analysis_raw.get("distToResistance"), None)
+    distance_sup = _safe_float(pivot_analysis_raw.get("distToSupport"), None)
 
-=== CONFLUENCE CHECK ===
-Check if any pivot level is within 0.5% of:
-- EMA20 ({data.get('ema20')})
-- EMA50 ({data.get('ema50')})
-- Any swing high: {json.dumps(data.get('swingHighs', [])[:3])}
-- Any swing low:  {json.dumps(data.get('swingLows', [])[:3])}
-Flag each match as a confluence in your analysis.
+    swing_highs = [
+        _safe_float(x, None) for x in (data.get("swingHighs") or [])
+    ]
+    swing_lows = [
+        _safe_float(x, None) for x in (data.get("swingLows") or [])
+    ]
+    swing_highs = [x for x in swing_highs if x is not None][-3:]
+    swing_lows = [x for x in swing_lows if x is not None][-3:]
 
-Return the complete JSON analysis object now."""
+    nearest_support = _safe_float(data.get("support"), None)
+    nearest_resistance = _safe_float(data.get("resistance"), None)
 
-def build_verification_message(data):
-    return f"""Review your analysis carefully before finalizing.
+    if nearest_res is None and nearest_resistance is not None:
+        nearest_res = {"label": "local_res", "value": round(nearest_resistance, 6)}
+    if nearest_sup is None and nearest_support is not None:
+        nearest_sup = {"label": "local_sup", "value": round(nearest_support, 6)}
 
-Verify these specific points:
+    confluences = []
+    if pp is not None and ema20 is not None and price:
+        if abs(pp - ema20) / abs(price) <= 0.005:
+            confluences.append({
+                "level": "PP",
+                "price": round(pp, 6),
+                "confluent_with": "EMA20",
+                "significance": "medium",
+            })
+    if pp is not None and ema50 is not None and price:
+        if abs(pp - ema50) / abs(price) <= 0.005:
+            confluences.append({
+                "level": "PP",
+                "price": round(pp, 6),
+                "confluent_with": "EMA50",
+                "significance": "medium",
+            })
 
-1. PIVOT CONSISTENCY
-   - Does session_bias match the price vs PP relationship?
-   - Price is {data.get('price')}, PP is {data.get('pivots', {}).get('classic', {}).get('PP', 'unknown')}.
-   - Are pivot_target_bull and pivot_target_bear actual pivot levels from the data?
-   - Did you correctly identify all confluences within 0.5%?
+    confidence = 55
+    if primary_trend in {"bullish", "bearish"}:
+        confidence += 10
+    if momentum in {"bullish", "bearish", "strong_bullish", "strong_bearish"}:
+        confidence += 10
+    if nearest_res is not None:
+        confidence += 5
+    if nearest_sup is not None:
+        confidence += 5
+    confidence = _clamp(confidence, 20, 95)
 
-2. SIGNAL CONSISTENCY
-   - Does your overall bias match the combined RSI + MACD + EMA signals?
-   - If signals conflict, is confidence score appropriately reduced?
-   - Is the suggested_bias consistent with primary_trend and momentum?
+    if primary_trend == "bullish":
+        phase = "markup"
+    elif primary_trend == "bearish":
+        phase = "markdown"
+    else:
+        phase = "consolidation"
 
-3. PRICE LEVEL ACCURACY
-   - Are invalidation levels real numbers from the data?
-   - Are support/resistance levels taken directly from the provided data?
-   - No invented price levels.
+    breakout_watch = "none"
+    if primary_trend == "bullish" and nearest_res is not None:
+        breakout_watch = "bullish"
+    elif primary_trend == "bearish" and nearest_sup is not None:
+        breakout_watch = "bearish"
 
-4. ANOMALY CHECK
-   - Is RSI diverging from price direction?
-   - Is there unusual volume relative to recent candles?
-   - Is price at a high-confluence inflection point?
+    anomalies = []
+    if rsi is not None and rsi >= 70:
+        anomalies.append({"type": "trend_exhaustion", "description": "RSI is overbought.", "severity": "medium"})
+    elif rsi is not None and rsi <= 30:
+        anomalies.append({"type": "trend_exhaustion", "description": "RSI is oversold.", "severity": "medium"})
 
-CRITICAL: DO NOT WRITE ANY TEXT OR REASONING TO VERIFY. YOU MUST IMMEDIATELY START YOUR RESPONSE WITH THE JSON OBJECT STARTING WITH '{{'. Failure to do so will break the system.
+    if not anomalies:
+        anomalies = [{"type": "none", "description": "No deterministic anomaly triggered.", "severity": "low"}]
 
-If any of the above are wrong in your first response, correct them directly in the output JSON.
-Return the final corrected and complete JSON object only."""
+    regime = "ranging" if primary_trend == "sideways" else "trending"
+
+    return {
+        "summary": {
+            "primary_trend": primary_trend,
+            "momentum": momentum,
+            "phase": phase,
+            "confidence": confidence,
+            "bias": bias,
+            "reasoning": f"Fallback analysis: price {price} with EMA alignment {alignment} and RSI state {_derive_rsi_state(rsi)}.",
+        },
+        "indicators": {
+            "rsi": {
+                "value": rsi,
+                "state": _derive_rsi_state(rsi),
+                "divergence": "none",
+                "signal": "RSI interpreted with standard 70/30 thresholds.",
+            },
+            "macd": {
+                "macd_line": macd_line,
+                "signal_line": signal_line,
+                "histogram": histogram,
+                "state": "bullish_momentum" if macd_line is not None and signal_line is not None and macd_line > signal_line else "bearish_momentum" if macd_line is not None and signal_line is not None and macd_line < signal_line else "bullish_momentum",
+                "signal": "MACD interpreted from line-vs-signal relationship.",
+            },
+            "ema": {
+                "ema20": ema20,
+                "ema50": ema50,
+                "alignment": alignment,
+                "price_vs_ema20": p_vs_20,
+                "price_vs_ema50": p_vs_50,
+                "signal": ema_signal,
+            },
+        },
+        "pivot_analysis": {
+            "pp": pp,
+            "current_zone": str(pivot_analysis_raw.get("zone", "unknown")).lower(),
+            "session_bias": _as_enum(pivot_analysis_raw.get("bias"), {"bullish", "bearish", "neutral"}, "neutral"),
+            "nearest_pivot_resistance": nearest_res,
+            "nearest_pivot_support": nearest_sup,
+            "distance_to_pivot_resistance_pct": distance_res,
+            "distance_to_pivot_support_pct": distance_sup,
+            "at_inflection_point": bool(pivot_analysis_raw.get("atInflectionPoint", False)),
+            "inflection_level": inflection_text,
+            "pivot_target_bull": nearest_res,
+            "pivot_target_bear": nearest_sup,
+            "confluences": confluences,
+            "pivot_signal": "Use pivot levels as context, not standalone triggers.",
+        },
+        "structure": {
+            "nearest_support": nearest_support,
+            "nearest_resistance": nearest_resistance,
+            "key_support_levels": swing_lows,
+            "key_resistance_levels": swing_highs,
+            "swing_highs": swing_highs[-2:],
+            "swing_lows": swing_lows[-2:],
+            "range_bound": primary_trend == "sideways",
+            "breakout_watch": breakout_watch,
+        },
+        "order_flow": {
+            "obi": _safe_float(data.get("obi"), 0.0),
+            "tfi": _safe_float(data.get("tfi"), 0.0),
+            "dominant_side": "neutral",
+            "interpretation": "Order-flow metrics not provided by source payload.",
+        },
+        "trade_logic": {
+            "bullish_scenario": "Bull case strengthens on hold above EMA20 and reclaim of nearest resistance.",
+            "bearish_scenario": "Bear case strengthens on rejection below EMA20 and loss of nearest support.",
+            "invalidation_bull": nearest_support,
+            "invalidation_bear": nearest_resistance,
+            "suggested_bias": "long" if bias == "long" else "short" if bias == "short" else "wait",
+            "risk_note": "Use strict risk limits; this analysis is informational only.",
+        },
+        "anomalies": anomalies,
+        "market_regime": {
+            "volatility": "medium",
+            "trend_strength": 70 if regime == "trending" else 35,
+            "is_trending": regime == "trending",
+            "regime": regime,
+        },
+        "_meta": {
+            "model": MODEL,
+            "source": reason,
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "validated": True,
+        },
+    }
+
+
+def _normalize_and_validate_analysis(parsed, market_data):
+    base = _build_deterministic_fallback(market_data, reason="normalized")
+
+    if not isinstance(parsed, dict):
+        base["_meta"]["normalization_note"] = "Model output was not an object; fallback used."
+        return base
+
+    out = base
+
+    summary = parsed.get("summary") if isinstance(parsed.get("summary"), dict) else {}
+    out["summary"] = {
+        "primary_trend": _as_enum(summary.get("primary_trend"), {"bullish", "bearish", "sideways"}, out["summary"]["primary_trend"]),
+        "momentum": _as_enum(summary.get("momentum"), {"strong_bullish", "bullish", "neutral", "bearish", "strong_bearish"}, out["summary"]["momentum"]),
+        "phase": _as_enum(summary.get("phase"), {"accumulation", "markup", "distribution", "markdown", "consolidation"}, out["summary"]["phase"]),
+        "confidence": _clamp(_safe_int(summary.get("confidence"), out["summary"]["confidence"]), 0, 100),
+        "bias": _as_enum(summary.get("bias"), {"long", "short", "neutral"}, out["summary"]["bias"]),
+        "reasoning": str(summary.get("reasoning") or out["summary"]["reasoning"]),
+    }
+
+    indicators = parsed.get("indicators") if isinstance(parsed.get("indicators"), dict) else {}
+    rsi_obj = indicators.get("rsi") if isinstance(indicators.get("rsi"), dict) else {}
+    macd_obj = indicators.get("macd") if isinstance(indicators.get("macd"), dict) else {}
+    ema_obj = indicators.get("ema") if isinstance(indicators.get("ema"), dict) else {}
+
+    out["indicators"] = {
+        "rsi": {
+            "value": _safe_float(rsi_obj.get("value"), out["indicators"]["rsi"]["value"]),
+            "state": _as_enum(rsi_obj.get("state"), {"overbought", "bullish_zone", "neutral", "bearish_zone", "oversold"}, out["indicators"]["rsi"]["state"]),
+            "divergence": _as_enum(rsi_obj.get("divergence"), {"bullish", "bearish", "none"}, out["indicators"]["rsi"]["divergence"]),
+            "signal": str(rsi_obj.get("signal") or out["indicators"]["rsi"]["signal"]),
+        },
+        "macd": {
+            "macd_line": _safe_float(macd_obj.get("macd_line"), out["indicators"]["macd"]["macd_line"]),
+            "signal_line": _safe_float(macd_obj.get("signal_line"), out["indicators"]["macd"]["signal_line"]),
+            "histogram": _safe_float(macd_obj.get("histogram"), out["indicators"]["macd"]["histogram"]),
+            "state": _as_enum(macd_obj.get("state"), {"bullish_crossover", "bearish_crossover", "bullish_momentum", "bearish_momentum"}, out["indicators"]["macd"]["state"]),
+            "signal": str(macd_obj.get("signal") or out["indicators"]["macd"]["signal"]),
+        },
+        "ema": {
+            "ema20": _safe_float(ema_obj.get("ema20"), out["indicators"]["ema"]["ema20"]),
+            "ema50": _safe_float(ema_obj.get("ema50"), out["indicators"]["ema"]["ema50"]),
+            "alignment": _as_enum(ema_obj.get("alignment"), {"bullish", "bearish", "mixed"}, out["indicators"]["ema"]["alignment"]),
+            "price_vs_ema20": _as_enum(ema_obj.get("price_vs_ema20"), {"above", "below", "at"}, out["indicators"]["ema"]["price_vs_ema20"]),
+            "price_vs_ema50": _as_enum(ema_obj.get("price_vs_ema50"), {"above", "below", "at"}, out["indicators"]["ema"]["price_vs_ema50"]),
+            "signal": str(ema_obj.get("signal") or out["indicators"]["ema"]["signal"]),
+        },
+    }
+
+    pa = parsed.get("pivot_analysis") if isinstance(parsed.get("pivot_analysis"), dict) else {}
+    nearest_res = _normalize_label_value(pa.get("nearest_pivot_resistance")) or _normalize_label_value(pa.get("nearestResistance")) or out["pivot_analysis"]["nearest_pivot_resistance"]
+    nearest_sup = _normalize_label_value(pa.get("nearest_pivot_support")) or _normalize_label_value(pa.get("nearestSupport")) or out["pivot_analysis"]["nearest_pivot_support"]
+
+    inflection_level = pa.get("inflection_level")
+    if isinstance(inflection_level, dict):
+        il = _normalize_label_value(inflection_level)
+        inflection_level = f"{il['label']} @ {il['value']}" if il else None
+    elif inflection_level is not None:
+        inflection_level = str(inflection_level)
+
+    confluences = []
+    raw_conf = pa.get("confluences") if isinstance(pa.get("confluences"), list) else []
+    for c in raw_conf:
+        if not isinstance(c, dict):
+            continue
+        confluences.append({
+            "level": str(c.get("level") or "N/A"),
+            "price": _safe_float(c.get("price"), None),
+            "confluent_with": str(c.get("confluent_with") or "unknown"),
+            "significance": _as_enum(c.get("significance"), {"high", "medium", "low"}, "low"),
+        })
+    confluences = [x for x in confluences if x["price"] is not None]
+
+    out["pivot_analysis"] = {
+        "pp": _safe_float(pa.get("pp"), out["pivot_analysis"]["pp"]),
+        "current_zone": str(pa.get("current_zone") or out["pivot_analysis"]["current_zone"]),
+        "session_bias": _as_enum(pa.get("session_bias"), {"bullish", "bearish", "neutral"}, out["pivot_analysis"]["session_bias"]),
+        "nearest_pivot_resistance": nearest_res,
+        "nearest_pivot_support": nearest_sup,
+        "distance_to_pivot_resistance_pct": _safe_float(pa.get("distance_to_pivot_resistance_pct"), out["pivot_analysis"]["distance_to_pivot_resistance_pct"]),
+        "distance_to_pivot_support_pct": _safe_float(pa.get("distance_to_pivot_support_pct"), out["pivot_analysis"]["distance_to_pivot_support_pct"]),
+        "at_inflection_point": bool(pa.get("at_inflection_point", out["pivot_analysis"]["at_inflection_point"])),
+        "inflection_level": inflection_level if inflection_level is not None else out["pivot_analysis"]["inflection_level"],
+        "pivot_target_bull": _normalize_label_value(pa.get("pivot_target_bull")) or nearest_res,
+        "pivot_target_bear": _normalize_label_value(pa.get("pivot_target_bear")) or nearest_sup,
+        "confluences": confluences if confluences else out["pivot_analysis"]["confluences"],
+        "pivot_signal": str(pa.get("pivot_signal") or out["pivot_analysis"]["pivot_signal"]),
+    }
+
+    structure = parsed.get("structure") if isinstance(parsed.get("structure"), dict) else {}
+    out["structure"] = {
+        "nearest_support": _safe_float(structure.get("nearest_support"), out["structure"]["nearest_support"]),
+        "nearest_resistance": _safe_float(structure.get("nearest_resistance"), out["structure"]["nearest_resistance"]),
+        "key_support_levels": [x for x in [_safe_float(v, None) for v in (structure.get("key_support_levels") or out["structure"]["key_support_levels"])] if x is not None][:5],
+        "key_resistance_levels": [x for x in [_safe_float(v, None) for v in (structure.get("key_resistance_levels") or out["structure"]["key_resistance_levels"])] if x is not None][:5],
+        "swing_highs": [x for x in [_safe_float(v, None) for v in (structure.get("swing_highs") or out["structure"]["swing_highs"])] if x is not None][:5],
+        "swing_lows": [x for x in [_safe_float(v, None) for v in (structure.get("swing_lows") or out["structure"]["swing_lows"])] if x is not None][:5],
+        "range_bound": bool(structure.get("range_bound", out["structure"]["range_bound"])),
+        "breakout_watch": _as_enum(structure.get("breakout_watch"), {"bullish", "bearish", "none"}, out["structure"]["breakout_watch"]),
+    }
+
+    order_flow = parsed.get("order_flow") if isinstance(parsed.get("order_flow"), dict) else {}
+    out["order_flow"] = {
+        "obi": _safe_float(order_flow.get("obi"), out["order_flow"]["obi"]),
+        "tfi": _safe_float(order_flow.get("tfi"), out["order_flow"]["tfi"]),
+        "dominant_side": _as_enum(order_flow.get("dominant_side"), {"buyers", "sellers", "neutral"}, out["order_flow"]["dominant_side"]),
+        "interpretation": str(order_flow.get("interpretation") or out["order_flow"]["interpretation"]),
+    }
+
+    tl = parsed.get("trade_logic") if isinstance(parsed.get("trade_logic"), dict) else {}
+    out["trade_logic"] = {
+        "bullish_scenario": str(tl.get("bullish_scenario") or out["trade_logic"]["bullish_scenario"]),
+        "bearish_scenario": str(tl.get("bearish_scenario") or out["trade_logic"]["bearish_scenario"]),
+        "invalidation_bull": _safe_float(tl.get("invalidation_bull"), out["trade_logic"]["invalidation_bull"]),
+        "invalidation_bear": _safe_float(tl.get("invalidation_bear"), out["trade_logic"]["invalidation_bear"]),
+        "suggested_bias": _as_enum(tl.get("suggested_bias"), {"long", "short", "wait"}, out["trade_logic"]["suggested_bias"]),
+        "risk_note": str(tl.get("risk_note") or out["trade_logic"]["risk_note"]),
+    }
+
+    anomalies = parsed.get("anomalies") if isinstance(parsed.get("anomalies"), list) else []
+    norm_anomalies = []
+    for a in anomalies:
+        if not isinstance(a, dict):
+            continue
+        norm_anomalies.append({
+            "type": _as_enum(a.get("type"), {"divergence", "liquidity_trap", "trend_exhaustion", "pivot_confluence", "volume_spike", "none"}, "none"),
+            "description": str(a.get("description") or ""),
+            "severity": _as_enum(a.get("severity"), {"low", "medium", "high"}, "low"),
+        })
+    out["anomalies"] = norm_anomalies if norm_anomalies else out["anomalies"]
+
+    mr = parsed.get("market_regime") if isinstance(parsed.get("market_regime"), dict) else {}
+    out["market_regime"] = {
+        "volatility": _as_enum(mr.get("volatility"), {"low", "medium", "high"}, out["market_regime"]["volatility"]),
+        "trend_strength": _clamp(_safe_int(mr.get("trend_strength"), out["market_regime"]["trend_strength"]), 0, 100),
+        "is_trending": bool(mr.get("is_trending", out["market_regime"]["is_trending"])),
+        "regime": _as_enum(mr.get("regime"), {"trending", "ranging", "breakout", "reversal"}, out["market_regime"]["regime"]),
+    }
+
+    out["_meta"] = {
+        "model": MODEL,
+        "source": "openrouter",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "validated": True,
+        "normalization": "strict",
+    }
+
+    return out
+
+
+def build_system_prompt():
+    return """You are an elite quantitative trading analyst.
+
+You MUST return one valid JSON object only (no markdown, no prose before/after).
+Keep output concise and data-grounded.
+Do not invent unavailable values.
+If a field is uncertain, use neutral values and short notes.
+
+Required output schema keys:
+summary, indicators, pivot_analysis, structure, order_flow, trade_logic, anomalies, market_regime.
+
+Core rules:
+- Price above PP => bullish session bias; below PP => bearish.
+- RSI >= 70 overbought, RSI <= 30 oversold.
+- MACD bullish when MACD line > signal line.
+- EMA alignment bullish if price > ema20 > ema50; bearish if price < ema20 < ema50; else mixed.
+"""
+
+
+def build_user_message(data):
+    pivots_data = data.get("pivots") or {}
+    classic = pivots_data.get("classic") or {}
+    fib = pivots_data.get("fibonacci") or {}
+    traditional = pivots_data.get("traditional") or pivots_data.get("binance") or {}
+    analysis = pivots_data.get("analysis") or {}
+
+    return f"""Analyze this market payload and return strict JSON only.
+
+MARKET:
+- symbol: {data.get('symbol')}
+- timeframe: {data.get('timeframe')}
+- price: {data.get('price')}
+- change_pct: {data.get('change')}
+- volume: {data.get('volume')}
+
+INDICATORS:
+- rsi14: {data.get('rsi')}
+- ema20: {data.get('ema20')}
+- ema50: {data.get('ema50')}
+- macd_line: {(data.get('macd') or {}).get('macd')}
+- macd_signal: {(data.get('macd') or {}).get('signal')}
+- macd_histogram: {(data.get('macd') or {}).get('histogram')}
+
+STRUCTURE:
+- swing_highs: {json.dumps(data.get('swingHighs', []))}
+- swing_lows: {json.dumps(data.get('swingLows', []))}
+- nearest_support: {data.get('support')}
+- nearest_resistance: {data.get('resistance')}
+- recent_closes: {json.dumps(data.get('recentCloses', []))}
+- recent_volumes: {json.dumps(data.get('recentVolumes', []))}
+
+PIVOTS_CLASSIC:
+- PP: {classic.get('PP')}
+- R1: {classic.get('R1')}  R2: {classic.get('R2')}  R3: {classic.get('R3')}
+- S1: {classic.get('S1')}  S2: {classic.get('S2')}  S3: {classic.get('S3')}
+
+PIVOTS_FIB:
+- PP: {fib.get('PP')}
+- R1: {fib.get('R1')}  R2: {fib.get('R2')}  R3: {fib.get('R3')}
+- S1: {fib.get('S1')}  S2: {fib.get('S2')}  S3: {fib.get('S3')}
+
+PIVOTS_TRADITIONAL / BINANCE:
+- PP: {traditional.get('PP')}
+- R1: {traditional.get('R1')}  R2: {traditional.get('R2')}  R3: {traditional.get('R3')}  R4: {traditional.get('R4')}  R5: {traditional.get('R5')}
+- S1: {traditional.get('S1')}  S2: {traditional.get('S2')}  S3: {traditional.get('S3')}  S4: {traditional.get('S4')}  S5: {traditional.get('S5')}
+
+PIVOT_CONTEXT:
+- zone: {analysis.get('zone')}
+- bias: {analysis.get('bias')}
+- nearest_pivot_resistance: {json.dumps(analysis.get('nearestPivotResistance'))}
+- nearest_pivot_support: {json.dumps(analysis.get('nearestPivotSupport'))}
+- dist_to_res_pct: {analysis.get('distToResistance')}
+- dist_to_sup_pct: {analysis.get('distToSupport')}
+- at_inflection: {analysis.get('atInflectionPoint')}
+- inflection_level: {json.dumps(analysis.get('inflectionLevel'))}
+"""
+
 
 def analyze_market(market_data):
     system_prompt = build_system_prompt()
-    first_user_msg = build_first_user_message(market_data)
-    second_user_msg = build_verification_message(market_data)
+    user_msg = build_user_message(market_data)
 
-    # Turn 1
-    turn1_response = requests.post(
-        OPENROUTER_URL,
-        json={
-            "model": MODEL,
-            "messages": [
-                { "role": "system", "content": system_prompt },
-                { "role": "user", "content": first_user_msg }
-            ],
-            "temperature": 0.1,
-            "max_tokens": 8192
-        },
-        headers=BASE_HEADERS,
-        timeout=300
-    )
-    turn1_response.raise_for_status()
-    
-    turn1_data = turn1_response.json()
-    with open('/tmp/openrouter_logs.txt', 'a') as f:
-        f.write("TURN 1:\\n" + turn1_response.text + "\\n")
-    print("TURN 1 RESPONSE:", json.dumps(turn1_data, indent=2))
-    
-    choices = turn1_data.get("choices", [])
-    if not choices:
-        raise ValueError("Turn 1 failed. No choices returned. Raw response: " + turn1_response.text)
-        
-    assistant_msg = choices[0].get("message", {})
-    turn1_content = assistant_msg.get("content") or ""
-
-    # Preserve reasoning_details or thought if passed by OpenRouter
-    conversation_history = [
-        { "role": "system", "content": system_prompt },
-        { "role": "user", "content": first_user_msg },
-        {
-            "role": "assistant",
-            "content": turn1_content
-        },
-        { "role": "user", "content": second_user_msg }
-    ]
-    
-    # Check for OpenRouter specific thought/reasoning objects
-    if "reasoning" in assistant_msg:
-        conversation_history[2]["reasoning"] = assistant_msg["reasoning"]
-
-    # Turn 2: Assistant Prefill Hack
-    # Force the model to skip reasoning and start outputting JSON immediately
-    turn2_history = conversation_history.copy()
-    turn2_history.append({"role": "assistant", "content": "```json\n{"})
-
-    # Turn 2
-    turn2_response = requests.post(
-        OPENROUTER_URL,
-        json={
-            "model": MODEL,
-            "messages": turn2_history,
-            "temperature": 0.1,
-            "max_tokens": 4096
-        },
-        headers=BASE_HEADERS,
-        timeout=60
-    )
-    turn2_response.raise_for_status()
-
-    turn2_data = turn2_response.json()
-    with open('/tmp/openrouter_logs.txt', 'a') as f:
-        f.write("TURN 2:\\n" + turn2_response.text + "\\n")
-    print("TURN 2 RESPONSE:", json.dumps(turn2_data, indent=2))
-    
-    choices = turn2_data.get("choices", [])
-    if not choices:
-        raise ValueError("Turn 2 failed. No choices returned. Raw response: " + turn2_response.text)
-        
-    final_content = choices[0].get("message", {}).get("content") or ""
-    
     try:
-        parsed = extract_json(final_content)
-    except ValueError as e:
-        print(f"Turn 2 failed to parse JSON: {e}. Falling back to Turn 1 output.")
-        parsed = extract_json(turn1_content)
+        response = requests.post(
+            OPENROUTER_URL,
+            json={
+                "model": MODEL,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_msg},
+                ],
+                "temperature": 0,
+                "max_tokens": 2200,
+            },
+            headers=BASE_HEADERS,
+            timeout=25,
+        )
+        response.raise_for_status()
 
-    # Attach reasoning summary for frontend display
-    parsed["_meta"] = {
-        "model": MODEL,
-        "reasoning_used": True,
-        "turns": 2,
-        "timestamp": datetime.utcnow().isoformat() + "Z",
-        "turn1_reasoning_tokens": len(turn1_content)
-    }
+        payload = response.json()
+        choices = payload.get("choices", [])
+        if not choices:
+            raise ValueError("No choices returned by model")
 
-    return parsed
+        content = choices[0].get("message", {}).get("content") or ""
+        parsed = extract_json(content)
+        normalized = _normalize_and_validate_analysis(parsed, market_data)
+        normalized["_meta"]["latency_mode"] = "fast-single-pass"
+        return normalized
+
+    except Exception as exc:
+        fallback = _build_deterministic_fallback(market_data, reason="local-fallback")
+        fallback["_meta"]["error"] = str(exc)
+        fallback["_meta"]["latency_mode"] = "no-retry-fallback"
+        return fallback
+
 
 def check_openrouter_health():
     try:
-        # We need an API key to reach models effectively but checking models works.
         response = requests.get(
             "https://openrouter.ai/api/v1/models",
             headers={"Authorization": f"Bearer {API_KEY}"},
-            timeout=10
+            timeout=10,
         )
         response.raise_for_status()
-        
+
         models_data = response.json().get("data", [])
         models = [m.get("id") for m in models_data]
         model_available = MODEL in models
@@ -408,8 +647,8 @@ def check_openrouter_health():
             print(f"✅ OpenRouter ready — {MODEL} available")
         else:
             print(f"⚠️ Model {MODEL} not found in OpenRouter")
-            print("Available free models:", [m for m in models if "free" in m.lower()])
-            
+            print("Available free models:", [m for m in models if m and "free" in m.lower()])
+
     except requests.exceptions.HTTPError as err:
         if err.response.status_code == 401:
             print("❌ OpenRouter API key invalid")

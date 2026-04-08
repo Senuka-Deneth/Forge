@@ -149,6 +149,29 @@ export const educationData = [
         `
       },
       {
+        id: "binance-pivots",
+        tag: "Indicator",
+        title: "Standard Pivots",
+        subtitle: "Traditional auto-timeframe overlay",
+        whatIsIt: "Standard pivot points use the Traditional Pivot Points model with an auto-selected higher timeframe and extended support/resistance levels up to R5 and S5.",
+        howToRead: "The chart shows a central pivot (P) and a staircase of resistance above and support below. On lower chart timeframes, the indicator typically uses the previous day, week, or month depending on the timeframe.",
+        howToUse: "Use the pivot band as a map of likely reaction levels. Price above P is bullish bias, while price below P is bearish bias. R1/R2 and S1/S2 often act as the first reaction and continuation zones.",
+        visualHtml: `
+          <div class="pivot-diagram">
+            <div class="pivot-row r3"><span>R5</span></div>
+            <div class="pivot-row r2"><span>R4</span></div>
+            <div class="pivot-row r1"><span>R3</span></div>
+            <div class="pivot-row pp"><span>P</span></div>
+            <div class="pivot-row s1"><span>S1</span></div>
+            <div class="pivot-row s2"><span>S2</span></div>
+            <div class="pivot-row s3"><span>S5</span></div>
+          </div>
+          <div class="edu-tips">
+            <div class="edu-tip info">Traditional pivots extend further than the classic 7-level set.</div>
+          </div>
+        `
+      },
+      {
         id: "pivot-zone",
         tag: "Analysis",
         title: "Price Zone",
@@ -169,8 +192,8 @@ export const educationData = [
         title: "Fibonacci Pivots",
         subtitle: "Pivots merged with Fibonacci",
         whatIsIt: "Fibonacci Pivots use the same central Pivot Point (PP) but calculate the R and S levels by multiplying the previous period's range by Fibonacci ratios (0.382, 0.618, 1.000).",
-        howToRead: "Read them exactly like Classic Pivots, but they often provide closer, more reactive levels.",
-        howToUse: "Many professional traders prefer Fib pivots because financial markets frequently respect Fibonacci ratios. Use them as confluence with classic pivots or EMAs.",
+        howToRead: "Read them like other pivot sets, but they often provide closer, more reactive levels.",
+        howToUse: "Many professional traders prefer Fib pivots because financial markets frequently respect Fibonacci ratios. Use them as confluence with standard pivots or EMAs.",
         visualHtml: `
           <div class="formula-box">R1 = PP + (Range * 0.382)</div>
         `
@@ -307,6 +330,7 @@ export const ICONS = {
   'pivots-intro': `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>`,
   'pivot-levels': `<svg viewBox="0 0 24 24"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>`,
   'price-zone': `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line></svg>`,
+  'binance-pivots': `<svg viewBox="0 0 24 24"><line x1="4" y1="4" x2="20" y2="4"></line><line x1="4" y1="9" x2="20" y2="9"></line><line x1="4" y1="15" x2="20" y2="15"></line><line x1="4" y1="20" x2="20" y2="20"></line></svg>`,
   'fibonacci': `<svg viewBox="0 0 24 24"><path d="M12 22C6.5 22 2 17.5 2 12S6.5 2 12 2s10 4.5 10 10"></path><path d="M12 22c2.5-3 4-6.5 4-10S14.5 5 12 2"></path><path d="M12 12h10"></path></svg>`,
 
   // AI Analysis
@@ -331,6 +355,7 @@ export const ICONS = {
 export function getIcon(id) {
   if (ICONS[id]) return ICONS[id];
   // Smart fallback: try to match by keyword in id
+  if (id.includes('binance')) return ICONS['binance-pivots'];
   if (id.includes('price')) return ICONS['last-price'];
   if (id.includes('volume')) return ICONS['volume'];
   if (id.includes('ema') || id.includes('ma')) return ICONS['ema'];

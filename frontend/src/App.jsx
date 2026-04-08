@@ -6,8 +6,35 @@ import AnalysisPanel from './components/AnalysisPanel'
 import AIAnalysisPanel from './components/AIAnalysisPanel'
 import EducationPanel from './components/EducationPanel'
 
-const BACKEND_URL = 'http://127.0.0.1:5000'
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:5050'
 const COMMON_QUOTES = ['USDT', 'BUSD', 'BTC', 'ETH', 'FDUSD']
+const DEFAULT_CHART_PREFERENCES = {
+  showCandles: true,
+  showEma20: false,
+  showEma50: false,
+  showRsi: false,
+  showMacd: false,
+  showSupport: false,
+  showResistance: false,
+  showPivots: false,
+  showStandardPivots: false,
+}
+
+function resolveUserKey() {
+  try {
+    const stored = localStorage.getItem('vcb_user') || sessionStorage.getItem('vcb_user')
+    if (stored) {
+      const parsed = JSON.parse(stored)
+      const candidate = parsed?.email || parsed?.username || parsed?.id || parsed?.name
+      if (candidate) return String(candidate).toLowerCase().replace(/\s+/g, '-')
+    }
+  } catch {
+    // Ignore malformed user object and fall back.
+  }
+
+  const token = localStorage.getItem('vcb_auth_token') || sessionStorage.getItem('vcb_auth_token') || 'guest'
+  return String(token).toLowerCase().replace(/[^a-z0-9_.@-]/g, '').slice(0, 128) || 'guest'
+}
 
 function applyTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme)
@@ -26,12 +53,17 @@ function initTheme() {
 
 function calculateEMA(values, period) {
   if (!values.length) return []
-  const ema = []
+  if (period <= 0) return values.map(() => null)
+  if (values.length < period) return values.map(() => null)
+
+  const ema = values.map(() => null)
   const multiplier = 2 / (period + 1)
 
-  for (let i = 0; i < values.length; i++) {
-    if (i === 0) ema.push(values[i])
-    else ema.push((values[i] - ema[i - 1]) * multiplier + ema[i - 1])
+  const seed = values.slice(0, period).reduce((a, b) => a + b, 0) / period
+  ema[period - 1] = seed
+
+  for (let i = period; i < values.length; i++) {
+    ema[i] = (values[i] - ema[i - 1]) * multiplier + ema[i - 1]
   }
 
   return ema
@@ -69,9 +101,26 @@ function calculateRSI(values, period = 14) {
 function calculateMACD(values, fast = 12, slow = 26, signal = 9) {
   const fastEma = calculateEMA(values, fast)
   const slowEma = calculateEMA(values, slow)
-  const macd = values.map((_, i) => fastEma[i] - slowEma[i])
-  const signalLine = calculateEMA(macd, signal)
-  const hist = macd.map((v, i) => v - signalLine[i])
+
+  const macd = values.map((_, i) => (
+    fastEma[i] != null && slowEma[i] != null ? fastEma[i] - slowEma[i] : null
+  ))
+
+  const compactMacd = macd.filter((v) => v != null)
+  const compactSignal = calculateEMA(compactMacd, signal)
+
+  const signalLine = values.map(() => null)
+  const hist = values.map(() => null)
+  let compactIdx = 0
+
+  for (let i = 0; i < macd.length; i++) {
+    if (macd[i] == null) continue
+    const sig = compactSignal[compactIdx]
+    signalLine[i] = sig
+    hist[i] = sig != null ? macd[i] - sig : null
+    compactIdx += 1
+  }
+
   return { macd, signalLine, hist }
 }
 
@@ -126,9 +175,10 @@ export default function App() {
   const [aiError, setAIError] = useState('')
   const lastAICallRef = useRef(0)
 
-  // Pivot state
   const [pivotData, setPivotData] = useState(null)
-  const [showPivots, setShowPivots] = useState(false)
+  const [chartPreferences, setChartPreferences] = useState(DEFAULT_CHART_PREFERENCES)
+  const [chartPrefsReady, setChartPrefsReady] = useState(false)
+  const userKeyRef = useRef(resolveUserKey())
 
   const wsRef = useRef(null)
 
@@ -262,9 +312,44 @@ export default function App() {
     return null
   }
 
-  const handleTogglePivots = () => {
-    setShowPivots((prev) => !prev)
-  }
+  useEffect(() => {
+    const fetchPreferences = async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/user-preferences?userKey=${encodeURIComponent(userKeyRef.current)}`)
+        const data = await res.json()
+        if (data.success && data.preferences) {
+          setChartPreferences((prev) => ({ ...prev, ...data.preferences }))
+        }
+      } catch (err) {
+        console.error('Failed to load chart preferences:', err)
+      } finally {
+        setChartPrefsReady(true)
+      }
+    }
+
+    fetchPreferences()
+  }, [])
+
+  useEffect(() => {
+    if (!chartPrefsReady) return
+
+    const saveTimer = setTimeout(async () => {
+      try {
+        await fetch(`${BACKEND_URL}/api/user-preferences`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userKey: userKeyRef.current,
+            preferences: chartPreferences,
+          }),
+        })
+      } catch (err) {
+        console.error('Failed to save chart preferences:', err)
+      }
+    }, 250)
+
+    return () => clearTimeout(saveTimer)
+  }, [chartPreferences, chartPrefsReady])
 
   const runAIAnalysis = async (currentCandles = null) => {
     const candleData = currentCandles
@@ -314,6 +399,8 @@ export default function App() {
     const pivots = currentPivotData?.classic?.pivots ?? null
     const pivotAnalysis = currentPivotData?.classic?.analysis ?? null
     const fibPivots = currentPivotData?.fibonacci?.pivots ?? null
+    const traditionalPivots = currentPivotData?.traditional?.pivots ?? currentPivotData?.binance?.pivots ?? null
+    const traditionalAnalysis = currentPivotData?.traditional?.analysis ?? currentPivotData?.binance?.analysis ?? null
 
     const payload = {
       symbol,
@@ -344,6 +431,8 @@ export default function App() {
       pivots: pivots ? {
         classic: pivots,
         fibonacci: fibPivots,
+        traditional: traditionalPivots,
+        binance: traditionalPivots,
         analysis: {
           zone: pivotAnalysis.zone,
           bias: pivotAnalysis.bias,
@@ -355,6 +444,7 @@ export default function App() {
           inflectionLevel: pivotAnalysis.inflectionLevel,
           sessionBullish: pivotAnalysis.sessionBullish,
         },
+        binanceAnalysis: traditionalAnalysis,
       } : null,
     }
 
@@ -549,8 +639,8 @@ export default function App() {
                 error={error}
                 analysis={analysis}
                 pivotData={pivotData}
-                showPivots={showPivots}
-                onTogglePivots={handleTogglePivots}
+                chartPreferences={chartPreferences}
+                onChartPreferencesChange={setChartPreferences}
               />
             </div>
 

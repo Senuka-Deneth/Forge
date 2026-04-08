@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 const colorMap = {
+  // Trends & Momentum
   bullish: 'var(--bull)',
   strong_bullish: 'var(--bull)',
   bearish: 'var(--bear)',
@@ -10,28 +11,68 @@ const colorMap = {
   long: 'var(--bull)',
   short: 'var(--bear)',
   wait: 'var(--neutral)',
+  
+  // RSI / Indicators
   overbought: 'var(--bear)',
   oversold: 'var(--bull)',
+  bullish_momentum: 'var(--bull)',
+  bearish_momentum: 'var(--bear)',
   bullish_zone: 'var(--bull)',
   bearish_zone: 'var(--bear)',
+  above: 'var(--bull)',
+  below: 'var(--bear)',
+  
+  // Wyckoff Phases
+  accumulation: 'var(--neutral)',
+  markup: 'var(--bull)',
+  distribution: 'var(--neutral)',
+  markdown: 'var(--bear)',
+  
+  // Significance / Severity
   high: 'var(--bear)',
   medium: 'var(--neutral)',
-  low: 'var(--bull)',
+  low: 'var(--info)',
+  
+  // Regimes
   trending: 'var(--info)',
   ranging: 'var(--neutral)',
-  breakout: 'var(--accent)',
+  breakout: 'var(--accent-primary)',
   reversal: 'var(--neutral)',
+  
+  // Zones
+  between_pp_r1: 'var(--bull)',
+  between_r1_r2: 'var(--bull)',
+  between_r2_r3: 'var(--bull)',
+  above_r3: 'var(--bull)',
+  between_s1_pp: 'var(--bear)',
+  between_s2_s1: 'var(--bear)',
+  between_s3_s2: 'var(--bear)',
+  below_s3: 'var(--bear)',
+  
   none: 'transparent',
 }
 
 function StatusPill({ value }) {
-  if (value == null) return <span className="status-pill" style={{ color: 'inherit', border: '1px solid var(--border-default)' }}>—</span>
-  const display = String(value).replace(/_/g, ' ')
-  const bg = colorMap[value] ?? 'transparent'
+  if (value == null) return <span className="status-pill" style={{ color: 'inherit', opacity: 0.5 }}>—</span>
+  
+  const valStr = String(value).toLowerCase()
+  const display = String(value).replace(/_/g, ' ').toUpperCase()
+  const color = colorMap[valStr] ?? 'var(--text-muted)'
+  
+  const isTransparent = color === 'transparent'
+  
   return (
     <span className="status-pill" style={{ 
-      backgroundColor: bg !== 'transparent' ? bg : 'rgba(255,255,255,0.1)', 
-      color: bg !== 'transparent' ? '#fff' : 'inherit' 
+      backgroundColor: isTransparent ? 'rgba(255,255,255,0.05)' : `var(--${color.replace('var(--', '').replace(')', '')}-soft, rgba(255,255,255,0.1))`,
+      color: color,
+      border: `1px solid ${isTransparent ? 'var(--border-subtle)' : color}`,
+      padding: '2px 8px',
+      borderRadius: 'var(--radius-sm)',
+      fontSize: '10px',
+      fontWeight: '700',
+      letterSpacing: '0.02em',
+      display: 'inline-flex',
+      alignItems: 'center'
     }}>
       {display}
     </span>
@@ -41,15 +82,14 @@ function StatusPill({ value }) {
 export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefresh }) {
   const a = aiAnalysis
 
-  const [loadingMsg, setLoadingMsg] = useState('Running 2-turn reasoning analysis...');
+  const [loadingMsg, setLoadingMsg] = useState('Running fast market analysis...');
 
   useEffect(() => {
     if (aiLoading) {
       const messages = [
-        'Running 2-turn reasoning analysis...',
-        'Turn 1: Deep market reasoning in progress...',
-        'Turn 2: Verifying signals and confluences...',
-        'Finalizing JSON output...'
+        'Running fast market analysis...',
+        'Validating signal consistency...',
+        'Finalizing validated output...'
       ];
       let i = 0;
       setLoadingMsg(messages[0]);
@@ -60,7 +100,7 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
         } else {
           clearInterval(interval);
         }
-      }, 8000);
+      }, 4500);
       return () => clearInterval(interval);
     }
   }, [aiLoading]);
@@ -70,7 +110,7 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
       <div className="ai-section-header">
         <div className="ai-section-title">
           <span>AI Analysis</span>
-          <span className="model-tag" id="ai-model-tag">nemotron-120b · 2-turn reasoning</span>
+          <span className="model-tag" id="ai-model-tag">nemotron-120b · fast validated mode</span>
         </div>
         <div className="ai-section-actions">
           <span 
@@ -111,8 +151,8 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
           </div>
           {/* Step progress */}
           <div style={{ display: 'flex', gap: '6px', margin: '4px 0 8px' }}>
-            {['Deep reasoning', 'Signal verification', 'JSON output'].map((step, i) => {
-              const msgIdx = ['Turn 1', 'Turn 2', 'Finalizing'].map(m => loadingMsg.includes(m) ? true : false);
+            {['Fast inference', 'Validation', 'Output'].map((step, i) => {
+              const msgIdx = ['fast market analysis', 'signal consistency', 'Finalizing'].map(m => loadingMsg.toLowerCase().includes(m.toLowerCase()) ? true : false);
               const active = i === 0 || msgIdx[i - 1];
               return (
                 <div key={i} style={{
@@ -272,13 +312,13 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
                 </div>
                 <div className="ai-row">
                   <span>Bull Target</span>
-                  <span id="ai-pivot-target-bull" className="bull">
+                  <span id="ai-pivot-target-bull" style={{ color: 'var(--bull)', fontWeight: '600' }}>
                     {a.pivot_analysis.pivot_target_bull ? `${a.pivot_analysis.pivot_target_bull.label} @ ${a.pivot_analysis.pivot_target_bull.value}` : '—'}
                   </span>
                 </div>
                 <div className="ai-row">
                   <span>Bear Target</span>
-                  <span id="ai-pivot-target-bear" className="bear">
+                  <span id="ai-pivot-target-bear" style={{ color: 'var(--bear)', fontWeight: '600' }}>
                     {a.pivot_analysis.pivot_target_bear ? `${a.pivot_analysis.pivot_target_bear.label} @ ${a.pivot_analysis.pivot_target_bear.value}` : '—'}
                   </span>
                 </div>
@@ -300,14 +340,14 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
             <div className="ai-card-header">AI Trade Logic</div>
             <div className="trade-scenarios">
               <div className="scenario bull-scenario">
-                <div className="scenario-header">Bullish Scenario</div>
+                <div className="scenario-header" style={{ color: 'var(--bull)' }}>Bullish Scenario</div>
                 <p id="ai-bull-scenario">{a.trade_logic?.bullish_scenario ?? '—'}</p>
-                <small>Invalidation: <strong id="ai-invalidation-bull" className="bear">{a.trade_logic?.invalidation_bull ?? '—'}</strong></small>
+                <small>Invalidation: <strong id="ai-invalidation-bull" style={{ color: 'var(--bear)' }}>{a.trade_logic?.invalidation_bull ?? '—'}</strong></small>
               </div>
               <div className="scenario bear-scenario">
-                <div className="scenario-header">Bearish Scenario</div>
+                <div className="scenario-header" style={{ color: 'var(--bear)' }}>Bearish Scenario</div>
                 <p id="ai-bear-scenario">{a.trade_logic?.bearish_scenario ?? '—'}</p>
-                <small>Invalidation: <strong id="ai-invalidation-bear" className="bull">{a.trade_logic?.invalidation_bear ?? '—'}</strong></small>
+                <small>Invalidation: <strong id="ai-invalidation-bear" style={{ color: 'var(--bull)' }}>{a.trade_logic?.invalidation_bear ?? '—'}</strong></small>
               </div>
             </div>
             {a.trade_logic?.risk_note && (

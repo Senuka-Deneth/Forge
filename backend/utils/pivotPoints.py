@@ -3,7 +3,7 @@ Pivot Point Calculator
 Computes Classic and Fibonacci pivot levels from OHLCV candle data.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 
 def calculate_classic_pivots(high, low, close):
@@ -37,6 +37,26 @@ def calculate_fibonacci_pivots(high, low, close):
     }
 
 
+def calculate_traditional_pivots(high, low, close):
+    """Calculate TradingView/Exchange-style Traditional pivot points with extended levels."""
+    pp = (high + low + close) / 3
+    range_ = high - low
+
+    return {
+        "PP": round(pp, 2),
+        "R1": round(pp * 2 - low, 2),
+        "R2": round(pp + range_, 2),
+        "R3": round(pp * 2 + (high - 2 * low), 2),
+        "R4": round(pp * 3 + (high - 3 * low), 2),
+        "R5": round(pp * 4 + (high - 4 * low), 2),
+        "S1": round(pp * 2 - high, 2),
+        "S2": round(pp - range_, 2),
+        "S3": round(pp * 2 - (2 * high - low), 2),
+        "S4": round(pp * 3 - (3 * high - low), 2),
+        "S5": round(pp * 4 - (4 * high - low), 2),
+    }
+
+
 def get_pivot_period(timeframe):
     """
     Determine which candle to use as 'previous period' based on the chart timeframe.
@@ -64,24 +84,29 @@ def get_last_completed_period_candle(candles, period):
     """
     groups = {}
 
+    def period_bucket_start(dt, period_name):
+        if period_name == "daily":
+            return datetime(dt.year, dt.month, dt.day, tzinfo=timezone.utc)
+
+        if period_name == "weekly":
+            # Monday 00:00 UTC
+            start = dt.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=dt.weekday())
+            return start
+
+        if period_name == "monthly":
+            return datetime(dt.year, dt.month, 1, tzinfo=timezone.utc)
+
+        if period_name == "quarterly":
+            quarter_start_month = ((dt.month - 1) // 3) * 3 + 1
+            return datetime(dt.year, quarter_start_month, 1, tzinfo=timezone.utc)
+
+        return datetime(dt.year, dt.month, dt.day, tzinfo=timezone.utc)
+
     for c in candles:
         # c["time"] is Unix timestamp in seconds
         d = datetime.fromtimestamp(c["time"], tz=timezone.utc)
 
-        if period == "daily":
-            key = f"{d.year}-{d.month}-{d.day}"
-        elif period == "weekly":
-            day_of_week = d.weekday()  # Monday=0
-            # Adjust to start of week (Monday)
-            start = d.day - day_of_week
-            key = f"{d.year}-{d.month}-{start}"
-        elif period == "monthly":
-            key = f"{d.year}-{d.month}"
-        elif period == "quarterly":
-            quarter = (d.month - 1) // 3
-            key = f"{d.year}-Q{quarter}"
-        else:
-            key = f"{d.year}-{d.month}-{d.day}"
+        key = period_bucket_start(d, period)
 
         if key not in groups:
             groups[key] = []
@@ -95,13 +120,75 @@ def get_last_completed_period_candle(candles, period):
     # Last key is current (possibly incomplete) period
     # Use second-to-last as the completed period
     completed_key = sorted_keys[-2]
-    period_candles = groups[completed_key]
+    period_candles = sorted(groups[completed_key], key=lambda x: x["time"])
 
     high = max(c["high"] for c in period_candles)
     low = min(c["low"] for c in period_candles)
     close = period_candles[-1]["close"]
 
-    return {"high": high, "low": low, "close": close, "period": completed_key}
+    return {
+        "high": high,
+        "low": low,
+        "close": close,
+        "period": completed_key.isoformat(),
+    }
+
+
+def get_recent_completed_period_candles(candles, period, count=3):
+    """Return up to `count` completed aggregated period candles, oldest to newest."""
+    groups = {}
+
+    def period_bucket_start(dt, period_name):
+        if period_name == "daily":
+            return datetime(dt.year, dt.month, dt.day, tzinfo=timezone.utc)
+
+        if period_name == "weekly":
+            # Monday 00:00 UTC
+            start = dt.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=dt.weekday())
+            return start
+
+        if period_name == "monthly":
+            return datetime(dt.year, dt.month, 1, tzinfo=timezone.utc)
+
+        if period_name == "quarterly":
+            quarter_start_month = ((dt.month - 1) // 3) * 3 + 1
+            return datetime(dt.year, quarter_start_month, 1, tzinfo=timezone.utc)
+
+        return datetime(dt.year, dt.month, dt.day, tzinfo=timezone.utc)
+
+    for c in candles:
+        d = datetime.fromtimestamp(c["time"], tz=timezone.utc)
+        key = period_bucket_start(d, period)
+        if key not in groups:
+            groups[key] = []
+        groups[key].append(c)
+
+    sorted_keys = sorted(groups.keys())
+    if len(sorted_keys) < 2:
+        return []
+
+    completed_keys = sorted_keys[:-1]
+    selected_keys = completed_keys[-count:]
+    result = []
+
+    for key in selected_keys:
+        period_candles = sorted(groups[key], key=lambda x: x["time"])
+        high = max(c["high"] for c in period_candles)
+        low = min(c["low"] for c in period_candles)
+        close = period_candles[-1]["close"]
+        start_time = period_candles[0]["time"]
+        end_time = period_candles[-1]["time"]
+
+        result.append({
+            "high": high,
+            "low": low,
+            "close": close,
+            "period": key.isoformat(),
+            "startTime": start_time,
+            "endTime": end_time,
+        })
+
+    return result
 
 
 def compute_pivots(candles, timeframe, pivot_type="classic"):
@@ -118,6 +205,8 @@ def compute_pivots(candles, timeframe, pivot_type="classic"):
 
     if pivot_type == "fibonacci":
         levels = calculate_fibonacci_pivots(high, low, close)
+    elif pivot_type == "traditional":
+        levels = calculate_traditional_pivots(high, low, close)
     else:
         levels = calculate_classic_pivots(high, low, close)
 
@@ -133,8 +222,8 @@ def compute_pivots(candles, timeframe, pivot_type="classic"):
 def analyze_price_vs_pivots(current_price, pivots):
     """Analyze current price position relative to pivot levels."""
     pp = pivots["PP"]
-    r1, r2, r3 = pivots["R1"], pivots["R2"], pivots["R3"]
-    s1, s2, s3 = pivots["S1"], pivots["S2"], pivots["S3"]
+    r1, r2, r3 = pivots.get("R1"), pivots.get("R2"), pivots.get("R3")
+    s1, s2, s3 = pivots.get("S1"), pivots.get("S2"), pivots.get("S3")
 
     # Determine price zone
     if current_price > r3:
@@ -154,16 +243,17 @@ def analyze_price_vs_pivots(current_price, pivots):
     else:
         zone = "below_S3"
 
-    # All levels sorted
-    all_levels = [
-        {"label": "S3", "value": s3},
-        {"label": "S2", "value": s2},
-        {"label": "S1", "value": s1},
-        {"label": "PP", "value": pp},
-        {"label": "R1", "value": r1},
-        {"label": "R2", "value": r2},
-        {"label": "R3", "value": r3},
-    ]
+    # All levels sorted, including extended R4/R5/S4/S5 when present.
+    all_levels = []
+    for label, value in pivots.items():
+        if label == "type" or label == "period" or label == "basedOn" or label == "generatedAt":
+            continue
+        if value is None:
+            continue
+        all_levels.append({"label": label, "value": value})
+
+    order = {"S5": 1, "S4": 2, "S3": 3, "S2": 4, "S1": 5, "PP": 6, "R1": 7, "R2": 8, "R3": 9, "R4": 10, "R5": 11}
+    all_levels.sort(key=lambda x: order.get(x["label"], 999))
 
     above = sorted(
         [l for l in all_levels if l["value"] > current_price],

@@ -8,6 +8,12 @@ function formatLevel(item) {
   return `${Number(item.price).toFixed(2)}`
 }
 
+function formatSwingTime(epochSeconds) {
+  if (!Number.isFinite(Number(epochSeconds))) return '—'
+  const d = new Date(Number(epochSeconds) * 1000)
+  return `${d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', timeZone: 'UTC' })} ${d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' })} UTC`
+}
+
 export default function AnalysisPanel({
   symbol,
   interval,
@@ -241,13 +247,13 @@ export default function AnalysisPanel({
             const highs = (analysis.swingHighs || []).map(h => ({ ...h, type: 'SH', price: Number(h.price) }));
             const lows = (analysis.swingLows || []).map(l => ({ ...l, type: 'SL', price: Number(l.price) }));
             
-            const allSwings = [...highs, ...lows].sort((a, b) => b.price - a.price); // Sort by price descending
+            const allSwings = [...highs, ...lows].sort((a, b) => (Number(b.time) || 0) - (Number(a.time) || 0));
             if (allSwings.length === 0) return <div className="swing-item text-muted">—</div>;
             
             const prices = allSwings.map(s => s.price);
             const rangeMin = Math.min(...prices) * 0.99;
             const rangeMax = Math.max(...prices) * 1.01;
-            const currentPrice = analysis?.close ?? analysis?.nearestSupport?.price ?? 0;
+            const currentPrice = Number(analysis?.latestPrice ?? 0);
             
             return allSwings.map((swing, idx) => {
               const posPercent = rangeMax === rangeMin ? 50 : ((swing.price - rangeMin) / (rangeMax - rangeMin)) * 100;
@@ -258,8 +264,6 @@ export default function AnalysisPanel({
                 distText = `${dist > 0 ? '+' : ''}${dist.toFixed(2)}%`;
                 distClass = dist > 0 ? 'bull' : 'bear';
               }
-              const mockTime = `${Math.floor(Math.random() * 4 + 1)}${['h','d'][Math.floor(Math.random()*2)]} ago`;
-
               return (
                 <div key={idx} className="swing-item">
                   <span className={`swing-badge ${swing.type === 'SH' ? 'sh' : 'sl'}`}>{swing.type}</span>
@@ -277,7 +281,7 @@ export default function AnalysisPanel({
                   </div>
 
                   <span className={`swing-dist ${distClass}`}>{distText}</span>
-                  <span className="swing-time">{swing.time || mockTime}</span>
+                  <span className="swing-time">{formatSwingTime(swing.time)}</span>
                 </div>
               );
             });

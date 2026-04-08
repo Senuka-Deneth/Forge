@@ -80,6 +80,7 @@ export default function ChartPanel({
 
   const [showIndicatorPanel, setShowIndicatorPanel] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
+  const visibleSubchartCount = (chartPreferences.showRsi ? 1 : 0) + (chartPreferences.showMacd ? 1 : 0)
 
   const updatePreference = (key) => {
     onChartPreferencesChange((prev) => ({
@@ -630,33 +631,51 @@ export default function ChartPanel({
   ]
 
   return (
-    <div className={`chart-card ${isMaximized ? 'chart-card-maximized' : ''}`}>
+    <div className={`chart-card ${isMaximized ? 'chart-card-maximized' : ''} ${isMaximized ? `subcharts-${visibleSubchartCount}` : ''}`}>
       <div className="chart-card-header">
         <div className="chart-card-title-row">
-          <div className="chart-card-title">
-            <span id="chart-symbol-display">{symbol}</span>
-            <span className="chart-timeframe-badge" id="chart-tf-display">{interval}</span>
+          <div className="chart-card-title-left">
+            <div className="chart-card-title">
+              <span id="chart-symbol-display">{symbol}</span>
+              <span className="chart-timeframe-badge" id="chart-tf-display">{interval}</span>
+            </div>
+            <div className="chart-toggles chart-toggles-inline">
+              <button
+                className={`toggle-btn ${chartPreferences.showCandles ? 'active' : ''}`}
+                onClick={() => updatePreference('showCandles')}
+              >
+                Candles
+              </button>
+              <button
+                className={`toggle-btn ${showIndicatorPanel ? 'active' : ''}`}
+                onClick={() => setShowIndicatorPanel((prev) => !prev)}
+              >
+                Indicators
+              </button>
+            </div>
           </div>
-          <div className="chart-toggles chart-toggles-inline">
-            <button
-              className={`toggle-btn ${chartPreferences.showCandles ? 'active' : ''}`}
-              onClick={() => updatePreference('showCandles')}
-            >
-              Candles
-            </button>
-            <button
-              className={`toggle-btn ${showIndicatorPanel ? 'active' : ''}`}
-              onClick={() => setShowIndicatorPanel((prev) => !prev)}
-            >
-              Indicators
-            </button>
-            <button
-              className={`toggle-btn ${isMaximized ? 'active' : ''}`}
-              onClick={() => setIsMaximized((prev) => !prev)}
-            >
-              {isMaximized ? 'Restore' : 'Maximize'}
-            </button>
-          </div>
+          <button
+            className={`chart-maximize-btn ${isMaximized ? 'active' : ''}`}
+            onClick={() => setIsMaximized((prev) => !prev)}
+            aria-label={isMaximized ? 'Restore chart size' : 'Maximize chart'}
+            title={isMaximized ? 'Restore' : 'Maximize'}
+          >
+            {isMaximized ? (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M9 9H5v4" />
+                <path d="M15 15h4v-4" />
+                <path d="M5 13l4-4" />
+                <path d="M19 11l-4 4" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M15 3h6v6" />
+                <path d="M9 21H3v-6" />
+                <path d="M21 3l-7 7" />
+                <path d="M3 21l7-7" />
+              </svg>
+            )}
+          </button>
         </div>
       </div>
 

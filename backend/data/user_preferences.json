@@ -1,8 +1,8 @@
 {
   "demo_1775636714572": {
     "showCandles": true,
-    "showEma20": false,
-    "showEma50": false,
+    "showEma20": true,
+    "showEma50": true,
     "showRsi": false,
     "showMacd": false,
     "showSupport": false,

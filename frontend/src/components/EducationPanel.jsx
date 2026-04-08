@@ -8,6 +8,26 @@ export default function EducationPanel() {
   const mainRef = useRef(null);
   const sectionRefs = useRef({});
 
+  useEffect(() => {
+    const scrollToHash = () => {
+      const hash = window.location.hash.replace('#', '')
+      if (!hash) return
+
+      const element = sectionRefs.current[hash]
+      if (element && mainRef.current) {
+        mainRef.current.scrollTo({ top: element.offsetTop - 80, behavior: 'smooth' })
+      }
+    }
+
+    const raf = window.requestAnimationFrame(scrollToHash)
+    window.addEventListener('hashchange', scrollToHash)
+
+    return () => {
+      window.cancelAnimationFrame(raf)
+      window.removeEventListener('hashchange', scrollToHash)
+    }
+  }, [searchQuery])
+
   // Setup intersection observer for active section tracking
   useEffect(() => {
     const observerOptions = {

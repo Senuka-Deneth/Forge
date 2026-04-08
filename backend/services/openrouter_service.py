@@ -536,6 +536,7 @@ def build_user_message(data):
     pivots_data = data.get("pivots") or {}
     classic = pivots_data.get("classic") or {}
     fib = pivots_data.get("fibonacci") or {}
+    traditional = pivots_data.get("traditional") or pivots_data.get("binance") or {}
     analysis = pivots_data.get("analysis") or {}
 
     return f"""Analyze this market payload and return strict JSON only.
@@ -572,6 +573,11 @@ PIVOTS_FIB:
 - PP: {fib.get('PP')}
 - R1: {fib.get('R1')}  R2: {fib.get('R2')}  R3: {fib.get('R3')}
 - S1: {fib.get('S1')}  S2: {fib.get('S2')}  S3: {fib.get('S3')}
+
+PIVOTS_TRADITIONAL / BINANCE:
+- PP: {traditional.get('PP')}
+- R1: {traditional.get('R1')}  R2: {traditional.get('R2')}  R3: {traditional.get('R3')}  R4: {traditional.get('R4')}  R5: {traditional.get('R5')}
+- S1: {traditional.get('S1')}  S2: {traditional.get('S2')}  S3: {traditional.get('S3')}  S4: {traditional.get('S4')}  S5: {traditional.get('S5')}
 
 PIVOT_CONTEXT:
 - zone: {analysis.get('zone')}

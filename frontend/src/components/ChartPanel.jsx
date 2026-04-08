@@ -24,6 +24,8 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
   const [showMacd, setShowMacd] = useState(true)
   const [showSupport, setShowSupport] = useState(true)
   const [showResistance, setShowResistance] = useState(true)
+  const [showBinancePivots, setShowBinancePivots] = useState(false)
+  const [showIndicatorPanel, setShowIndicatorPanel] = useState(false)
 
   const candleSeriesRef = useRef(null)
   const volumeSeriesRef = useRef(null)
@@ -43,25 +45,70 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
   // Pivot lines ref
   const activePivotLinesRef = useRef([])
 
-  // Pivot level config — neutral gray, dashed
-  const pivotLineColor = 'rgba(160, 160, 170, 0.7)';
-  const pivotConfig = {
-    PP:  { color: pivotLineColor, width: 1, style: LineStyle.Dashed, label: 'PP'  },
-    R1:  { color: pivotLineColor, width: 1, style: LineStyle.Dashed, label: 'R1'  },
-    R2:  { color: pivotLineColor, width: 1, style: LineStyle.Dashed, label: 'R2'  },
-    R3:  { color: pivotLineColor, width: 1, style: LineStyle.Dashed, label: 'R3'  },
-    S1:  { color: pivotLineColor, width: 1, style: LineStyle.Dashed, label: 'S1'  },
-    S2:  { color: pivotLineColor, width: 1, style: LineStyle.Dashed, label: 'S2'  },
-    S3:  { color: pivotLineColor, width: 1, style: LineStyle.Dashed, label: 'S3'  },
+  const clearPivotLines = (series) => {
+    activePivotLinesRef.current.forEach(({ line }) => {
+      try {
+        series.removePriceLine(line)
+      } catch (e) {
+        /* ignore */
+      }
+    })
+    activePivotLinesRef.current = []
+  }
+
+  const addPivotLines = (series, pivots, config) => {
+    Object.entries(config).forEach(([key, cfg]) => {
+      if (pivots[key] === undefined || pivots[key] === null) return
+
+      const line = series.createPriceLine({
+        price: pivots[key],
+        color: cfg.color,
+        lineWidth: cfg.width,
+        lineStyle: cfg.style,
+        axisLabelVisible: true,
+        title: cfg.label,
+      })
+
+      activePivotLinesRef.current.push({ key, line })
+    })
+  }
+
+  const classicPivotColor = 'rgba(160, 160, 170, 0.80)'
+  const binancePivotColor = 'rgba(255, 159, 67, 0.94)'
+
+  const classicPivotConfig = {
+    PP: { color: classicPivotColor, width: 1, style: LineStyle.Solid, label: 'PP' },
+    R1: { color: classicPivotColor, width: 1, style: LineStyle.Solid, label: 'R1' },
+    R2: { color: classicPivotColor, width: 1, style: LineStyle.Solid, label: 'R2' },
+    R3: { color: classicPivotColor, width: 1, style: LineStyle.Solid, label: 'R3' },
+    S1: { color: classicPivotColor, width: 1, style: LineStyle.Solid, label: 'S1' },
+    S2: { color: classicPivotColor, width: 1, style: LineStyle.Solid, label: 'S2' },
+    S3: { color: classicPivotColor, width: 1, style: LineStyle.Solid, label: 'S3' },
+  }
+
+  const binancePivotConfig = {
+    PP: { color: binancePivotColor, width: 2, style: LineStyle.Solid, label: 'P' },
+    R1: { color: binancePivotColor, width: 1, style: LineStyle.Solid, label: 'R1' },
+    R2: { color: binancePivotColor, width: 1, style: LineStyle.Solid, label: 'R2' },
+    R3: { color: binancePivotColor, width: 1, style: LineStyle.Solid, label: 'R3' },
+    R4: { color: binancePivotColor, width: 1, style: LineStyle.Solid, label: 'R4' },
+    R5: { color: binancePivotColor, width: 1, style: LineStyle.Solid, label: 'R5' },
+    S1: { color: binancePivotColor, width: 1, style: LineStyle.Solid, label: 'S1' },
+    S2: { color: binancePivotColor, width: 1, style: LineStyle.Solid, label: 'S2' },
+    S3: { color: binancePivotColor, width: 1, style: LineStyle.Solid, label: 'S3' },
+    S4: { color: binancePivotColor, width: 1, style: LineStyle.Solid, label: 'S4' },
+    S5: { color: binancePivotColor, width: 1, style: LineStyle.Solid, label: 'S5' },
   }
 
   const pivotDataRef = useRef(pivotData)
   const showPivotsRef = useRef(showPivots)
+  const showBinancePivotsRef = useRef(showBinancePivots)
 
   useEffect(() => {
     pivotDataRef.current = pivotData
     showPivotsRef.current = showPivots
-  }, [pivotData, showPivots])
+    showBinancePivotsRef.current = showBinancePivots
+  }, [pivotData, showPivots, showBinancePivots])
 
   useEffect(() => {
     if (loading) {
@@ -244,17 +291,26 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
         priceChart.applyOptions({ crosshair: sharedCrosshair });
         return;
       }
+      const pivotSets = []
       if (showPivotsRef.current && pivotDataRef.current?.classic?.pivots) {
-        const pivots = pivotDataRef.current.classic.pivots;
+        pivotSets.push(pivotDataRef.current.classic.pivots)
+      }
+      if (showBinancePivotsRef.current && pivotDataRef.current?.traditional?.pivots) {
+        pivotSets.push(pivotDataRef.current.traditional.pivots)
+      }
+
+      if (pivotSets.length > 0) {
         let matchedColor = '#808080';
-        Object.entries(pivotConfig).forEach(([key, cfg]) => {
-          if (pivots[key] !== undefined) {
-            const pricePx = candleSeries.priceToCoordinate(pivots[key]);
-            if (pricePx !== null && Math.abs(param.point.y - pricePx) <= 8) {
-              matchedColor = cfg.color;
+        pivotSets.forEach((pivots) => {
+          Object.entries({ ...classicPivotConfig, ...binancePivotConfig }).forEach(([key, cfg]) => {
+            if (pivots[key] !== undefined) {
+              const pricePx = candleSeries.priceToCoordinate(pivots[key]);
+              if (pricePx !== null && Math.abs(param.point.y - pricePx) <= 8) {
+                matchedColor = cfg.color;
+              }
             }
-          }
-        });
+          })
+        })
         priceChart.applyOptions({
           crosshair: {
             horzLine: { color: matchedColor, labelBackgroundColor: matchedColor, width: 1, style: LineStyle.Dashed },
@@ -447,31 +503,17 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
     if (!series) return
 
     // Clear existing pivot lines
-    activePivotLinesRef.current.forEach(({ line }) => {
-      try { series.removePriceLine(line) } catch (e) { /* ignore */ }
-    })
-    activePivotLinesRef.current = []
+    clearPivotLines(series)
 
     // Render new pivot lines if toggled on and data available
     if (showPivots && pivotData?.classic?.pivots) {
-      const pivots = pivotData.classic.pivots
-
-      Object.entries(pivotConfig).forEach(([key, cfg]) => {
-        if (pivots[key] === undefined) return
-
-        const line = series.createPriceLine({
-          price: pivots[key],
-          color: cfg.color,
-          lineWidth: cfg.width,
-          lineStyle: cfg.style,
-          axisLabelVisible: false,
-          title: cfg.label,
-        })
-
-        activePivotLinesRef.current.push({ key, line })
-      })
+      addPivotLines(series, pivotData.classic.pivots, classicPivotConfig)
     }
-  }, [showPivots, pivotData])
+
+    if (showBinancePivots && pivotData?.traditional?.pivots) {
+      addPivotLines(series, pivotData.traditional.pivots, binancePivotConfig)
+    }
+  }, [showPivots, showBinancePivots, pivotData])
 
   useEffect(() => {
     if (candleSeriesRef.current) candleSeriesRef.current.applyOptions({ visible: showCandles })
@@ -516,22 +558,104 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
         <div className="chart-toggles">
           <button className={`toggle-btn ${showCandles ? 'active' : ''}`} id="toggle-candles"
                   onClick={() => setShowCandles(!showCandles)}>Candles</button>
-          <button className={`toggle-btn ${showEma20 ? 'active' : ''}`} id="toggle-ema20"
-                  onClick={() => setShowEma20(!showEma20)}>EMA 20</button>
-          <button className={`toggle-btn ${showEma50 ? 'active' : ''}`} id="toggle-ema50"
-                  onClick={() => setShowEma50(!showEma50)}>EMA 50</button>
-          <button className={`toggle-btn ${showRsi ? 'active' : ''}`} id="toggle-rsi"
-                  onClick={() => setShowRsi(!showRsi)}>RSI</button>
-          <button className={`toggle-btn ${showMacd ? 'active' : ''}`} id="toggle-macd"
-                  onClick={() => setShowMacd(!showMacd)}>MACD</button>
-          <button className={`toggle-btn ${showSupport ? 'active' : ''}`} id="toggle-support"
-                  onClick={() => setShowSupport(!showSupport)}>Support</button>
-          <button className={`toggle-btn ${showResistance ? 'active' : ''}`} id="toggle-resistance"
-                  onClick={() => setShowResistance(!showResistance)}>Resistance</button>
-          <button className={`toggle-btn ${showPivots ? 'active' : ''}`} id="pivot-toggle-btn"
-                  onClick={onTogglePivots}>Pivots</button>
+          <button className={`toggle-btn ${showIndicatorPanel ? 'active' : ''}`} id="indicator-panel-btn"
+                  onClick={() => setShowIndicatorPanel((prev) => !prev)}>Indicators</button>
         </div>
       </div>
+
+      {showIndicatorPanel && (
+        <div className="indicator-modal-backdrop" onClick={() => setShowIndicatorPanel(false)}>
+          <div className="indicator-modal glass-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="indicator-modal-header">
+              <div>
+                <div className="indicator-modal-title">Indicators</div>
+                <div className="indicator-modal-subtitle">Toggle overlays and jump to the education note.</div>
+              </div>
+              <button className="indicator-modal-close" onClick={() => setShowIndicatorPanel(false)} aria-label="Close indicators">×</button>
+            </div>
+
+            <div className="indicator-list">
+              {[
+                {
+                  id: 'ema20',
+                  label: 'EMA 20',
+                  description: 'Short-term trend filter',
+                  applied: showEma20,
+                  href: '?tab=learning#ema',
+                  onToggle: () => setShowEma20((prev) => !prev),
+                },
+                {
+                  id: 'ema50',
+                  label: 'EMA 50',
+                  description: 'Medium-term trend filter',
+                  applied: showEma50,
+                  href: '?tab=learning#ema',
+                  onToggle: () => setShowEma50((prev) => !prev),
+                },
+                {
+                  id: 'rsi',
+                  label: 'RSI 14',
+                  description: 'Momentum / overbought-oversold',
+                  applied: showRsi,
+                  href: '?tab=learning#rsi',
+                  onToggle: () => setShowRsi((prev) => !prev),
+                },
+                {
+                  id: 'macd',
+                  label: 'MACD',
+                  description: 'Trend momentum confirmation',
+                  applied: showMacd,
+                  href: '?tab=learning#macd',
+                  onToggle: () => setShowMacd((prev) => !prev),
+                },
+                {
+                  id: 'support',
+                  label: 'Support line',
+                  description: 'Nearest swing floor',
+                  applied: showSupport,
+                  href: '?tab=learning#pivot-levels',
+                  onToggle: () => setShowSupport((prev) => !prev),
+                },
+                {
+                  id: 'resistance',
+                  label: 'Resistance line',
+                  description: 'Nearest swing ceiling',
+                  applied: showResistance,
+                  href: '?tab=learning#pivot-levels',
+                  onToggle: () => setShowResistance((prev) => !prev),
+                },
+                {
+                  id: 'classic-pivots',
+                  label: 'Classic pivots',
+                  description: 'PP, R1-R3, S1-S3',
+                  applied: showPivots,
+                  href: '?tab=learning#pivot-levels',
+                  onToggle: onTogglePivots,
+                },
+                {
+                  id: 'binance-pivots',
+                  label: 'Binance pivots',
+                  description: 'Traditional auto pivots',
+                  applied: showBinancePivots,
+                  href: '?tab=learning#binance-pivots',
+                  onToggle: () => setShowBinancePivots((prev) => !prev),
+                },
+              ].map((item) => (
+                <div key={item.id} className={`indicator-row ${item.applied ? 'applied' : ''}`}>
+                  <button type="button" className="indicator-row-main" onClick={item.onToggle}>
+                    <span className="indicator-row-label-wrap">
+                      <span className="indicator-row-label">{item.label}</span>
+                      <span className="indicator-row-description">{item.description}</span>
+                    </span>
+                    <span className={`indicator-status ${item.applied ? 'on' : 'off'}`}>{item.applied ? 'Applied' : 'Hidden'}</span>
+                  </button>
+                  <a className="indicator-help" href={item.href} aria-label={`Open education for ${item.label}`} title={`Open education for ${item.label}`}>?</a>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div id="chart-container" className="chart-container" ref={priceContainerRef}></div>
       <div id="rsi-container" className="subchart-container" ref={rsiContainerRef} style={{ position: 'relative' }}>

@@ -583,12 +583,14 @@ body, #root {
 
 .chart-card.chart-card-maximized {
   position: fixed;
-  inset: 0;
+  inset: 6px;
   z-index: 9999;
-  border-radius: 0;
-  border: none;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
   padding-bottom: 0;
-  box-shadow: none;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
 }
 
 .chart-card-header {
@@ -848,19 +850,10 @@ body, #root {
   background: var(--chart-bg);
 }
 
-.chart-card.chart-card-maximized.subcharts-2 .chart-container {
-  height: calc(100vh - 420px);
-  min-height: 320px;
-}
-
-.chart-card.chart-card-maximized.subcharts-1 .chart-container {
-  height: calc(100vh - 280px);
-  min-height: 360px;
-}
-
-.chart-card.chart-card-maximized.subcharts-0 .chart-container {
-  height: calc(100vh - 130px);
-  min-height: 460px;
+.chart-card.chart-card-maximized .chart-container {
+  flex: 1 1 auto;
+  min-height: 220px;
+  height: auto;
 }
 
 .subchart-container {
@@ -870,12 +863,18 @@ body, #root {
 }
 
 .chart-card.chart-card-maximized .subchart-container {
-  height: 140px;
+  flex: 0 0 170px;
+  height: 170px;
 }
 
 @media (max-width: 900px) {
   .chart-card.chart-card-maximized {
-    inset: 0;
+    inset: 4px;
+  }
+
+  .chart-card.chart-card-maximized .subchart-container {
+    flex-basis: 148px;
+    height: 148px;
   }
 
   .chart-card-title-row {

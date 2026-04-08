@@ -26,12 +26,17 @@ function initTheme() {
 
 function calculateEMA(values, period) {
   if (!values.length) return []
-  const ema = []
+  if (period <= 0) return values.map(() => null)
+  if (values.length < period) return values.map(() => null)
+
+  const ema = values.map(() => null)
   const multiplier = 2 / (period + 1)
 
-  for (let i = 0; i < values.length; i++) {
-    if (i === 0) ema.push(values[i])
-    else ema.push((values[i] - ema[i - 1]) * multiplier + ema[i - 1])
+  const seed = values.slice(0, period).reduce((a, b) => a + b, 0) / period
+  ema[period - 1] = seed
+
+  for (let i = period; i < values.length; i++) {
+    ema[i] = (values[i] - ema[i - 1]) * multiplier + ema[i - 1]
   }
 
   return ema
@@ -69,9 +74,26 @@ function calculateRSI(values, period = 14) {
 function calculateMACD(values, fast = 12, slow = 26, signal = 9) {
   const fastEma = calculateEMA(values, fast)
   const slowEma = calculateEMA(values, slow)
-  const macd = values.map((_, i) => fastEma[i] - slowEma[i])
-  const signalLine = calculateEMA(macd, signal)
-  const hist = macd.map((v, i) => v - signalLine[i])
+
+  const macd = values.map((_, i) => (
+    fastEma[i] != null && slowEma[i] != null ? fastEma[i] - slowEma[i] : null
+  ))
+
+  const compactMacd = macd.filter((v) => v != null)
+  const compactSignal = calculateEMA(compactMacd, signal)
+
+  const signalLine = values.map(() => null)
+  const hist = values.map(() => null)
+  let compactIdx = 0
+
+  for (let i = 0; i < macd.length; i++) {
+    if (macd[i] == null) continue
+    const sig = compactSignal[compactIdx]
+    signalLine[i] = sig
+    hist[i] = sig != null ? macd[i] - sig : null
+    compactIdx += 1
+  }
+
   return { macd, signalLine, hist }
 }
 

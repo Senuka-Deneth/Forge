@@ -30,14 +30,21 @@ def calculate_ema(values, period):
     if not values:
         return []
 
-    ema = []
+    if period <= 0:
+        raise ValueError("EMA period must be greater than 0")
+
+    if len(values) < period:
+        return [None] * len(values)
+
+    ema = [None] * len(values)
     multiplier = 2 / (period + 1)
 
-    for i, value in enumerate(values):
-        if i == 0:
-            ema.append(value)
-        else:
-            ema.append((value - ema[-1]) * multiplier + ema[-1])
+    # Standard EMA seed uses SMA(period) at index period-1.
+    seed = sum(values[:period]) / period
+    ema[period - 1] = seed
+
+    for i in range(period, len(values)):
+        ema[i] = (values[i] - ema[i - 1]) * multiplier + ema[i - 1]
 
     return ema
 
@@ -76,9 +83,27 @@ def calculate_macd(values, fast=12, slow=26, signal=9):
     ema_fast = calculate_ema(values, fast)
     ema_slow = calculate_ema(values, slow)
 
-    macd_line = [ema_fast[i] - ema_slow[i] for i in range(len(values))]
-    signal_line = calculate_ema(macd_line, signal)
-    histogram = [macd_line[i] - signal_line[i] for i in range(len(values))]
+    macd_line = [
+        (ema_fast[i] - ema_slow[i]) if ema_fast[i] is not None and ema_slow[i] is not None else None
+        for i in range(len(values))
+    ]
+
+    compact_macd = [v for v in macd_line if v is not None]
+    compact_signal = calculate_ema(compact_macd, signal)
+
+    signal_line = [None] * len(values)
+    histogram = [None] * len(values)
+    compact_idx = 0
+
+    for i in range(len(values)):
+        if macd_line[i] is None:
+            continue
+
+        sig = compact_signal[compact_idx]
+        signal_line[i] = sig
+        if sig is not None:
+            histogram[i] = macd_line[i] - sig
+        compact_idx += 1
 
     return macd_line, signal_line, histogram
 

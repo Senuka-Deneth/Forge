@@ -3,7 +3,7 @@ Pivot Point Calculator
 Computes Classic and Fibonacci pivot levels from OHLCV candle data.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 
 def calculate_classic_pivots(high, low, close):
@@ -64,24 +64,29 @@ def get_last_completed_period_candle(candles, period):
     """
     groups = {}
 
+    def period_bucket_start(dt, period_name):
+        if period_name == "daily":
+            return datetime(dt.year, dt.month, dt.day, tzinfo=timezone.utc)
+
+        if period_name == "weekly":
+            # Monday 00:00 UTC
+            start = dt.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=dt.weekday())
+            return start
+
+        if period_name == "monthly":
+            return datetime(dt.year, dt.month, 1, tzinfo=timezone.utc)
+
+        if period_name == "quarterly":
+            quarter_start_month = ((dt.month - 1) // 3) * 3 + 1
+            return datetime(dt.year, quarter_start_month, 1, tzinfo=timezone.utc)
+
+        return datetime(dt.year, dt.month, dt.day, tzinfo=timezone.utc)
+
     for c in candles:
         # c["time"] is Unix timestamp in seconds
         d = datetime.fromtimestamp(c["time"], tz=timezone.utc)
 
-        if period == "daily":
-            key = f"{d.year}-{d.month}-{d.day}"
-        elif period == "weekly":
-            day_of_week = d.weekday()  # Monday=0
-            # Adjust to start of week (Monday)
-            start = d.day - day_of_week
-            key = f"{d.year}-{d.month}-{start}"
-        elif period == "monthly":
-            key = f"{d.year}-{d.month}"
-        elif period == "quarterly":
-            quarter = (d.month - 1) // 3
-            key = f"{d.year}-Q{quarter}"
-        else:
-            key = f"{d.year}-{d.month}-{d.day}"
+        key = period_bucket_start(d, period)
 
         if key not in groups:
             groups[key] = []
@@ -95,13 +100,18 @@ def get_last_completed_period_candle(candles, period):
     # Last key is current (possibly incomplete) period
     # Use second-to-last as the completed period
     completed_key = sorted_keys[-2]
-    period_candles = groups[completed_key]
+    period_candles = sorted(groups[completed_key], key=lambda x: x["time"])
 
     high = max(c["high"] for c in period_candles)
     low = min(c["low"] for c in period_candles)
     close = period_candles[-1]["close"]
 
-    return {"high": high, "low": low, "close": close, "period": completed_key}
+    return {
+        "high": high,
+        "low": low,
+        "close": close,
+        "period": completed_key.isoformat(),
+    }
 
 
 def compute_pivots(candles, timeframe, pivot_type="classic"):

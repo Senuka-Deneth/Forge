@@ -6,7 +6,7 @@ import AnalysisPanel from './components/AnalysisPanel'
 import AIAnalysisPanel from './components/AIAnalysisPanel'
 import EducationPanel from './components/EducationPanel'
 
-const BACKEND_URL = 'http://127.0.0.1:5000'
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:5050'
 const COMMON_QUOTES = ['USDT', 'BUSD', 'BTC', 'ETH', 'FDUSD']
 
 function applyTheme(theme) {

@@ -2,11 +2,15 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
 import re
+import os
 from services.openrouter_service import analyze_market, check_openrouter_health
 from utils.pivotPoints import compute_pivots, analyze_price_vs_pivots
 
 app = Flask(__name__)
 CORS(app)
+
+BACKEND_HOST = os.getenv("BACKEND_HOST", "127.0.0.1")
+BACKEND_PORT = int(os.getenv("BACKEND_PORT", "5050"))
 
 # Check OpenRouter availability at startup
 check_openrouter_health()
@@ -339,7 +343,8 @@ def home():
             "/api/health",
             "/api/klines?symbol=BTCUSDT&interval=4h&limit=300",
             "/api/analyze?symbol=BTCUSDT&interval=4h&limit=300"
-        ]
+        ],
+        "base_url": f"http://{BACKEND_HOST}:{BACKEND_PORT}"
     })
 
 
@@ -560,4 +565,4 @@ def validate_env():
 validate_env()
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    app.run(host=BACKEND_HOST, port=BACKEND_PORT, debug=True)

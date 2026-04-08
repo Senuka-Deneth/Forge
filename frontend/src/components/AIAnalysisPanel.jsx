@@ -82,15 +82,14 @@ function StatusPill({ value }) {
 export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefresh }) {
   const a = aiAnalysis
 
-  const [loadingMsg, setLoadingMsg] = useState('Running 2-turn reasoning analysis...');
+  const [loadingMsg, setLoadingMsg] = useState('Running fast market analysis...');
 
   useEffect(() => {
     if (aiLoading) {
       const messages = [
-        'Running 2-turn reasoning analysis...',
-        'Turn 1: Deep market reasoning in progress...',
-        'Turn 2: Verifying signals and confluences...',
-        'Finalizing JSON output...'
+        'Running fast market analysis...',
+        'Validating signal consistency...',
+        'Finalizing validated output...'
       ];
       let i = 0;
       setLoadingMsg(messages[0]);
@@ -101,7 +100,7 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
         } else {
           clearInterval(interval);
         }
-      }, 8000);
+      }, 4500);
       return () => clearInterval(interval);
     }
   }, [aiLoading]);
@@ -111,7 +110,7 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
       <div className="ai-section-header">
         <div className="ai-section-title">
           <span>AI Analysis</span>
-          <span className="model-tag" id="ai-model-tag">nemotron-120b · 2-turn reasoning</span>
+          <span className="model-tag" id="ai-model-tag">nemotron-120b · fast validated mode</span>
         </div>
         <div className="ai-section-actions">
           <span 
@@ -152,8 +151,8 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
           </div>
           {/* Step progress */}
           <div style={{ display: 'flex', gap: '6px', margin: '4px 0 8px' }}>
-            {['Deep reasoning', 'Signal verification', 'JSON output'].map((step, i) => {
-              const msgIdx = ['Turn 1', 'Turn 2', 'Finalizing'].map(m => loadingMsg.includes(m) ? true : false);
+            {['Fast inference', 'Validation', 'Output'].map((step, i) => {
+              const msgIdx = ['fast market analysis', 'signal consistency', 'Finalizing'].map(m => loadingMsg.toLowerCase().includes(m.toLowerCase()) ? true : false);
               const active = i === 0 || msgIdx[i - 1];
               return (
                 <div key={i} style={{

@@ -336,6 +336,8 @@ export default function App() {
     const pivots = currentPivotData?.classic?.pivots ?? null
     const pivotAnalysis = currentPivotData?.classic?.analysis ?? null
     const fibPivots = currentPivotData?.fibonacci?.pivots ?? null
+    const traditionalPivots = currentPivotData?.traditional?.pivots ?? currentPivotData?.binance?.pivots ?? null
+    const traditionalAnalysis = currentPivotData?.traditional?.analysis ?? currentPivotData?.binance?.analysis ?? null
 
     const payload = {
       symbol,
@@ -366,6 +368,8 @@ export default function App() {
       pivots: pivots ? {
         classic: pivots,
         fibonacci: fibPivots,
+        traditional: traditionalPivots,
+        binance: traditionalPivots,
         analysis: {
           zone: pivotAnalysis.zone,
           bias: pivotAnalysis.bias,
@@ -377,6 +381,7 @@ export default function App() {
           inflectionLevel: pivotAnalysis.inflectionLevel,
           sessionBullish: pivotAnalysis.sessionBullish,
         },
+        binanceAnalysis: traditionalAnalysis,
       } : null,
     }
 

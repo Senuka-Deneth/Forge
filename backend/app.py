@@ -483,6 +483,7 @@ def get_pivots():
 
         classic_pivots = compute_pivots(candles, timeframe, "classic")
         fib_pivots = compute_pivots(candles, timeframe, "fibonacci")
+        traditional_pivots = compute_pivots(candles, timeframe, "traditional")
 
         if not classic_pivots or not fib_pivots:
             return jsonify({
@@ -492,6 +493,7 @@ def get_pivots():
 
         classic_analysis = analyze_price_vs_pivots(current_price, classic_pivots)
         fib_analysis = analyze_price_vs_pivots(current_price, fib_pivots)
+        traditional_analysis = analyze_price_vs_pivots(current_price, traditional_pivots)
 
         return jsonify({
             "success": True,
@@ -500,6 +502,8 @@ def get_pivots():
             "currentPrice": current_price,
             "classic": {"pivots": classic_pivots, "analysis": classic_analysis},
             "fibonacci": {"pivots": fib_pivots, "analysis": fib_analysis},
+            "traditional": {"pivots": traditional_pivots, "analysis": traditional_analysis},
+            "binance": {"pivots": traditional_pivots, "analysis": traditional_analysis},
         })
 
     except Exception as exc:

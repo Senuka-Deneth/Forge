@@ -583,14 +583,10 @@ body, #root {
 
 .chart-card.chart-card-maximized {
   position: fixed;
-  inset: 6px;
-  z-index: 9999;
-  border-radius: 10px;
-  border: 1px solid var(--border-subtle);
-  display: flex;
-  flex-direction: column;
+  inset: 18px;
+  z-index: 55;
   padding-bottom: 0;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.4);
 }
 
 .chart-card-header {
@@ -603,15 +599,8 @@ body, #root {
 
 .chart-card-title-row {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   gap: 18px;
-}
-
-.chart-card-title-left {
-  display: flex;
-  align-items: center;
-  gap: 14px;
   flex-wrap: wrap;
 }
 
@@ -638,32 +627,6 @@ body, #root {
 
 .chart-toggles-inline {
   gap: 12px;
-}
-
-.chart-maximize-btn {
-  width: 34px;
-  height: 34px;
-  border-radius: 999px;
-  border: 1px solid var(--border-subtle);
-  background: transparent;
-  color: var(--text-secondary);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.18s ease;
-}
-
-.chart-maximize-btn svg {
-  width: 16px;
-  height: 16px;
-}
-
-.chart-maximize-btn:hover,
-.chart-maximize-btn.active {
-  color: var(--text-primary);
-  border-color: var(--border-medium);
-  background: var(--bg-raised);
 }
 
 .toggle-btn {
@@ -851,9 +814,8 @@ body, #root {
 }
 
 .chart-card.chart-card-maximized .chart-container {
-  flex: 1 1 auto;
-  min-height: 220px;
-  height: auto;
+  height: calc(100vh - 360px);
+  min-height: 380px;
 }
 
 .subchart-container {
@@ -869,19 +831,15 @@ body, #root {
 
 @media (max-width: 900px) {
   .chart-card.chart-card-maximized {
-    inset: 4px;
+    inset: 8px;
   }
 
-  .chart-card.chart-card-maximized .subchart-container {
-    flex-basis: 148px;
-    height: 148px;
+  .chart-card.chart-card-maximized .chart-container {
+    height: calc(100vh - 330px);
+    min-height: 300px;
   }
 
   .chart-card-title-row {
-    gap: 10px;
-  }
-
-  .chart-card-title-left {
     gap: 10px;
   }
 }

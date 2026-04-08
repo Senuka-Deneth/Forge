@@ -581,12 +581,34 @@ body, #root {
   overflow: hidden;
 }
 
+.chart-card.chart-card-maximized {
+  position: fixed;
+  inset: 70px 18px 18px 90px;
+  z-index: 220;
+  padding-bottom: 0;
+  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.4);
+}
+
 .chart-card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 16px 24px;
   border-bottom: 1px solid var(--border-subtle);
+}
+
+.chart-card-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+}
+
+.chart-card-title-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
 }
 
 .chart-card-title {
@@ -608,6 +630,36 @@ body, #root {
 .chart-toggles {
   display: flex;
   gap: 16px;
+}
+
+.chart-toggles-inline {
+  gap: 12px;
+}
+
+.chart-maximize-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.chart-maximize-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.chart-maximize-btn:hover,
+.chart-maximize-btn.active {
+  color: var(--text-primary);
+  border-color: var(--border-medium);
+  background: var(--bg-raised);
 }
 
 .toggle-btn {
@@ -636,11 +688,11 @@ body, #root {
 .indicator-modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: 70;
   display: flex;
-  align-items: flex-start;
-  justify-content: flex-end;
-  padding: 92px 28px 28px;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
   background: rgba(5, 8, 14, 0.28);
   backdrop-filter: blur(14px);
 }
@@ -794,10 +846,48 @@ body, #root {
   background: var(--chart-bg);
 }
 
+.chart-card.chart-card-maximized.subcharts-2 .chart-container {
+  height: calc(100vh - 420px);
+  min-height: 320px;
+}
+
+.chart-card.chart-card-maximized.subcharts-1 .chart-container {
+  height: calc(100vh - 280px);
+  min-height: 360px;
+}
+
+.chart-card.chart-card-maximized.subcharts-0 .chart-container {
+  height: calc(100vh - 130px);
+  min-height: 460px;
+}
+
 .subchart-container {
   height: 120px;
   background: var(--chart-bg);
   border-top: 1px solid var(--border-subtle);
+}
+
+.chart-card.chart-card-maximized .subchart-container {
+  height: 140px;
+}
+
+@media (max-width: 900px) {
+  .chart-card.chart-card-maximized {
+    inset: 64px 8px 8px 8px;
+  }
+
+  .chart-card.chart-card-maximized .chart-container {
+    height: calc(100vh - 330px);
+    min-height: 300px;
+  }
+
+  .chart-card-title-row {
+    gap: 10px;
+  }
+
+  .chart-card-title-left {
+    gap: 10px;
+  }
 }
 
 /* ── Right Panel (Collapsible approach, but grid for now) ── */

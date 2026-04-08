@@ -596,21 +596,42 @@
     });
 
     // Auth Simulation
-    const simulateAuth = (btnId) => {
+    const simulateAuth = (btnId, user = {}) => {
       const btn = document.getElementById(btnId);
       btn.classList.add('loading');
       btn.disabled = true;
       setTimeout(() => {
         localStorage.setItem('vcb_auth_token', 'demo_' + Date.now());
+        const safeUser = {
+          id: user.id || (user.email ? user.email.toLowerCase() : 'demo-user'),
+          name: user.name || 'Demo User',
+          email: user.email || 'demo@visionchartbot.local'
+        };
+        localStorage.setItem('vcb_user', JSON.stringify(safeUser));
         window.location.href = 'index.html';
       }, 1000);
     };
 
-    document.getElementById('login-form').addEventListener('submit', (e) => { e.preventDefault(); simulateAuth('login-submit'); });
-    document.getElementById('signup-form').addEventListener('submit', (e) => { e.preventDefault(); simulateAuth('signup-submit'); });
+    document.getElementById('login-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const email = document.getElementById('login-email').value.trim();
+      simulateAuth('login-submit', { email, name: email.split('@')[0] || 'Demo User' });
+    });
+    document.getElementById('signup-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const name = document.getElementById('signup-name').value.trim();
+      const email = document.getElementById('signup-email').value.trim();
+      simulateAuth('signup-submit', { name, email });
+    });
     
-    document.getElementById('google-login-btn').addEventListener('click', () => simulateAuth('google-login-btn'));
-    document.getElementById('google-signup-btn').addEventListener('click', () => simulateAuth('google-signup-btn'));
+    document.getElementById('google-login-btn').addEventListener('click', () => simulateAuth('google-login-btn', {
+      name: 'Google Demo User',
+      email: 'google-demo@visionchartbot.local'
+    }));
+    document.getElementById('google-signup-btn').addEventListener('click', () => simulateAuth('google-signup-btn', {
+      name: 'Google Demo User',
+      email: 'google-demo@visionchartbot.local'
+    }));
 
     document.getElementById('forgot-form').addEventListener('submit', (e) => {
       e.preventDefault();

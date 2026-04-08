@@ -8,6 +8,33 @@ import EducationPanel from './components/EducationPanel'
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:5050'
 const COMMON_QUOTES = ['USDT', 'BUSD', 'BTC', 'ETH', 'FDUSD']
+const DEFAULT_CHART_PREFERENCES = {
+  showCandles: true,
+  showEma20: false,
+  showEma50: false,
+  showRsi: true,
+  showMacd: true,
+  showSupport: false,
+  showResistance: false,
+  showPivots: false,
+  showStandardPivots: false,
+}
+
+function resolveUserKey() {
+  try {
+    const stored = localStorage.getItem('vcb_user') || sessionStorage.getItem('vcb_user')
+    if (stored) {
+      const parsed = JSON.parse(stored)
+      const candidate = parsed?.email || parsed?.username || parsed?.id || parsed?.name
+      if (candidate) return String(candidate).toLowerCase().replace(/\s+/g, '-')
+    }
+  } catch {
+    // Ignore malformed user object and fall back.
+  }
+
+  const token = localStorage.getItem('vcb_auth_token') || sessionStorage.getItem('vcb_auth_token') || 'guest'
+  return String(token).toLowerCase().replace(/[^a-z0-9_.@-]/g, '').slice(0, 128) || 'guest'
+}
 
 function applyTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme)
@@ -148,9 +175,10 @@ export default function App() {
   const [aiError, setAIError] = useState('')
   const lastAICallRef = useRef(0)
 
-  // Pivot state
   const [pivotData, setPivotData] = useState(null)
-  const [showPivots, setShowPivots] = useState(false)
+  const [chartPreferences, setChartPreferences] = useState(DEFAULT_CHART_PREFERENCES)
+  const [chartPrefsReady, setChartPrefsReady] = useState(false)
+  const userKeyRef = useRef(resolveUserKey())
 
   const wsRef = useRef(null)
 
@@ -284,9 +312,44 @@ export default function App() {
     return null
   }
 
-  const handleTogglePivots = () => {
-    setShowPivots((prev) => !prev)
-  }
+  useEffect(() => {
+    const fetchPreferences = async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/user-preferences?userKey=${encodeURIComponent(userKeyRef.current)}`)
+        const data = await res.json()
+        if (data.success && data.preferences) {
+          setChartPreferences((prev) => ({ ...prev, ...data.preferences }))
+        }
+      } catch (err) {
+        console.error('Failed to load chart preferences:', err)
+      } finally {
+        setChartPrefsReady(true)
+      }
+    }
+
+    fetchPreferences()
+  }, [])
+
+  useEffect(() => {
+    if (!chartPrefsReady) return
+
+    const saveTimer = setTimeout(async () => {
+      try {
+        await fetch(`${BACKEND_URL}/api/user-preferences`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userKey: userKeyRef.current,
+            preferences: chartPreferences,
+          }),
+        })
+      } catch (err) {
+        console.error('Failed to save chart preferences:', err)
+      }
+    }, 250)
+
+    return () => clearTimeout(saveTimer)
+  }, [chartPreferences, chartPrefsReady])
 
   const runAIAnalysis = async (currentCandles = null) => {
     const candleData = currentCandles
@@ -576,8 +639,8 @@ export default function App() {
                 error={error}
                 analysis={analysis}
                 pivotData={pivotData}
-                showPivots={showPivots}
-                onTogglePivots={handleTogglePivots}
+                chartPreferences={chartPreferences}
+                onChartPreferencesChange={setChartPreferences}
               />
             </div>
 

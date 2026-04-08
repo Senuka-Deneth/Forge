@@ -3,8 +3,16 @@ from flask_cors import CORS
 import requests
 import re
 import os
+import json
+from pathlib import Path
 from services.openrouter_service import analyze_market, check_openrouter_health
-from utils.pivotPoints import compute_pivots, analyze_price_vs_pivots
+from utils.pivotPoints import (
+    compute_pivots,
+    analyze_price_vs_pivots,
+    get_pivot_period,
+    get_recent_completed_period_candles,
+    calculate_traditional_pivots,
+)
 
 app = Flask(__name__)
 CORS(app)
@@ -24,6 +32,59 @@ ALLOWED_INTERVALS = {
 }
 
 SYMBOL_REGEX = re.compile(r"^[A-Z0-9]{5,20}$")
+USER_KEY_REGEX = re.compile(r"^[a-zA-Z0-9_.@-]{3,128}$")
+PREFERENCES_FILE = Path(__file__).resolve().parent / "data" / "user_preferences.json"
+
+DEFAULT_CHART_PREFERENCES = {
+    "showCandles": True,
+    "showEma20": False,
+    "showEma50": False,
+    "showRsi": False,
+    "showMacd": False,
+    "showSupport": False,
+    "showResistance": False,
+    "showPivots": False,
+    "showStandardPivots": False,
+}
+
+
+def normalize_user_key(user_key_raw: str) -> str:
+    user_key = (user_key_raw or "").strip().lower()
+    if not USER_KEY_REGEX.fullmatch(user_key):
+        return "guest"
+    return user_key
+
+
+def load_preferences_store():
+    if not PREFERENCES_FILE.exists():
+        return {}
+
+    try:
+        with PREFERENCES_FILE.open("r", encoding="utf-8") as f:
+            content = json.load(f)
+            if isinstance(content, dict):
+                return content
+    except Exception:
+        return {}
+
+    return {}
+
+
+def save_preferences_store(store):
+    PREFERENCES_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with PREFERENCES_FILE.open("w", encoding="utf-8") as f:
+        json.dump(store, f, ensure_ascii=True, indent=2)
+
+
+def sanitize_preferences(payload):
+    if not isinstance(payload, dict):
+        return DEFAULT_CHART_PREFERENCES.copy()
+
+    sanitized = DEFAULT_CHART_PREFERENCES.copy()
+    for key in DEFAULT_CHART_PREFERENCES:
+        if key in payload:
+            sanitized[key] = bool(payload[key])
+    return sanitized
 
 
 def validate_symbol(symbol: str) -> bool:
@@ -495,6 +556,22 @@ def get_pivots():
         fib_analysis = analyze_price_vs_pivots(current_price, fib_pivots)
         traditional_analysis = analyze_price_vs_pivots(current_price, traditional_pivots)
 
+        standard_period = get_pivot_period(timeframe)
+        completed_periods = get_recent_completed_period_candles(candles, standard_period, count=3)
+        standard_periods = []
+        for period_candle in completed_periods:
+            pivots = calculate_traditional_pivots(
+                period_candle["high"],
+                period_candle["low"],
+                period_candle["close"]
+            )
+            standard_periods.append({
+                "period": period_candle["period"],
+                "startTime": period_candle["startTime"],
+                "endTime": period_candle["endTime"],
+                "pivots": pivots,
+            })
+
         return jsonify({
             "success": True,
             "symbol": symbol,
@@ -504,10 +581,49 @@ def get_pivots():
             "fibonacci": {"pivots": fib_pivots, "analysis": fib_analysis},
             "traditional": {"pivots": traditional_pivots, "analysis": traditional_analysis},
             "binance": {"pivots": traditional_pivots, "analysis": traditional_analysis},
+            "standardPeriods": {
+                "periodType": standard_period,
+                "items": standard_periods,
+            },
         })
 
     except Exception as exc:
         print(f"Pivot error: {exc}")
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@app.route("/api/user-preferences", methods=["GET"])
+def get_user_preferences():
+    try:
+        user_key = normalize_user_key(request.args.get("userKey", "guest"))
+        store = load_preferences_store()
+        preferences = sanitize_preferences(store.get(user_key, {}))
+        return jsonify({
+            "success": True,
+            "userKey": user_key,
+            "preferences": preferences,
+        })
+    except Exception as exc:
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@app.route("/api/user-preferences", methods=["POST"])
+def save_user_preferences():
+    try:
+        payload = request.get_json(silent=True) or {}
+        user_key = normalize_user_key(payload.get("userKey", "guest"))
+        preferences = sanitize_preferences(payload.get("preferences", {}))
+
+        store = load_preferences_store()
+        store[user_key] = preferences
+        save_preferences_store(store)
+
+        return jsonify({
+            "success": True,
+            "userKey": user_key,
+            "preferences": preferences,
+        })
+    except Exception as exc:
         return jsonify({"success": False, "error": str(exc)}), 500
 
 

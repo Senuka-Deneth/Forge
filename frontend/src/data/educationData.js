@@ -151,9 +151,9 @@ export const educationData = [
       {
         id: "binance-pivots",
         tag: "Indicator",
-        title: "Binance / Traditional Pivots",
-        subtitle: "Auto timeframe pivot overlay",
-        whatIsIt: "Binance-style pivot points are the Traditional Pivot Points indicator with an auto-selected higher timeframe and extended support/resistance levels up to R5 and S5.",
+        title: "Standard Pivots",
+        subtitle: "Traditional auto-timeframe overlay",
+        whatIsIt: "Standard pivot points use the Traditional Pivot Points model with an auto-selected higher timeframe and extended support/resistance levels up to R5 and S5.",
         howToRead: "The chart shows a central pivot (P) and a staircase of resistance above and support below. On lower chart timeframes, the indicator typically uses the previous day, week, or month depending on the timeframe.",
         howToUse: "Use the pivot band as a map of likely reaction levels. Price above P is bullish bias, while price below P is bearish bias. R1/R2 and S1/S2 often act as the first reaction and continuation zones.",
         visualHtml: `
@@ -192,8 +192,8 @@ export const educationData = [
         title: "Fibonacci Pivots",
         subtitle: "Pivots merged with Fibonacci",
         whatIsIt: "Fibonacci Pivots use the same central Pivot Point (PP) but calculate the R and S levels by multiplying the previous period's range by Fibonacci ratios (0.382, 0.618, 1.000).",
-        howToRead: "Read them exactly like Classic Pivots, but they often provide closer, more reactive levels.",
-        howToUse: "Many professional traders prefer Fib pivots because financial markets frequently respect Fibonacci ratios. Use them as confluence with classic pivots or EMAs.",
+        howToRead: "Read them like other pivot sets, but they often provide closer, more reactive levels.",
+        howToUse: "Many professional traders prefer Fib pivots because financial markets frequently respect Fibonacci ratios. Use them as confluence with standard pivots or EMAs.",
         visualHtml: `
           <div class="formula-box">R1 = PP + (Range * 0.382)</div>
         `

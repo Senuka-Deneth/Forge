@@ -134,6 +134,63 @@ def get_last_completed_period_candle(candles, period):
     }
 
 
+def get_recent_completed_period_candles(candles, period, count=3):
+    """Return up to `count` completed aggregated period candles, oldest to newest."""
+    groups = {}
+
+    def period_bucket_start(dt, period_name):
+        if period_name == "daily":
+            return datetime(dt.year, dt.month, dt.day, tzinfo=timezone.utc)
+
+        if period_name == "weekly":
+            # Monday 00:00 UTC
+            start = dt.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=dt.weekday())
+            return start
+
+        if period_name == "monthly":
+            return datetime(dt.year, dt.month, 1, tzinfo=timezone.utc)
+
+        if period_name == "quarterly":
+            quarter_start_month = ((dt.month - 1) // 3) * 3 + 1
+            return datetime(dt.year, quarter_start_month, 1, tzinfo=timezone.utc)
+
+        return datetime(dt.year, dt.month, dt.day, tzinfo=timezone.utc)
+
+    for c in candles:
+        d = datetime.fromtimestamp(c["time"], tz=timezone.utc)
+        key = period_bucket_start(d, period)
+        if key not in groups:
+            groups[key] = []
+        groups[key].append(c)
+
+    sorted_keys = sorted(groups.keys())
+    if len(sorted_keys) < 2:
+        return []
+
+    completed_keys = sorted_keys[:-1]
+    selected_keys = completed_keys[-count:]
+    result = []
+
+    for key in selected_keys:
+        period_candles = sorted(groups[key], key=lambda x: x["time"])
+        high = max(c["high"] for c in period_candles)
+        low = min(c["low"] for c in period_candles)
+        close = period_candles[-1]["close"]
+        start_time = period_candles[0]["time"]
+        end_time = period_candles[-1]["time"]
+
+        result.append({
+            "high": high,
+            "low": low,
+            "close": close,
+            "period": key.isoformat(),
+            "startTime": start_time,
+            "endTime": end_time,
+        })
+
+    return result
+
+
 def compute_pivots(candles, timeframe, pivot_type="classic"):
     """Compute pivot points for the given candles and timeframe."""
     period = get_pivot_period(timeframe)

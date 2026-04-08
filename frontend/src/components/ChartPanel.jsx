@@ -5,10 +5,52 @@ import {
   HistogramSeries,
   LineSeries,
   LineStyle,
-  CrosshairMode
+  CrosshairMode,
 } from 'lightweight-charts'
 
-export default function ChartPanel({ symbol, interval, candles, loading, error, analysis, pivotData, showPivots, onTogglePivots }) {
+const FIBONACCI_PIVOT_COLOR = 'rgba(160, 160, 170, 0.8)'
+const STANDARD_PIVOT_COLOR = 'rgba(255, 159, 67, 0.92)'
+
+const fibonacciPivotConfig = {
+  PP: { color: FIBONACCI_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'PP' },
+  R1: { color: FIBONACCI_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'R1' },
+  R2: { color: FIBONACCI_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'R2' },
+  R3: { color: FIBONACCI_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'R3' },
+  S1: { color: FIBONACCI_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'S1' },
+  S2: { color: FIBONACCI_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'S2' },
+  S3: { color: FIBONACCI_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'S3' },
+}
+
+const standardPivotConfig = {
+  PP: { color: STANDARD_PIVOT_COLOR, width: 2, style: LineStyle.Solid, label: 'P' },
+  R1: { color: STANDARD_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'R1' },
+  R2: { color: STANDARD_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'R2' },
+  R3: { color: STANDARD_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'R3' },
+  R4: { color: STANDARD_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'R4' },
+  R5: { color: STANDARD_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'R5' },
+  S1: { color: STANDARD_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'S1' },
+  S2: { color: STANDARD_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'S2' },
+  S3: { color: STANDARD_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'S3' },
+  S4: { color: STANDARD_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'S4' },
+  S5: { color: STANDARD_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'S5' },
+}
+
+function subtractSixMonths(unixTime) {
+  const date = new Date(unixTime * 1000)
+  date.setUTCMonth(date.getUTCMonth() - 6)
+  return Math.floor(date.getTime() / 1000)
+}
+
+export default function ChartPanel({
+  symbol,
+  interval,
+  candles,
+  loading,
+  analysis,
+  pivotData,
+  chartPreferences,
+  onChartPreferencesChange,
+}) {
   const priceContainerRef = useRef(null)
   const rsiContainerRef = useRef(null)
   const macdContainerRef = useRef(null)
@@ -16,16 +58,6 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
   const priceChartRef = useRef(null)
   const rsiChartRef = useRef(null)
   const macdChartRef = useRef(null)
-
-  const [showCandles, setShowCandles] = useState(true)
-  const [showEma20, setShowEma20] = useState(true)
-  const [showEma50, setShowEma50] = useState(true)
-  const [showRsi, setShowRsi] = useState(true)
-  const [showMacd, setShowMacd] = useState(true)
-  const [showSupport, setShowSupport] = useState(true)
-  const [showResistance, setShowResistance] = useState(true)
-  const [showBinancePivots, setShowBinancePivots] = useState(false)
-  const [showIndicatorPanel, setShowIndicatorPanel] = useState(false)
 
   const candleSeriesRef = useRef(null)
   const volumeSeriesRef = useRef(null)
@@ -39,81 +71,55 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
 
   const supportLineRef = useRef(null)
   const resistanceLineRef = useRef(null)
-  const hasFitContentRef = useRef(false)
+
+  const fibPivotLinesRef = useRef([])
+  const standardPivotSeriesRef = useRef([])
+
+  const hasAppliedInitialZoomRef = useRef(false)
   const isInitializedRef = useRef(false)
 
-  // Pivot lines ref
-  const activePivotLinesRef = useRef([])
+  const [showIndicatorPanel, setShowIndicatorPanel] = useState(false)
+  const [isMaximized, setIsMaximized] = useState(false)
 
-  const clearPivotLines = (series) => {
-    activePivotLinesRef.current.forEach(({ line }) => {
+  const updatePreference = (key) => {
+    onChartPreferencesChange((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }))
+  }
+
+  const clearFibPivotLines = () => {
+    const series = candleSeriesRef.current
+    if (!series) return
+
+    fibPivotLinesRef.current.forEach((line) => {
       try {
         series.removePriceLine(line)
-      } catch (e) {
-        /* ignore */
+      } catch {
+        // Ignore stale lines
       }
     })
-    activePivotLinesRef.current = []
+    fibPivotLinesRef.current = []
   }
 
-  const addPivotLines = (series, pivots, config) => {
-    Object.entries(config).forEach(([key, cfg]) => {
-      if (pivots[key] === undefined || pivots[key] === null) return
+  const clearStandardPivotSegments = () => {
+    const chart = priceChartRef.current
+    if (!chart) return
 
-      const line = series.createPriceLine({
-        price: pivots[key],
-        color: cfg.color,
-        lineWidth: cfg.width,
-        lineStyle: cfg.style,
-        axisLabelVisible: true,
-        title: cfg.label,
-      })
-
-      activePivotLinesRef.current.push({ key, line })
+    standardPivotSeriesRef.current.forEach((series) => {
+      try {
+        chart.removeSeries(series)
+      } catch {
+        // Ignore stale series
+      }
     })
+    standardPivotSeriesRef.current = []
   }
-
-  const classicPivotColor = 'rgba(160, 160, 170, 0.80)'
-  const binancePivotColor = 'rgba(255, 159, 67, 0.94)'
-
-  const classicPivotConfig = {
-    PP: { color: classicPivotColor, width: 1, style: LineStyle.Solid, label: 'PP' },
-    R1: { color: classicPivotColor, width: 1, style: LineStyle.Solid, label: 'R1' },
-    R2: { color: classicPivotColor, width: 1, style: LineStyle.Solid, label: 'R2' },
-    R3: { color: classicPivotColor, width: 1, style: LineStyle.Solid, label: 'R3' },
-    S1: { color: classicPivotColor, width: 1, style: LineStyle.Solid, label: 'S1' },
-    S2: { color: classicPivotColor, width: 1, style: LineStyle.Solid, label: 'S2' },
-    S3: { color: classicPivotColor, width: 1, style: LineStyle.Solid, label: 'S3' },
-  }
-
-  const binancePivotConfig = {
-    PP: { color: binancePivotColor, width: 2, style: LineStyle.Solid, label: 'P' },
-    R1: { color: binancePivotColor, width: 1, style: LineStyle.Solid, label: 'R1' },
-    R2: { color: binancePivotColor, width: 1, style: LineStyle.Solid, label: 'R2' },
-    R3: { color: binancePivotColor, width: 1, style: LineStyle.Solid, label: 'R3' },
-    R4: { color: binancePivotColor, width: 1, style: LineStyle.Solid, label: 'R4' },
-    R5: { color: binancePivotColor, width: 1, style: LineStyle.Solid, label: 'R5' },
-    S1: { color: binancePivotColor, width: 1, style: LineStyle.Solid, label: 'S1' },
-    S2: { color: binancePivotColor, width: 1, style: LineStyle.Solid, label: 'S2' },
-    S3: { color: binancePivotColor, width: 1, style: LineStyle.Solid, label: 'S3' },
-    S4: { color: binancePivotColor, width: 1, style: LineStyle.Solid, label: 'S4' },
-    S5: { color: binancePivotColor, width: 1, style: LineStyle.Solid, label: 'S5' },
-  }
-
-  const pivotDataRef = useRef(pivotData)
-  const showPivotsRef = useRef(showPivots)
-  const showBinancePivotsRef = useRef(showBinancePivots)
-
-  useEffect(() => {
-    pivotDataRef.current = pivotData
-    showPivotsRef.current = showPivots
-    showBinancePivotsRef.current = showBinancePivots
-  }, [pivotData, showPivots, showBinancePivots])
 
   useEffect(() => {
     if (loading) {
-      hasFitContentRef.current = false
       isInitializedRef.current = false
+      hasAppliedInitialZoomRef.current = false
     }
   }, [loading])
 
@@ -126,26 +132,17 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
     const sharedLayout = {
       background: { color: isDark ? '#0d0d16' : '#ffffff' },
       textColor: isDark ? '#8b8b9e' : '#6b6b7e',
-      fontFamily: 'ui-sans-serif, system-ui, sans-serif'
+      fontFamily: 'ui-sans-serif, system-ui, sans-serif',
     }
 
     const sharedGrid = {
       vertLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)' },
-      horzLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)' }
+      horzLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)' },
     }
 
     const sharedCrosshair = {
-      vertLine: { 
-        color: '#808080', 
-        width: 1, 
-        style: LineStyle.Dashed, 
-      },
-      horzLine: { 
-        color: '#808080', 
-        width: 1, 
-        style: LineStyle.Dashed, 
-        labelBackgroundColor: '#808080' 
-      },
+      vertLine: { color: '#808080', width: 1, style: LineStyle.Dashed },
+      horzLine: { color: '#808080', width: 1, style: LineStyle.Dashed, labelBackgroundColor: '#808080' },
     }
 
     const priceChart = createChart(priceContainerRef.current, {
@@ -155,7 +152,7 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
       grid: sharedGrid,
       crosshair: { ...sharedCrosshair, mode: CrosshairMode.Normal },
       timeScale: { timeVisible: true, secondsVisible: false },
-      rightPriceScale: { minimumWidth: 80 }
+      rightPriceScale: { minimumWidth: 80 },
     })
 
     const rsiChart = createChart(rsiContainerRef.current, {
@@ -165,7 +162,7 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
       grid: sharedGrid,
       crosshair: { ...sharedCrosshair, mode: CrosshairMode.Normal },
       timeScale: { visible: false },
-      rightPriceScale: { minimumWidth: 80 }
+      rightPriceScale: { minimumWidth: 80 },
     })
 
     const macdChart = createChart(macdContainerRef.current, {
@@ -175,7 +172,7 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
       grid: sharedGrid,
       crosshair: { ...sharedCrosshair, mode: CrosshairMode.Normal },
       timeScale: { timeVisible: true, secondsVisible: false },
-      rightPriceScale: { minimumWidth: 80 }
+      rightPriceScale: { minimumWidth: 80 },
     })
 
     const candleSeries = priceChart.addSeries(CandlestickSeries, {
@@ -184,60 +181,65 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
       borderUpColor: '#22c55e',
       borderDownColor: '#ef4444',
       wickUpColor: '#22c55e',
-      wickDownColor: '#ef4444'
+      wickDownColor: '#ef4444',
     })
 
     const volumeSeries = priceChart.addSeries(HistogramSeries, {
       priceFormat: { type: 'volume' },
-      priceScaleId: ''
+      priceScaleId: '',
     })
 
     volumeSeries.priceScale().applyOptions({
       scaleMargins: {
         top: 0.8,
-        bottom: 0
-      }
+        bottom: 0,
+      },
     })
 
     const ema20Series = priceChart.addSeries(LineSeries, {
       color: '#60a5fa',
-      lineWidth: 2
+      lineWidth: 2,
+      lineStyle: LineStyle.Solid,
     })
 
     const ema50Series = priceChart.addSeries(LineSeries, {
       color: '#f59e0b',
-      lineWidth: 2
+      lineWidth: 2,
+      lineStyle: LineStyle.Solid,
     })
 
     const supportLine = priceChart.addSeries(LineSeries, {
       color: '#22c55e',
       lineWidth: 1,
-      lineStyle: LineStyle.Solid
+      lineStyle: LineStyle.Solid,
     })
 
     const resistanceLine = priceChart.addSeries(LineSeries, {
       color: '#ef4444',
       lineWidth: 1,
-      lineStyle: LineStyle.Solid
+      lineStyle: LineStyle.Solid,
     })
 
     const rsiSeries = rsiChart.addSeries(LineSeries, {
       color: '#a78bfa',
-      lineWidth: 2
+      lineWidth: 2,
+      lineStyle: LineStyle.Solid,
     })
 
     const macdSeries = macdChart.addSeries(LineSeries, {
       color: '#60a5fa',
-      lineWidth: 2
+      lineWidth: 2,
+      lineStyle: LineStyle.Solid,
     })
 
     const macdSignalSeries = macdChart.addSeries(LineSeries, {
       color: '#f59e0b',
-      lineWidth: 2
+      lineWidth: 2,
+      lineStyle: LineStyle.Solid,
     })
 
     const macdHistSeries = macdChart.addSeries(HistogramSeries, {
-      priceFormat: { type: 'price', precision: 4, minMove: 0.0001 }
+      priceFormat: { type: 'price', precision: 4, minMove: 0.0001 },
     })
 
     priceChartRef.current = priceChart
@@ -248,97 +250,60 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
     volumeSeriesRef.current = volumeSeries
     ema20SeriesRef.current = ema20Series
     ema50SeriesRef.current = ema50Series
+
     supportLineRef.current = supportLine
     resistanceLineRef.current = resistanceLine
+
     rsiSeriesRef.current = rsiSeries
     macdSeriesRef.current = macdSeries
     macdSignalSeriesRef.current = macdSignalSeries
     macdHistSeriesRef.current = macdHistSeries
 
-    // ── Crosshair Sync across all 3 charts ──────────────────────────────
-    // We use setCrosshairPosition so both vertical AND horizontal lines sync.
-    let isSyncingCrosshair = false;
+    let isSyncingCrosshair = false
 
     const getSyncValue = (series, param) => {
-      if (!param.time) return 0;
-      const d = param.seriesData.get(series);
-      if (!d) return 0;
-      return d.value !== undefined ? d.value : (d.close !== undefined ? d.close : 0);
-    };
+      if (!param.time) return 0
+      const d = param.seriesData.get(series)
+      if (!d) return 0
+      return d.value !== undefined ? d.value : (d.close !== undefined ? d.close : 0)
+    }
 
     const syncToTargets = (sourceParam, targets) => {
-      if (isSyncingCrosshair) return;
-      isSyncingCrosshair = true;
-      const oob = !sourceParam.point || !sourceParam.time;
+      if (isSyncingCrosshair) return
+      isSyncingCrosshair = true
+      const outOfBounds = !sourceParam.point || !sourceParam.time
       targets.forEach(({ chart, series }) => {
-        if (oob) {
-          chart.clearCrosshairPosition();
+        if (outOfBounds) {
+          chart.clearCrosshairPosition()
         } else {
-          chart.setCrosshairPosition(getSyncValue(series, sourceParam), sourceParam.time, series);
+          chart.setCrosshairPosition(getSyncValue(series, sourceParam), sourceParam.time, series)
         }
-      });
-      isSyncingCrosshair = false;
-    };
+      })
+      isSyncingCrosshair = false
+    }
 
     priceChart.subscribeCrosshairMove((param) => {
       syncToTargets(param, [
-        { chart: rsiChart,  series: rsiSeries  },
-        { chart: macdChart, series: macdSeries }
-      ]);
-
-      // Dynamic horizontal line color when near a pivot
-      if (!param.point) {
-        priceChart.applyOptions({ crosshair: sharedCrosshair });
-        return;
-      }
-      const pivotSets = []
-      if (showPivotsRef.current && pivotDataRef.current?.classic?.pivots) {
-        pivotSets.push(pivotDataRef.current.classic.pivots)
-      }
-      if (showBinancePivotsRef.current && pivotDataRef.current?.traditional?.pivots) {
-        pivotSets.push(pivotDataRef.current.traditional.pivots)
-      }
-
-      if (pivotSets.length > 0) {
-        let matchedColor = '#808080';
-        pivotSets.forEach((pivots) => {
-          Object.entries({ ...classicPivotConfig, ...binancePivotConfig }).forEach(([key, cfg]) => {
-            if (pivots[key] !== undefined) {
-              const pricePx = candleSeries.priceToCoordinate(pivots[key]);
-              if (pricePx !== null && Math.abs(param.point.y - pricePx) <= 8) {
-                matchedColor = cfg.color;
-              }
-            }
-          })
-        })
-        priceChart.applyOptions({
-          crosshair: {
-            horzLine: { color: matchedColor, labelBackgroundColor: matchedColor, width: 1, style: LineStyle.Dashed },
-            vertLine: { color: '#808080', width: 1, style: LineStyle.Dashed }
-          }
-        });
-      } else {
-        priceChart.applyOptions({ crosshair: sharedCrosshair });
-      }
-    });
+        { chart: rsiChart, series: rsiSeries },
+        { chart: macdChart, series: macdSeries },
+      ])
+    })
 
     rsiChart.subscribeCrosshairMove((param) => {
       syncToTargets(param, [
         { chart: priceChart, series: candleSeries },
-        { chart: macdChart,  series: macdSeries  }
-      ]);
-    });
+        { chart: macdChart, series: macdSeries },
+      ])
+    })
 
     macdChart.subscribeCrosshairMove((param) => {
       syncToTargets(param, [
         { chart: priceChart, series: candleSeries },
-        { chart: rsiChart,   series: rsiSeries   }
-      ]);
-    });
+        { chart: rsiChart, series: rsiSeries },
+      ])
+    })
 
-    // Guard flag to prevent circular re-entrancy between charts
     let isSyncing = false
-
     const charts = [priceChart, rsiChart, macdChart]
 
     charts.forEach((source) => {
@@ -358,37 +323,37 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
       if (priceChartRef.current && priceContainerRef.current) {
         priceChartRef.current.applyOptions({
           width: priceContainerRef.current.clientWidth,
-          height: priceContainerRef.current.clientHeight
+          height: priceContainerRef.current.clientHeight,
         })
       }
 
       if (rsiChartRef.current && rsiContainerRef.current) {
         rsiChartRef.current.applyOptions({
           width: rsiContainerRef.current.clientWidth,
-          height: rsiContainerRef.current.clientHeight
+          height: rsiContainerRef.current.clientHeight,
         })
       }
 
       if (macdChartRef.current && macdContainerRef.current) {
         macdChartRef.current.applyOptions({
           width: macdContainerRef.current.clientWidth,
-          height: macdContainerRef.current.clientHeight
+          height: macdContainerRef.current.clientHeight,
         })
       }
     }
 
     const handleThemeChange = (e) => {
       const theme = e.detail.theme
-      const isDark = theme === 'dark'
+      const darkMode = theme === 'dark'
       const chartOptions = {
         layout: {
-          background: { color: isDark ? '#0d0d16' : '#ffffff' },
-          textColor: isDark ? '#8b8b9e' : '#6b6b7e',
+          background: { color: darkMode ? '#0d0d16' : '#ffffff' },
+          textColor: darkMode ? '#8b8b9e' : '#6b6b7e',
         },
         grid: {
-          vertLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)' },
-          horzLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)' },
-        }
+          vertLines: { color: darkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)' },
+          horzLines: { color: darkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)' },
+        },
       }
 
       if (priceChartRef.current) priceChartRef.current.applyOptions(chartOptions)
@@ -426,140 +391,272 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
     }
 
     if (!isInitializedRef.current) {
-      const candleData = candles.map((c) => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close }))
-      const volumeData = candles.map((c) => ({ time: c.time, value: c.volume, color: c.close >= c.open ? 'rgba(34, 197, 94, 0.45)' : 'rgba(239, 68, 68, 0.45)' }))
-      const ema20Data = candles.filter((c) => c.ema20 != null).map((c) => ({ time: c.time, value: c.ema20 }))
-      const ema50Data = candles.filter((c) => c.ema50 != null).map((c) => ({ time: c.time, value: c.ema50 }))
-      const rsiData = candles.filter((c) => c.rsi14 != null).map((c) => ({ time: c.time, value: c.rsi14 }))
-      const macdData = candles.filter((c) => c.macd != null).map((c) => ({ time: c.time, value: c.macd }))
-      const macdSignalData = candles.filter((c) => c.macdSignal != null).map((c) => ({ time: c.time, value: c.macdSignal }))
-      const macdHistData = candles.filter((c) => c.macdHist != null).map((c) => ({
+      candleSeriesRef.current.setData(candles.map((c) => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close })))
+      volumeSeriesRef.current.setData(candles.map((c) => ({
+        time: c.time,
+        value: c.volume,
+        color: c.close >= c.open ? 'rgba(34, 197, 94, 0.45)' : 'rgba(239, 68, 68, 0.45)',
+      })))
+      ema20SeriesRef.current.setData(candles.filter((c) => c.ema20 != null).map((c) => ({ time: c.time, value: c.ema20 })))
+      ema50SeriesRef.current.setData(candles.filter((c) => c.ema50 != null).map((c) => ({ time: c.time, value: c.ema50 })))
+      rsiSeriesRef.current.setData(candles.filter((c) => c.rsi14 != null).map((c) => ({ time: c.time, value: c.rsi14 })))
+      macdSeriesRef.current.setData(candles.filter((c) => c.macd != null).map((c) => ({ time: c.time, value: c.macd })))
+      macdSignalSeriesRef.current.setData(candles.filter((c) => c.macdSignal != null).map((c) => ({ time: c.time, value: c.macdSignal })))
+      macdHistSeriesRef.current.setData(candles.filter((c) => c.macdHist != null).map((c) => ({
         time: c.time,
         value: c.macdHist,
-        color: c.macdHist >= 0 ? 'rgba(34, 197, 94, 0.55)' : 'rgba(239, 68, 68, 0.55)'
-      }))
-
-      candleSeriesRef.current.setData(candleData)
-      volumeSeriesRef.current.setData(volumeData)
-      ema20SeriesRef.current.setData(ema20Data)
-      ema50SeriesRef.current.setData(ema50Data)
-      rsiSeriesRef.current.setData(rsiData)
-      macdSeriesRef.current.setData(macdData)
-      macdSignalSeriesRef.current.setData(macdSignalData)
-      macdHistSeriesRef.current.setData(macdHistData)
-      
-      isInitializedRef.current = true;
+        color: c.macdHist >= 0 ? 'rgba(34, 197, 94, 0.55)' : 'rgba(239, 68, 68, 0.55)',
+      })))
+      isInitializedRef.current = true
     } else {
-      const c = candles[candles.length - 1];
-      candleSeriesRef.current.update({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close });
-      volumeSeriesRef.current.update({ time: c.time, value: c.volume, color: c.close >= c.open ? 'rgba(34, 197, 94, 0.45)' : 'rgba(239, 68, 68, 0.45)' });
-      if (c.ema20 != null) ema20SeriesRef.current.update({ time: c.time, value: c.ema20 });
-      if (c.ema50 != null) ema50SeriesRef.current.update({ time: c.time, value: c.ema50 });
-      if (c.rsi14 != null) rsiSeriesRef.current.update({ time: c.time, value: c.rsi14 });
-      if (c.macd != null) macdSeriesRef.current.update({ time: c.time, value: c.macd });
-      if (c.macdSignal != null) macdSignalSeriesRef.current.update({ time: c.time, value: c.macdSignal });
-      if (c.macdHist != null) macdHistSeriesRef.current.update({ time: c.time, value: c.macdHist, color: c.macdHist >= 0 ? 'rgba(34, 197, 94, 0.55)' : 'rgba(239, 68, 68, 0.55)' });
+      const c = candles[candles.length - 1]
+      candleSeriesRef.current.update({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close })
+      volumeSeriesRef.current.update({
+        time: c.time,
+        value: c.volume,
+        color: c.close >= c.open ? 'rgba(34, 197, 94, 0.45)' : 'rgba(239, 68, 68, 0.45)',
+      })
+      if (c.ema20 != null) ema20SeriesRef.current.update({ time: c.time, value: c.ema20 })
+      if (c.ema50 != null) ema50SeriesRef.current.update({ time: c.time, value: c.ema50 })
+      if (c.rsi14 != null) rsiSeriesRef.current.update({ time: c.time, value: c.rsi14 })
+      if (c.macd != null) macdSeriesRef.current.update({ time: c.time, value: c.macd })
+      if (c.macdSignal != null) macdSignalSeriesRef.current.update({ time: c.time, value: c.macdSignal })
+      if (c.macdHist != null) {
+        macdHistSeriesRef.current.update({
+          time: c.time,
+          value: c.macdHist,
+          color: c.macdHist >= 0 ? 'rgba(34, 197, 94, 0.55)' : 'rgba(239, 68, 68, 0.55)',
+        })
+      }
     }
 
     if (analysis?.nearestSupport) {
-      const supportData = [
+      supportLineRef.current.setData([
         { time: candles[0].time, value: analysis.nearestSupport.price },
-        { time: candles[candles.length - 1].time, value: analysis.nearestSupport.price }
-      ]
-      supportLineRef.current.setData(supportData)
+        { time: candles[candles.length - 1].time, value: analysis.nearestSupport.price },
+      ])
     } else {
       supportLineRef.current.setData([])
     }
 
     if (analysis?.nearestResistance) {
-      const resistanceData = [
+      resistanceLineRef.current.setData([
         { time: candles[0].time, value: analysis.nearestResistance.price },
-        { time: candles[candles.length - 1].time, value: analysis.nearestResistance.price }
-      ]
-      resistanceLineRef.current.setData(resistanceData)
+        { time: candles[candles.length - 1].time, value: analysis.nearestResistance.price },
+      ])
     } else {
       resistanceLineRef.current.setData([])
     }
 
-    if (!hasFitContentRef.current) {
-      // Only fit the price chart, then sync range to RSI + MACD so all 3 align perfectly
-      priceChartRef.current.timeScale().fitContent()
-      // Give the chart one tick to apply fitContent before reading the range
-      setTimeout(() => {
-        if (!priceChartRef.current) return
-        const range = priceChartRef.current.timeScale().getVisibleLogicalRange()
-        if (range) {
-          if (rsiChartRef.current) rsiChartRef.current.timeScale().setVisibleLogicalRange(range)
-          if (macdChartRef.current) macdChartRef.current.timeScale().setVisibleLogicalRange(range)
-        }
-      }, 50)
-      hasFitContentRef.current = true
+    if (!hasAppliedInitialZoomRef.current && priceChartRef.current && candles.length > 0) {
+      const latestTime = candles[candles.length - 1].time
+      const earliestTime = candles[0].time
+      const from = Math.max(earliestTime, subtractSixMonths(latestTime))
+      priceChartRef.current.timeScale().setVisibleRange({ from, to: latestTime })
+      hasAppliedInitialZoomRef.current = true
     }
   }, [candles, analysis])
 
-  // Pivot lines rendering
   useEffect(() => {
-    const series = candleSeriesRef.current
-    if (!series) return
-
-    // Clear existing pivot lines
-    clearPivotLines(series)
-
-    // Render new pivot lines if toggled on and data available
-    if (showPivots && pivotData?.classic?.pivots) {
-      addPivotLines(series, pivotData.classic.pivots, classicPivotConfig)
+    if (candleSeriesRef.current) {
+      candleSeriesRef.current.applyOptions({ visible: chartPreferences.showCandles })
     }
-
-    if (showBinancePivots && pivotData?.traditional?.pivots) {
-      addPivotLines(series, pivotData.traditional.pivots, binancePivotConfig)
+    if (volumeSeriesRef.current) {
+      volumeSeriesRef.current.applyOptions({ visible: chartPreferences.showCandles })
     }
-  }, [showPivots, showBinancePivots, pivotData])
+  }, [chartPreferences.showCandles])
 
   useEffect(() => {
-    if (candleSeriesRef.current) candleSeriesRef.current.applyOptions({ visible: showCandles })
-    if (volumeSeriesRef.current) volumeSeriesRef.current.applyOptions({ visible: showCandles })
-  }, [showCandles])
+    if (ema20SeriesRef.current) ema20SeriesRef.current.applyOptions({ visible: chartPreferences.showEma20 })
+  }, [chartPreferences.showEma20])
 
   useEffect(() => {
-    if (ema20SeriesRef.current) ema20SeriesRef.current.applyOptions({ visible: showEma20 })
-  }, [showEma20])
-
-  useEffect(() => {
-    if (ema50SeriesRef.current) ema50SeriesRef.current.applyOptions({ visible: showEma50 })
-  }, [showEma50])
+    if (ema50SeriesRef.current) ema50SeriesRef.current.applyOptions({ visible: chartPreferences.showEma50 })
+  }, [chartPreferences.showEma50])
 
   useEffect(() => {
     if (rsiContainerRef.current) {
-      rsiContainerRef.current.style.display = showRsi ? 'block' : 'none'
+      rsiContainerRef.current.style.display = chartPreferences.showRsi ? 'block' : 'none'
+      window.dispatchEvent(new Event('resize'))
     }
-  }, [showRsi])
+  }, [chartPreferences.showRsi])
 
   useEffect(() => {
     if (macdContainerRef.current) {
-      macdContainerRef.current.style.display = showMacd ? 'block' : 'none'
+      macdContainerRef.current.style.display = chartPreferences.showMacd ? 'block' : 'none'
+      window.dispatchEvent(new Event('resize'))
     }
-  }, [showMacd])
+  }, [chartPreferences.showMacd])
 
   useEffect(() => {
-    if (supportLineRef.current) supportLineRef.current.applyOptions({ visible: showSupport })
-  }, [showSupport])
+    if (supportLineRef.current) supportLineRef.current.applyOptions({ visible: chartPreferences.showSupport })
+  }, [chartPreferences.showSupport])
 
   useEffect(() => {
-    if (resistanceLineRef.current) resistanceLineRef.current.applyOptions({ visible: showResistance })
-  }, [showResistance])
+    if (resistanceLineRef.current) resistanceLineRef.current.applyOptions({ visible: chartPreferences.showResistance })
+  }, [chartPreferences.showResistance])
+
+  useEffect(() => {
+    clearFibPivotLines()
+
+    if (!chartPreferences.showPivots || !pivotData?.fibonacci?.pivots || !candleSeriesRef.current) {
+      return
+    }
+
+    Object.entries(fibonacciPivotConfig).forEach(([key, cfg]) => {
+      const value = pivotData.fibonacci.pivots[key]
+      if (value === undefined || value === null) return
+
+      const line = candleSeriesRef.current.createPriceLine({
+        price: value,
+        color: cfg.color,
+        lineWidth: cfg.width,
+        lineStyle: cfg.style,
+        axisLabelVisible: true,
+        title: cfg.label,
+      })
+
+      fibPivotLinesRef.current.push(line)
+    })
+  }, [chartPreferences.showPivots, pivotData])
+
+  useEffect(() => {
+    clearStandardPivotSegments()
+
+    if (!chartPreferences.showStandardPivots || !pivotData?.standardPeriods?.items || !priceChartRef.current) {
+      return
+    }
+
+    pivotData.standardPeriods.items.forEach((periodItem) => {
+      Object.entries(standardPivotConfig).forEach(([level, cfg]) => {
+        const value = periodItem.pivots?.[level]
+        if (value === undefined || value === null) return
+
+        const lineSeries = priceChartRef.current.addSeries(LineSeries, {
+          color: cfg.color,
+          lineWidth: cfg.width,
+          lineStyle: cfg.style,
+          priceLineVisible: false,
+          lastValueVisible: false,
+          crosshairMarkerVisible: false,
+        })
+
+        lineSeries.setData([
+          { time: periodItem.startTime, value },
+          { time: periodItem.endTime, value },
+        ])
+
+        standardPivotSeriesRef.current.push(lineSeries)
+      })
+    })
+  }, [chartPreferences.showStandardPivots, pivotData])
+
+  useEffect(() => {
+    return () => {
+      clearFibPivotLines()
+      clearStandardPivotSegments()
+    }
+  }, [])
+
+  useEffect(() => {
+    window.dispatchEvent(new Event('resize'))
+  }, [isMaximized, chartPreferences.showRsi, chartPreferences.showMacd])
+
+  const indicatorItems = [
+    {
+      id: 'ema20',
+      label: 'EMA 20',
+      description: 'Short-term trend filter',
+      applied: chartPreferences.showEma20,
+      href: '?tab=learning#ema',
+      onToggle: () => updatePreference('showEma20'),
+    },
+    {
+      id: 'ema50',
+      label: 'EMA 50',
+      description: 'Medium-term trend filter',
+      applied: chartPreferences.showEma50,
+      href: '?tab=learning#ema',
+      onToggle: () => updatePreference('showEma50'),
+    },
+    {
+      id: 'rsi',
+      label: 'RSI 14',
+      description: 'Momentum / overbought-oversold',
+      applied: chartPreferences.showRsi,
+      href: '?tab=learning#rsi',
+      onToggle: () => updatePreference('showRsi'),
+    },
+    {
+      id: 'macd',
+      label: 'MACD',
+      description: 'Trend momentum confirmation',
+      applied: chartPreferences.showMacd,
+      href: '?tab=learning#macd',
+      onToggle: () => updatePreference('showMacd'),
+    },
+    {
+      id: 'support',
+      label: 'Support line',
+      description: 'Nearest swing floor',
+      applied: chartPreferences.showSupport,
+      href: '?tab=learning#pivot-levels',
+      onToggle: () => updatePreference('showSupport'),
+    },
+    {
+      id: 'resistance',
+      label: 'Resistance line',
+      description: 'Nearest swing ceiling',
+      applied: chartPreferences.showResistance,
+      href: '?tab=learning#pivot-levels',
+      onToggle: () => updatePreference('showResistance'),
+    },
+    {
+      id: 'fibonacci-pivots',
+      label: 'Fibonacci Pivots',
+      description: 'PP, R1-R3, S1-S3',
+      applied: chartPreferences.showPivots,
+      href: '?tab=learning#pivot-levels',
+      onToggle: () => updatePreference('showPivots'),
+    },
+    {
+      id: 'standard-pivots',
+      label: 'Standard Pivots',
+      description: 'Time-separated traditional pivots',
+      applied: chartPreferences.showStandardPivots,
+      href: '?tab=learning#binance-pivots',
+      onToggle: () => updatePreference('showStandardPivots'),
+    },
+  ]
 
   return (
-    <div className="chart-card">
+    <div className={`chart-card ${isMaximized ? 'chart-card-maximized' : ''}`}>
       <div className="chart-card-header">
-        <div className="chart-card-title">
-          <span id="chart-symbol-display">{symbol}</span>
-          <span className="chart-timeframe-badge" id="chart-tf-display">{interval}</span>
-        </div>
-        <div className="chart-toggles">
-          <button className={`toggle-btn ${showCandles ? 'active' : ''}`} id="toggle-candles"
-                  onClick={() => setShowCandles(!showCandles)}>Candles</button>
-          <button className={`toggle-btn ${showIndicatorPanel ? 'active' : ''}`} id="indicator-panel-btn"
-                  onClick={() => setShowIndicatorPanel((prev) => !prev)}>Indicators</button>
+        <div className="chart-card-title-row">
+          <div className="chart-card-title">
+            <span id="chart-symbol-display">{symbol}</span>
+            <span className="chart-timeframe-badge" id="chart-tf-display">{interval}</span>
+          </div>
+          <div className="chart-toggles chart-toggles-inline">
+            <button
+              className={`toggle-btn ${chartPreferences.showCandles ? 'active' : ''}`}
+              onClick={() => updatePreference('showCandles')}
+            >
+              Candles
+            </button>
+            <button
+              className={`toggle-btn ${showIndicatorPanel ? 'active' : ''}`}
+              onClick={() => setShowIndicatorPanel((prev) => !prev)}
+            >
+              Indicators
+            </button>
+            <button
+              className={`toggle-btn ${isMaximized ? 'active' : ''}`}
+              onClick={() => setIsMaximized((prev) => !prev)}
+            >
+              {isMaximized ? 'Restore' : 'Maximize'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -571,85 +668,29 @@ export default function ChartPanel({ symbol, interval, candles, loading, error, 
                 <div className="indicator-modal-title">Indicators</div>
                 <div className="indicator-modal-subtitle">Toggle overlays and jump to the education note.</div>
               </div>
-              <button className="indicator-modal-close" onClick={() => setShowIndicatorPanel(false)} aria-label="Close indicators">×</button>
+              <button className="indicator-modal-close" onClick={() => setShowIndicatorPanel(false)} aria-label="Close indicators">x</button>
             </div>
 
             <div className="indicator-list">
-              {[
-                {
-                  id: 'ema20',
-                  label: 'EMA 20',
-                  description: 'Short-term trend filter',
-                  applied: showEma20,
-                  href: '?tab=learning#ema',
-                  onToggle: () => setShowEma20((prev) => !prev),
-                },
-                {
-                  id: 'ema50',
-                  label: 'EMA 50',
-                  description: 'Medium-term trend filter',
-                  applied: showEma50,
-                  href: '?tab=learning#ema',
-                  onToggle: () => setShowEma50((prev) => !prev),
-                },
-                {
-                  id: 'rsi',
-                  label: 'RSI 14',
-                  description: 'Momentum / overbought-oversold',
-                  applied: showRsi,
-                  href: '?tab=learning#rsi',
-                  onToggle: () => setShowRsi((prev) => !prev),
-                },
-                {
-                  id: 'macd',
-                  label: 'MACD',
-                  description: 'Trend momentum confirmation',
-                  applied: showMacd,
-                  href: '?tab=learning#macd',
-                  onToggle: () => setShowMacd((prev) => !prev),
-                },
-                {
-                  id: 'support',
-                  label: 'Support line',
-                  description: 'Nearest swing floor',
-                  applied: showSupport,
-                  href: '?tab=learning#pivot-levels',
-                  onToggle: () => setShowSupport((prev) => !prev),
-                },
-                {
-                  id: 'resistance',
-                  label: 'Resistance line',
-                  description: 'Nearest swing ceiling',
-                  applied: showResistance,
-                  href: '?tab=learning#pivot-levels',
-                  onToggle: () => setShowResistance((prev) => !prev),
-                },
-                {
-                  id: 'classic-pivots',
-                  label: 'Classic pivots',
-                  description: 'PP, R1-R3, S1-S3',
-                  applied: showPivots,
-                  href: '?tab=learning#pivot-levels',
-                  onToggle: onTogglePivots,
-                },
-                {
-                  id: 'binance-pivots',
-                  label: 'Binance pivots',
-                  description: 'Traditional auto pivots',
-                  applied: showBinancePivots,
-                  href: '?tab=learning#binance-pivots',
-                  onToggle: () => setShowBinancePivots((prev) => !prev),
-                },
-              ].map((item) => (
+              {indicatorItems.map((item) => (
                 <div key={item.id} className={`indicator-row ${item.applied ? 'applied' : ''}`}>
                   <button type="button" className="indicator-row-main" onClick={item.onToggle}>
                     <span className="indicator-row-label-wrap">
                       <span className="indicator-row-label">{item.label}</span>
                       <span className="indicator-row-description">{item.description}</span>
                     </span>
-                    <span className={`indicator-status ${item.applied ? 'on' : 'off'}`}>{item.applied ? 'Applied' : 'Hidden'}</span>
+                    <span className={`indicator-status ${item.applied ? 'on' : 'off'}`}>
+                      {item.applied ? 'Applied' : 'Hidden'}
+                    </span>
                   </button>
-                  <a className="indicator-help" href={item.href} aria-label={`Open education for ${item.label}`} title={`Open education for ${item.label}`}>?</a>
+                  <a
+                    className="indicator-help"
+                    href={item.href}
+                    aria-label={`Open education for ${item.label}`}
+                    title={`Open education for ${item.label}`}
+                  >
+                    ?
+                  </a>
                 </div>
               ))}
             </div>

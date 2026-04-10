@@ -19,6 +19,6 @@
     "showSupport": false,
     "showResistance": false,
     "showPivots": false,
-    "showStandardPivots": false
+    "showStandardPivots": true
   }
 }

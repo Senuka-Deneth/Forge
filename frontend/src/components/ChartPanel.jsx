@@ -77,6 +77,7 @@ export default function ChartPanel({
 
   const hasAppliedInitialZoomRef = useRef(false)
   const isInitializedRef = useRef(false)
+  const marginStateRef = useRef({ top: 0.1, bottom: 0.1 })
 
   const [showIndicatorPanel, setShowIndicatorPanel] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
@@ -151,8 +152,36 @@ export default function ChartPanel({
       layout: sharedLayout,
       grid: sharedGrid,
       crosshair: { ...sharedCrosshair, mode: CrosshairMode.Normal },
-      timeScale: { timeVisible: true, secondsVisible: false },
-      rightPriceScale: { minimumWidth: 80 },
+      timeScale: {
+        timeVisible: true,
+        secondsVisible: false,
+        shiftVisibleRangeOnNewBar: true,
+      },
+      rightPriceScale: {
+        minimumWidth: 80,
+        autoScale: true,
+        scaleMargins: marginStateRef.current,
+        axisLineVisible: false,
+        borderVisible: false,
+      },
+      handleScale: {
+        mouseWheel: true,
+        pinch: true,
+        axisPressedMouseMove: {
+          time: true,
+          price: true,
+        },
+        axisDoubleClickReset: {
+          time: true,
+          price: true,
+        },
+      },
+      handleScroll: {
+        mouseWheel: true,
+        pressedMouseMove: true,
+        horzTouchDrag: true,
+        vertTouchDrag: true,
+      },
     })
 
     const rsiChart = createChart(rsiContainerRef.current, {
@@ -361,10 +390,68 @@ export default function ChartPanel({
       if (macdChartRef.current) macdChartRef.current.applyOptions(chartOptions)
     }
 
+    const handlePriceWheel = (e) => {
+      const container = priceContainerRef.current
+      if (!container || !priceChartRef.current) return
+
+      const rect = container.getBoundingClientRect()
+      const x = e.clientX - rect.left
+      const isOverPriceScale = x > rect.width - 80
+      const isAltKey = e.altKey
+
+      if (isOverPriceScale || isAltKey) {
+        e.preventDefault()
+        e.stopPropagation()
+
+        const zoomFactor = e.deltaY > 0 ? 1.15 : 0.85
+        const currentMargins = marginStateRef.current
+
+        // Calculate new margins, preserving vertical center if possible or just scaling both
+        const newMargins = {
+          top: Math.max(0.01, Math.min(0.8, currentMargins.top * zoomFactor)),
+          bottom: Math.max(0.01, Math.min(0.8, currentMargins.bottom * zoomFactor)),
+        }
+
+        marginStateRef.current = newMargins
+        priceChartRef.current.priceScale('right').applyOptions({
+          autoScale: true, // Keep autoScale to use margins or we can toggle based on preference
+          scaleMargins: newMargins,
+        })
+      }
+    }
+
+    const handleDblClick = (e) => {
+      const container = priceContainerRef.current
+      if (!container || !priceChartRef.current) return
+
+      const rect = container.getBoundingClientRect()
+      const x = e.clientX - rect.left
+      const isOverPriceScale = x > rect.width - 80
+
+      if (isOverPriceScale) {
+        const defaultMargins = { top: 0.1, bottom: 0.1 }
+        marginStateRef.current = defaultMargins
+        priceChartRef.current.priceScale('right').applyOptions({
+          autoScale: true,
+          scaleMargins: defaultMargins,
+        })
+      }
+    }
+
+    const priceContainer = priceContainerRef.current
+    if (priceContainer) {
+      priceContainer.addEventListener('wheel', handlePriceWheel, { passive: false })
+      priceContainer.addEventListener('dblclick', handleDblClick)
+    }
+
     window.addEventListener('resize', handleResize)
     window.addEventListener('themeChanged', handleThemeChange)
 
     return () => {
+      if (priceContainer) {
+        priceContainer.removeEventListener('wheel', handlePriceWheel)
+        priceContainer.removeEventListener('dblclick', handleDblClick)
+      }
       window.removeEventListener('resize', handleResize)
       window.removeEventListener('themeChanged', handleThemeChange)
       priceChart.remove()

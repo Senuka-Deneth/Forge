@@ -165,20 +165,20 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
             })}
           </div>
           {/* Skeleton preview of cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div style={{ gridColumn: 'span 2', background: 'var(--bg-raised)', border: '1px solid var(--border-subtle)', borderRadius: '8px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+            <div style={{ gridColumn: 'span 2', background: 'var(--bg-raised)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', padding: '32px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div className="ai-skeleton-line w-30" style={{ height: '10px', width: '30%' }}></div>
-              <div style={{ display: 'flex', gap: '10px' }}>
+              <div style={{ display: 'flex', gap: '12px' }}>
                 {[1,2,3,4].map(i => <div key={i} className="ai-skeleton-line" style={{ height: '34px', flex: 1, marginBottom: 0 }}></div>)}
               </div>
               <div className="ai-skeleton-line w-100"></div>
               <div className="ai-skeleton-line w-85"></div>
             </div>
-            <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-subtle)', borderRadius: '8px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', padding: '32px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div className="ai-skeleton-line w-30" style={{ height: '10px', width: '40%' }}></div>
               {[1,2,3,4,5].map(i => <div key={i} className="ai-skeleton-line w-100" style={{ height: '10px' }}></div>)}
             </div>
-            <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-subtle)', borderRadius: '8px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', padding: '32px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div className="ai-skeleton-line w-30" style={{ height: '10px', width: '40%' }}></div>
               {[1,2,3,4].map(i => <div key={i} className="ai-skeleton-line w-85" style={{ height: '10px' }}></div>)}
             </div>

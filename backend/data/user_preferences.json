@@ -9,5 +9,16 @@
     "showResistance": false,
     "showPivots": false,
     "showStandardPivots": false
+  },
+  "demo_1774931226968": {
+    "showCandles": true,
+    "showEma20": false,
+    "showEma50": false,
+    "showRsi": true,
+    "showMacd": true,
+    "showSupport": false,
+    "showResistance": false,
+    "showPivots": false,
+    "showStandardPivots": true
   }
 }

@@ -42,18 +42,30 @@ def calculate_traditional_pivots(high, low, close):
     pp = (high + low + close) / 3
     range_ = high - low
 
+    r1 = pp * 2 - low
+    r2 = pp + range_
+    r3 = pp * 2 + (high - 2 * low)
+    r4 = r3 + range_
+    r5 = r4 + range_
+
+    s1 = pp * 2 - high
+    s2 = pp - range_
+    s3 = pp * 2 - (2 * high - low)
+    s4 = s3 - range_
+    s5 = s4 - range_
+
     return {
         "PP": round(pp, 2),
-        "R1": round(pp * 2 - low, 2),
-        "R2": round(pp + range_, 2),
-        "R3": round(pp * 2 + (high - 2 * low), 2),
-        "R4": round(pp * 3 + (high - 3 * low), 2),
-        "R5": round(pp * 4 + (high - 4 * low), 2),
-        "S1": round(pp * 2 - high, 2),
-        "S2": round(pp - range_, 2),
-        "S3": round(pp * 2 - (2 * high - low), 2),
-        "S4": round(pp * 3 - (3 * high - low), 2),
-        "S5": round(pp * 4 - (4 * high - low), 2),
+        "R1": round(r1, 2),
+        "R2": round(r2, 2),
+        "R3": round(r3, 2),
+        "R4": round(r4, 2),
+        "R5": round(r5, 2),
+        "S1": round(s1, 2),
+        "S2": round(s2, 2),
+        "S3": round(s3, 2),
+        "S4": round(s4, 2),
+        "S5": round(s5, 2),
     }
 
 

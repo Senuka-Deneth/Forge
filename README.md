@@ -54,7 +54,7 @@ pip install -r requirements.txt
 ```
 
 Configure environment variables:
-Create a `.env` file in the `backend/` directory with the following:
+Copy `backend/.env.example` to `backend/.env` and set your key, or create a `.env` file in the `backend/` directory with the following:
 ```env
 OPENROUTER_API_KEY=your_api_key_here
 OPENROUTER_MODEL=nvidia/nemotron-3-super-120b-a12b:free

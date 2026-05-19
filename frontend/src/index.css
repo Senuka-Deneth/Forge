@@ -401,6 +401,26 @@ body, #root {
 }
 
 /* ── TOPBAR ── */
+.topbar-stack {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--bg-base);
+}
+
+.prefs-sync-banner {
+  padding: 8px 32px;
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  border-bottom: 1px solid var(--border-subtle);
+  background: rgba(234, 179, 8, 0.12);
+  color: var(--text-primary);
+}
+
+.prefs-sync-banner strong {
+  margin-right: 6px;
+}
+
 .topbar {
   display: flex;
   align-items: center;
@@ -410,9 +430,6 @@ body, #root {
   min-height: 56px;
   background: var(--bg-base);
   border-bottom: 1px solid var(--border-subtle);
-  position: sticky;
-  top: 0;
-  z-index: 100;
 }
 
 .topbar-left { display: flex; gap: 16px; align-items: center; }
@@ -808,9 +825,46 @@ body, #root {
   background: var(--accent-subtle);
 }
 
+.chart-container-shell {
+  position: relative;
+}
+
 .chart-container {
   height: 60vh; /* Takes 60% of viewport */
   background: var(--chart-bg);
+}
+
+.chart-state-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+  background: color-mix(in srgb, var(--chart-bg) 82%, transparent);
+  pointer-events: none;
+}
+
+.chart-state-title {
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.chart-state-copy {
+  max-width: 560px;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.chart-state-overlay.error .chart-state-title {
+  color: var(--bear);
 }
 
 .chart-card.chart-card-maximized .chart-container {

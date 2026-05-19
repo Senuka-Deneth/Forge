@@ -5,7 +5,11 @@ import ChartPanel from './components/ChartPanel'
 import AnalysisPanel from './components/AnalysisPanel'
 import AIAnalysisPanel from './components/AIAnalysisPanel'
 import EducationPanel from './components/EducationPanel'
-import { invokeFunction } from './supabaseClient'
+import {
+  EDGE_FUNCTION_UNAVAILABLE_MESSAGE,
+  invokeFunction,
+  isEdgeFunctionUnavailableError,
+} from './supabaseClient'
 
 const COMMON_QUOTES = ['USDT', 'BUSD', 'BTC', 'ETH', 'FDUSD']
 const BINANCE_KLINES_URL = 'https://api.binance.com/api/v3/klines'
@@ -614,6 +618,7 @@ export default function App() {
   const [chartPrefsReady, setChartPrefsReady] = useState(false)
   const [preferencesSyncError, setPreferencesSyncError] = useState('')
   const userKeyRef = useRef(resolveUserKey())
+  const preferencesCloudUnavailableRef = useRef(false)
 
   const wsRef = useRef(null)
 
@@ -762,9 +767,11 @@ export default function App() {
         })
         if (data && data.success === false) {
           const detail = [data.error, data.hint].filter(Boolean).join(' ')
+          preferencesCloudUnavailableRef.current = true
           setPreferencesSyncError(detail || 'Cloud chart settings are unavailable. Local settings are active.')
           return
         }
+        preferencesCloudUnavailableRef.current = false
         setPreferencesSyncError('')
         if (data.success && data.preferences) {
           const preferences = sanitizePreferences(data.preferences)
@@ -772,7 +779,12 @@ export default function App() {
           saveLocalPreferences(userKeyRef.current, preferences)
         }
       } catch (err) {
-        setPreferencesSyncError(`Cloud chart settings are unavailable. Local settings are active. ${err.message || ''}`.trim())
+        if (isEdgeFunctionUnavailableError(err)) {
+          preferencesCloudUnavailableRef.current = true
+          setPreferencesSyncError(EDGE_FUNCTION_UNAVAILABLE_MESSAGE)
+        } else {
+          setPreferencesSyncError(`Cloud chart settings are unavailable. Local settings are active. ${err.message || ''}`.trim())
+        }
       } finally {
         setChartPrefsReady(true)
       }
@@ -787,6 +799,11 @@ export default function App() {
     const saveTimer = setTimeout(async () => {
       saveLocalPreferences(userKeyRef.current, chartPreferences)
 
+      if (preferencesCloudUnavailableRef.current) {
+        setPreferencesSyncError(EDGE_FUNCTION_UNAVAILABLE_MESSAGE)
+        return
+      }
+
       try {
         const data = await invokeFunction('user-preferences', {
           action: 'upsert',
@@ -795,12 +812,19 @@ export default function App() {
         })
         if (data && data.success === false) {
           const detail = [data.error, data.hint].filter(Boolean).join(' ')
+          preferencesCloudUnavailableRef.current = true
           setPreferencesSyncError(detail || 'Cloud chart settings are unavailable. Local settings were saved.')
           return
         }
+        preferencesCloudUnavailableRef.current = false
         setPreferencesSyncError('')
       } catch (err) {
-        setPreferencesSyncError(`Cloud chart settings are unavailable. Local settings were saved. ${err.message || ''}`.trim())
+        if (isEdgeFunctionUnavailableError(err)) {
+          preferencesCloudUnavailableRef.current = true
+          setPreferencesSyncError(EDGE_FUNCTION_UNAVAILABLE_MESSAGE)
+        } else {
+          setPreferencesSyncError(`Cloud chart settings are unavailable. Local settings were saved. ${err.message || ''}`.trim())
+        }
       }
     }, 250)
 

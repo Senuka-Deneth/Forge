@@ -241,6 +241,364 @@
     .dp-chart svg { width: 100%; height: 100%; overflow: visible; }
     .dp-chart path { fill: none; stroke: var(--color-bull); stroke-width: 2; }
 
+    /* ── SCROLL MOTION SHOWCASE ── */
+    .motion-section {
+      position: relative;
+      min-height: 340vh;
+      padding: 24px 0 80px;
+      background:
+        linear-gradient(180deg, transparent 0%, hsla(42, 84%, 52%, 0.035) 42%, transparent 100%);
+    }
+
+    .motion-sticky {
+      position: sticky;
+      top: 0;
+      min-height: 100svh;
+      display: flex;
+      align-items: center;
+      overflow: clip;
+    }
+
+    .motion-sticky .container {
+      width: 100%;
+    }
+
+    .motion-stage {
+      position: relative;
+      width: 100%;
+      height: min(760px, calc(100svh - 120px));
+      min-height: 540px;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      isolation: isolate;
+      background:
+        radial-gradient(circle at 48% 44%, hsla(42, 90%, 56%, 0.22), transparent 22%),
+        radial-gradient(circle at 75% 18%, hsla(158, 64%, 52%, 0.12), transparent 24%),
+        linear-gradient(135deg, hsl(222, 20%, 8%) 0%, hsl(225, 14%, 12%) 48%, hsl(220, 10%, 7%) 100%);
+      box-shadow: 0 40px 120px hsla(0, 0%, 0%, 0.34);
+      contain: layout paint style;
+    }
+
+    .motion-stage::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(hsla(220, 20%, 90%, 0.045) 1px, transparent 1px),
+        linear-gradient(90deg, hsla(220, 20%, 90%, 0.035) 1px, transparent 1px);
+      background-size: 64px 64px;
+      mask-image: radial-gradient(circle at 50% 45%, black, transparent 72%);
+      opacity: 0.42;
+    }
+
+    .motion-stage::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(90deg, hsla(222, 20%, 7%, 0.82), transparent 38%, transparent 66%, hsla(222, 20%, 7%, 0.62)),
+        linear-gradient(180deg, hsla(222, 20%, 7%, 0.08), transparent 34%, hsla(222, 20%, 7%, 0.48));
+      z-index: 1;
+    }
+
+    .motion-copy {
+      position: absolute;
+      inset: 0;
+      z-index: 4;
+      pointer-events: none;
+    }
+
+    .motion-chapter {
+      position: absolute;
+      width: min(390px, 34vw);
+      opacity: 0.3;
+      transform: translate3d(0, 10px, 0) scale(0.96);
+      transition: opacity 0.22s ease, transform 0.22s ease, filter 0.22s ease;
+      filter: saturate(0.74);
+      will-change: opacity, transform, filter;
+    }
+
+    .motion-chapter.is-active {
+      opacity: 1;
+      transform: translate3d(0, 0, 0) scale(1);
+      filter: saturate(1);
+    }
+
+    .motion-chapter:nth-child(1) {
+      left: clamp(28px, 7vw, 96px);
+      bottom: clamp(48px, 10vh, 84px);
+    }
+
+    .motion-chapter:nth-child(2) {
+      right: clamp(44px, 7vw, 96px);
+      top: clamp(36px, 7vh, 58px);
+      width: min(330px, 30vw);
+      text-align: right;
+    }
+
+    .motion-chapter:nth-child(3) {
+      right: clamp(44px, 7vw, 96px);
+      bottom: clamp(42px, 8vh, 64px);
+      width: min(330px, 30vw);
+      text-align: right;
+    }
+
+    .motion-kicker {
+      color: var(--accent-primary);
+      margin-bottom: 18px;
+    }
+
+    .motion-title {
+      max-width: 10ch;
+      font-size: clamp(3rem, 6vw, 5.7rem);
+      line-height: 0.94;
+      margin-bottom: 24px;
+      text-wrap: balance;
+    }
+
+    .motion-chapter:nth-child(2) .motion-title,
+    .motion-chapter:nth-child(3) .motion-title {
+      margin-left: auto;
+      font-size: clamp(2.35rem, 4vw, 4.15rem);
+      line-height: 0.98;
+      margin-bottom: 16px;
+    }
+
+    .motion-chapter:nth-child(2) .motion-text,
+    .motion-chapter:nth-child(3) .motion-text {
+      margin-left: auto;
+      max-width: 315px;
+      font-size: 15px;
+      line-height: 1.55;
+    }
+
+    .motion-text {
+      color: var(--text-secondary);
+      font-size: 17px;
+      max-width: 390px;
+    }
+
+    .bitcoin-orbit {
+      --coin-size: clamp(210px, 26vw, 360px);
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: var(--coin-size);
+      aspect-ratio: 1;
+      z-index: 3;
+      transform-style: preserve-3d;
+      transform:
+        translate3d(calc(-50% - 3vw), calc(-50% + 11vh), 0)
+        rotateX(12deg)
+        rotateY(68deg)
+        rotateZ(-10deg)
+        scale(0.84);
+      filter: drop-shadow(0 36px 32px hsla(0, 0%, 0%, 0.5));
+      will-change: transform;
+      pointer-events: none;
+      contain: layout style;
+    }
+
+    .bitcoin-orbit::before,
+    .bitcoin-orbit::after {
+      content: "";
+      position: absolute;
+      inset: 6%;
+      border-radius: 999px;
+      transform: translateZ(-18px);
+      background:
+        repeating-conic-gradient(from 0deg, hsl(34, 84%, 42%) 0 5deg, hsl(43, 92%, 62%) 5deg 9deg),
+        radial-gradient(circle at 38% 34%, hsl(46, 96%, 70%), hsl(36, 86%, 46%) 62%, hsl(30, 76%, 32%));
+      box-shadow: inset 0 0 22px hsla(0, 0%, 0%, 0.38);
+    }
+
+    .bitcoin-orbit::after {
+      inset: 1%;
+      transform: translateZ(-8px);
+      opacity: 0.46;
+      filter: blur(2px);
+    }
+
+    .coin-edge {
+      position: absolute;
+      inset: 0;
+      border-radius: 999px;
+      transform-style: preserve-3d;
+      transform: translateZ(0);
+    }
+
+    .coin-edge span {
+      position: absolute;
+      inset: 2.5%;
+      border-radius: 999px;
+      border: clamp(8px, 1.05vw, 15px) solid hsl(35, 88%, 45%);
+      background:
+        repeating-conic-gradient(from 4deg, hsl(31, 84%, 34%) 0 3deg, hsl(45, 96%, 63%) 3deg 7deg, hsl(36, 88%, 43%) 7deg 10deg);
+      box-shadow:
+        inset 0 0 0 2px hsla(50, 100%, 80%, 0.22),
+        inset 0 0 22px hsla(0, 0%, 0%, 0.22),
+        0 0 0 1px hsla(29, 82%, 26%, 0.35);
+      transform: translateZ(var(--z));
+      backface-visibility: hidden;
+    }
+
+    .coin-face {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      backface-visibility: hidden;
+      background:
+        radial-gradient(circle at 34% 28%, hsl(49, 100%, 76%) 0 9%, transparent 10%),
+        radial-gradient(circle at 42% 40%, hsl(44, 96%, 64%) 0 24%, hsl(39, 92%, 51%) 46%, hsl(32, 88%, 39%) 78%, hsl(28, 74%, 30%) 100%);
+      border: 8px solid hsla(43, 96%, 68%, 0.72);
+      box-shadow:
+        0 0 0 4px hsla(30, 78%, 32%, 0.7),
+        0 0 0 10px hsla(47, 100%, 65%, 0.2),
+        inset 0 0 0 10px hsla(33, 82%, 31%, 0.24),
+        inset 0 0 0 24px hsla(47, 100%, 72%, 0.18),
+        inset -22px -24px 42px hsla(0, 0%, 0%, 0.28),
+        inset 18px 20px 36px hsla(55, 100%, 82%, 0.28),
+        0 18px 42px hsla(34, 90%, 38%, 0.22);
+      transform: translateZ(32px);
+    }
+
+    .coin-face::before,
+    .coin-face::after {
+      content: "";
+      position: absolute;
+      inset: 17%;
+      border-radius: inherit;
+      border: 2px solid hsla(50, 100%, 78%, 0.45);
+    }
+
+    .coin-face::after {
+      inset: 28%;
+      border-color: hsla(29, 72%, 25%, 0.34);
+    }
+
+    .coin-back {
+      transform: rotateY(180deg) translateZ(32px);
+      filter: saturate(0.92) brightness(0.9);
+    }
+
+    .coin-back .coin-mark {
+      transform: rotateY(180deg);
+    }
+
+    .coin-mark {
+      position: relative;
+      z-index: 1;
+      color: hsl(36, 86%, 33%);
+      font-family: Georgia, serif;
+      font-size: clamp(102px, 13.5vw, 180px);
+      font-weight: 700;
+      line-height: 1;
+      text-shadow:
+        0 2px 0 hsla(50, 100%, 80%, 0.42),
+        0 -2px 0 hsla(26, 68%, 23%, 0.22);
+    }
+
+    .coin-spark {
+      position: absolute;
+      z-index: 2;
+      width: 13%;
+      aspect-ratio: 1;
+      border-radius: 999px;
+      background: radial-gradient(circle, hsla(52, 100%, 78%, 0.92), transparent 64%);
+      transform: translateZ(26px);
+    }
+
+    .coin-spark.one { top: 17%; left: 26%; }
+    .coin-spark.two { right: 19%; bottom: 25%; opacity: 0.58; }
+
+    .motion-shadow {
+      position: absolute;
+      left: 50%;
+      top: 74%;
+      width: clamp(190px, 30vw, 400px);
+      height: 44px;
+      z-index: 2;
+      border-radius: 999px;
+      background: radial-gradient(ellipse, hsla(0, 0%, 0%, 0.46), transparent 68%);
+      transform: translate3d(-50%, 0, 0) scale(var(--motion-shadow-scale, 0.85));
+      opacity: var(--motion-shadow-opacity, 0.4);
+      filter: blur(8px);
+      will-change: transform, opacity;
+    }
+
+    .motion-ribbon {
+      position: absolute;
+      left: 50%;
+      bottom: clamp(24px, 6vh, 54px);
+      z-index: 2;
+      width: min(320px, 30vw);
+      padding: 18px;
+      border: 1px solid hsla(220, 20%, 80%, 0.1);
+      border-radius: var(--radius-md);
+      background: hsla(222, 18%, 10%, 0.72);
+      backdrop-filter: blur(16px);
+      transform: translate3d(-50%, var(--motion-ribbon-y, 18px), 0);
+      opacity: var(--motion-ribbon-opacity, 0.45);
+      will-change: transform, opacity;
+    }
+
+    .motion-ribbon-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      color: var(--text-secondary);
+      font-size: 13px;
+      margin-bottom: 14px;
+    }
+
+    .motion-ribbon strong {
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-weight: 500;
+    }
+
+    .motion-ribbon svg {
+      width: 100%;
+      height: 72px;
+      overflow: visible;
+    }
+
+    .motion-ribbon path {
+      fill: none;
+      stroke: var(--accent-primary);
+      stroke-width: 2;
+      stroke-linecap: round;
+    }
+
+    .motion-progress {
+      position: absolute;
+      right: 28px;
+      top: 50%;
+      z-index: 5;
+      width: 3px;
+      height: 160px;
+      border-radius: 999px;
+      background: hsla(220, 20%, 80%, 0.12);
+      transform: translateY(-50%);
+      overflow: hidden;
+    }
+
+    .motion-progress-bar {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(180deg, var(--accent-primary), hsl(42, 96%, 58%));
+      transform: translateY(var(--motion-progress-offset, -100%));
+      transform-origin: bottom;
+      will-change: transform;
+    }
+
     /* ── SOCIAL PROOF BAR ── */
     .social-proof {
       border-top: 1px solid var(--border-subtle);
@@ -394,13 +752,102 @@
     }
 
     @media (max-width: 900px) {
+      .nav-brand,
+      .nav-link,
+      .btn-primary {
+        white-space: nowrap;
+      }
       .hero-grid { grid-template-columns: 1fr; }
       .hero-title i { margin-left: 0; }
+      .motion-section { min-height: 390vh; padding-top: 8px; }
+      .motion-stage {
+        height: calc(100svh - 96px);
+        min-height: 560px;
+      }
+      .motion-copy {
+        inset: 0;
+      }
+      .motion-chapter,
+      .motion-chapter:nth-child(2),
+      .motion-chapter:nth-child(3) {
+        width: min(270px, calc(100% - 92px));
+        left: 32px;
+        right: auto;
+        text-align: left;
+      }
+      .motion-chapter:nth-child(1) { top: 76px; bottom: auto; }
+      .motion-chapter:nth-child(2) { top: 43%; transform: translate3d(0, -50%, 0) scale(0.96); }
+      .motion-chapter:nth-child(3) { top: auto; bottom: 90px; }
+      .motion-chapter:nth-child(2).is-active { transform: translate3d(0, -50%, 0) scale(1); }
+      .motion-title {
+        max-width: 12ch;
+        font-size: clamp(2rem, 8.5vw, 3rem);
+        line-height: 1;
+        margin-bottom: 16px;
+      }
+      .motion-text {
+        font-size: 13px;
+        line-height: 1.55;
+        max-width: 250px;
+      }
+      .motion-chapter:not(.is-active) .motion-text {
+        display: none;
+      }
+      .bitcoin-orbit {
+        --coin-size: clamp(128px, 34vw, 190px);
+      }
+      .coin-mark { font-size: clamp(66px, 18vw, 98px); }
+      .motion-ribbon {
+        width: min(300px, calc(100% - 48px));
+        left: 24px;
+        right: auto;
+        top: 24px;
+        bottom: auto;
+      }
+      .motion-progress {
+        right: 18px;
+        height: 112px;
+      }
       .features-grid { grid-template-columns: 1fr; }
       .how-grid { grid-template-columns: 1fr; }
       .footer-flex { flex-direction: column; gap: 40px; }
       .footer-links { flex-direction: column; gap: 40px; }
       .footer-links { flex-direction: column; gap: 40px; }
+    }
+
+    @media (max-width: 640px) {
+      .container {
+        padding: 0 24px;
+      }
+      .nav-inner {
+        height: 72px;
+      }
+      .nav-brand {
+        gap: 8px;
+        font-size: 14px;
+      }
+      .nav-brand svg {
+        width: 18px;
+        height: 18px;
+      }
+      .nav-links {
+        gap: 16px;
+      }
+      .nav-links .nav-link:not([style]) {
+        display: none;
+      }
+      .nav-link {
+        font-size: 13px;
+      }
+      .btn-primary {
+        padding: 10px 16px;
+      }
+      .motion-stage {
+        border-radius: 30px;
+      }
+      .motion-ribbon {
+        display: none;
+      }
     }
 
     /* FIX 7: WELCOME PAGE ENTRANCE ANIMATIONS */
@@ -427,6 +874,17 @@
     .social-proof { opacity: 0; animation: fadeIn 0.6s ease forwards; animation-delay: 0.9s; }
     .hero-visual .data-panel { opacity: 0; animation: slideInRight 0.7s ease forwards; animation-delay: 0.5s; }
 
+    .motion-stage {
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 0.7s ease, transform 0.7s ease;
+    }
+
+    .motion-stage.is-visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
     .feature-card {
       opacity: 0; 
       transform: translateY(16px); 
@@ -439,6 +897,34 @@
 
     @media (prefers-reduced-motion: reduce) {
       * { animation: none !important; transition: none !important; }
+      .motion-section { min-height: auto; padding: 80px 0; }
+      .motion-sticky { position: relative; min-height: auto; }
+      .motion-stage { opacity: 1; transform: none; }
+      .motion-copy { position: relative; inset: auto; display: grid; gap: 32px; padding: 48px; }
+      .motion-chapter,
+      .motion-chapter:nth-child(1),
+      .motion-chapter:nth-child(2),
+      .motion-chapter:nth-child(3) {
+        position: relative;
+        inset: auto;
+        width: min(420px, 100%);
+        opacity: 1;
+        text-align: left;
+        transform: none;
+        filter: none;
+      }
+      .motion-chapter:nth-child(2) .motion-title,
+      .motion-chapter:nth-child(3) .motion-title {
+        margin-left: 0;
+      }
+      .bitcoin-orbit {
+        transform:
+          translate3d(calc(-50% + 22vw), calc(-50% + 2vh), 0)
+          rotateX(8deg)
+          rotateY(44deg)
+          rotateZ(-8deg)
+          scale(0.72) !important;
+      }
     }
   </style>
 </head>
@@ -498,6 +984,72 @@
             <svg viewBox="0 0 200 40" preserveAspectRatio="none">
               <path d="M 0 30 Q 20 20 40 25 T 80 15 T 120 20 T 160 5 T 200 10"/>
             </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SCROLL MOTION SHOWCASE -->
+  <section class="motion-section" data-scroll-motion aria-label="Bitcoin market motion">
+    <div class="motion-sticky">
+      <div class="container">
+        <div class="motion-stage" data-motion-stage>
+          <div class="motion-copy">
+            <article class="motion-chapter is-active" data-motion-chapter>
+              <div class="motion-kicker label-caps">Market Focus</div>
+              <h2 class="font-display motion-title">Bitcoin in motion.</h2>
+              <p class="motion-text">Track the asset as price structure shifts from raw momentum into readable support, resistance, and trend context.</p>
+            </article>
+            <article class="motion-chapter" data-motion-chapter>
+              <div class="motion-kicker label-caps">Signal Layer</div>
+              <h2 class="font-display motion-title">Structure stays visible.</h2>
+              <p class="motion-text">The motion follows the scroll while the dashboard logic keeps pivot levels, EMA pressure, and momentum state in view.</p>
+            </article>
+            <article class="motion-chapter" data-motion-chapter>
+              <div class="motion-kicker label-caps">Execution View</div>
+              <h2 class="font-display motion-title">Decide with context.</h2>
+              <p class="motion-text">AI summaries turn technical movement into clean scenarios without burying the chart beneath noisy decoration.</p>
+            </article>
+          </div>
+
+          <div class="bitcoin-orbit" data-bitcoin-orbit aria-hidden="true">
+            <div class="coin-edge">
+              <span style="--z:-30px"></span>
+              <span style="--z:-24px"></span>
+              <span style="--z:-18px"></span>
+              <span style="--z:-12px"></span>
+              <span style="--z:-6px"></span>
+              <span style="--z:0px"></span>
+              <span style="--z:6px"></span>
+              <span style="--z:12px"></span>
+              <span style="--z:18px"></span>
+              <span style="--z:24px"></span>
+              <span style="--z:30px"></span>
+            </div>
+            <div class="coin-face coin-front">
+              <span class="coin-mark">&#8383;</span>
+              <span class="coin-spark one"></span>
+              <span class="coin-spark two"></span>
+            </div>
+            <div class="coin-face coin-back">
+              <span class="coin-mark">&#8383;</span>
+            </div>
+          </div>
+          <div class="motion-shadow" aria-hidden="true"></div>
+
+          <div class="motion-ribbon" aria-hidden="true">
+            <div class="motion-ribbon-top">
+              <span>BTCUSDT</span>
+              <strong>+2.4%</strong>
+            </div>
+            <svg viewBox="0 0 280 72" preserveAspectRatio="none">
+              <path d="M0 54 C20 44 29 48 45 42 S73 16 96 24 S127 59 151 39 S184 13 212 21 S247 46 280 18" />
+            </svg>
+          </div>
+
+          <div class="motion-progress" aria-hidden="true">
+            <span class="motion-progress-bar"></span>
           </div>
         </div>
       </div>
@@ -594,7 +1146,7 @@
     // Nav scroll
     window.addEventListener('scroll', () => {
       document.getElementById('nav').classList.toggle('scrolled', window.scrollY > 20);
-    });
+    }, { passive: true });
 
     // Check login state
     if (localStorage.getItem('vcb_auth_token') || sessionStorage.getItem('vcb_auth_token')) {
@@ -606,6 +1158,110 @@
     }
     // Feature Cards scroll animation
     document.addEventListener("DOMContentLoaded", () => {
+      const motionSection = document.querySelector("[data-scroll-motion]");
+      const motionStage = document.querySelector("[data-motion-stage]");
+      const bitcoinOrbit = document.querySelector("[data-bitcoin-orbit]");
+      const motionChapters = Array.from(document.querySelectorAll("[data-motion-chapter]"));
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+      if (motionSection && motionStage && bitcoinOrbit) {
+        motionStage.classList.add("is-visible");
+
+        const clamp = (value, min = 0, max = 1) => Math.min(Math.max(value, min), max);
+        const mix = (from, to, amount) => from + (to - from) * amount;
+        let keyframes = [];
+        const desktopKeyframes = [
+          { p: 0, x: -7, y: 12, s: 0.82, rx: 12, ry: 72, rz: -10 },
+          { p: 0.28, x: 2, y: 2, s: 0.9, rx: -4, ry: 168, rz: 7 },
+          { p: 0.5, x: 11, y: -12, s: 0.82, rx: 10, ry: 246, rz: -6 },
+          { p: 0.75, x: 5, y: 0, s: 0.92, rx: -6, ry: 326, rz: 8 },
+          { p: 1, x: 11, y: 13, s: 0.88, rx: 4, ry: 392, rz: 0 },
+        ];
+        const mobileKeyframes = [
+          { p: 0, x: 30, y: -25, s: 0.62, rx: 10, ry: 70, rz: -8 },
+          { p: 0.5, x: 30, y: -1, s: 0.58, rx: -6, ry: 246, rz: 5 },
+          { p: 1, x: 30, y: 24, s: 0.6, rx: 4, ry: 392, rz: 0 },
+        ];
+        const chapterStops = [0, 0.38, 0.72];
+        let start = 0;
+        let length = 1;
+        let target = 0;
+        let current = 0;
+        let frame = null;
+
+        const sample = (progress) => {
+          let index = 0;
+          while (index < keyframes.length - 2 && progress > keyframes[index + 1].p) index += 1;
+          const a = keyframes[index];
+          const b = keyframes[index + 1];
+          const local = clamp((progress - a.p) / (b.p - a.p));
+          const eased = local * local * (3 - 2 * local);
+          return {
+            x: mix(a.x, b.x, eased),
+            y: mix(a.y, b.y, eased),
+            s: mix(a.s, b.s, eased),
+            rx: mix(a.rx, b.rx, eased),
+            ry: mix(a.ry, b.ry, eased),
+            rz: mix(a.rz, b.rz, eased),
+          };
+        };
+
+        const refreshBounds = () => {
+          const rect = motionSection.getBoundingClientRect();
+          keyframes = window.innerWidth <= 900 ? mobileKeyframes : desktopKeyframes;
+          start = window.scrollY + rect.top;
+          length = Math.max(1, motionSection.offsetHeight - window.innerHeight);
+        };
+
+        const render = (progress) => {
+          const state = sample(progress);
+          motionStage.style.setProperty("--motion-progress", progress.toFixed(4));
+          motionStage.style.setProperty("--motion-shadow-scale", (0.85 + progress * 0.25).toFixed(3));
+          motionStage.style.setProperty("--motion-shadow-opacity", (0.4 + progress * 0.25).toFixed(3));
+          motionStage.style.setProperty("--motion-ribbon-y", `${(18 - progress * 18).toFixed(2)}px`);
+          motionStage.style.setProperty("--motion-ribbon-opacity", (0.45 + progress * 0.55).toFixed(3));
+          motionStage.style.setProperty("--motion-progress-offset", `${(-100 + progress * 100).toFixed(2)}%`);
+          bitcoinOrbit.style.transform = `translate3d(calc(-50% + ${state.x.toFixed(2)}vw), calc(-50% + ${state.y.toFixed(2)}vh), 0) rotateX(${state.rx.toFixed(2)}deg) rotateY(${state.ry.toFixed(2)}deg) rotateZ(${state.rz.toFixed(2)}deg) scale(${state.s.toFixed(3)})`;
+
+          let activeChapter = 0;
+          chapterStops.forEach((stop, index) => {
+            if (progress >= stop) activeChapter = index;
+          });
+          motionChapters.forEach((chapter, index) => {
+            chapter.classList.toggle("is-active", index === activeChapter);
+          });
+        };
+
+        const tick = () => {
+          current += (target - current) * 0.16;
+          if (Math.abs(target - current) < 0.001) current = target;
+          render(current);
+          frame = current === target ? null : requestAnimationFrame(tick);
+        };
+
+        const requestTick = () => {
+          if (!frame) frame = requestAnimationFrame(tick);
+        };
+
+        const updateTarget = () => {
+          target = clamp((window.scrollY - start) / length);
+          requestTick();
+        };
+
+        refreshBounds();
+        target = clamp((window.scrollY - start) / length);
+        current = target;
+        render(current);
+
+        if (!reduceMotion.matches) {
+          window.addEventListener("scroll", updateTarget, { passive: true });
+          window.addEventListener("resize", () => {
+            refreshBounds();
+            updateTarget();
+          }, { passive: true });
+        }
+      }
+
       const featureCards = document.querySelectorAll(".feature-card");
       if(featureCards.length > 0) {
         const observer = new IntersectionObserver((entries) => {

@@ -820,8 +820,8 @@
       <div class="nav-links">
         <a href="#features" class="nav-link">Features</a>
         <a href="education.html" class="nav-link">Education</a>
-        <a href="login.html" class="nav-link" style="color:var(--text-primary)">Sign In</a>
-        <a href="login.html" class="btn-primary" id="navActionBtn">Get Started</a>
+        <a href="/signin" class="nav-link" style="color:var(--text-primary)">Sign In</a>
+        <a href="/signup" class="btn-primary" id="navActionBtn">Get Started</a>
       </div>
     </div>
   </nav>
@@ -839,7 +839,7 @@
           High-performance technical tracking combined with logical AI market insights. Make confident decisions based on data, not guesswork.
         </p>
         <div class="hero-ctas">
-          <a href="login.html" class="btn-primary">Launch Dashboard</a>
+          <a href="/signin" class="btn-primary">Launch Dashboard</a>
           <a href="education.html" class="btn-secondary">
             Read the Docs
             <span style="font-family:var(--font-mono)">→</span>
@@ -990,7 +990,7 @@
           <div class="fl-col">
             <span class="label-caps">Platform</span>
             <a href="welcome.html">Overview</a>
-            <a href="login.html">Dashboard</a>
+            <a href="/signin">Dashboard</a>
           </div>
           <div class="fl-col">
             <span class="label-caps">Resources</span>
@@ -1011,13 +1011,9 @@
       document.getElementById('nav').classList.toggle('scrolled', window.scrollY > 20);
     }, { passive: true });
 
-    // Check login state
-    if (localStorage.getItem('vcb_auth_token') || sessionStorage.getItem('vcb_auth_token')) {
-      const btn = document.getElementById('navActionBtn');
-      if(btn) {
-        btn.textContent = 'Dashboard';
-        btn.href = 'index.html';
-      }
+    const btn = document.getElementById('navActionBtn');
+    if(btn) {
+      btn.href = '/signup';
     }
     // Feature Cards scroll animation
     document.addEventListener("DOMContentLoaded", () => {

@@ -20,6 +20,42 @@ function normalizeUserKey(raw: unknown): string {
   return USER_KEY_REGEX.test(userKey) ? userKey : "guest";
 }
 
+function getBearerToken(req: Request): string | null {
+  const header = req.headers.get("Authorization") ?? "";
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  return match?.[1] ?? null;
+}
+
+async function getAuthenticatedUserId(supabase: SupabaseClient, req: Request): Promise<
+  | { ok: true; userId: string }
+  | { ok: false; status: number; error: string; error_code: "AUTH_REQUIRED" | "INVALID_TOKEN" }
+> {
+  const token = getBearerToken(req);
+  if (!token) {
+    return { ok: false, status: 401, error: "Sign in is required to access chart settings.", error_code: "AUTH_REQUIRED" };
+  }
+
+  const { data, error } = await supabase.auth.getUser(token);
+  if (error || !data.user?.id) {
+    return { ok: false, status: 401, error: "Your session expired. Please sign in again.", error_code: "INVALID_TOKEN" };
+  }
+
+  return { ok: true, userId: data.user.id };
+}
+
+function resolveRequestedUserId(raw: unknown, authenticatedUserId: string):
+  | { ok: true; userId: string }
+  | { ok: false; error: string; error_code: "USER_MISMATCH" | "INVALID_USER_ID" } {
+  const requested = raw == null || raw === "" ? authenticatedUserId : normalizeUserKey(raw);
+  if (requested === "guest") {
+    return { ok: false, error: "Invalid user id.", error_code: "INVALID_USER_ID" };
+  }
+  if (requested !== authenticatedUserId) {
+    return { ok: false, error: "You can only access your own chart settings.", error_code: "USER_MISMATCH" };
+  }
+  return { ok: true, userId: authenticatedUserId };
+}
+
 function sanitizePreferences(payload: unknown) {
   const sanitized = { ...DEFAULT_CHART_PREFERENCES };
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return sanitized;
@@ -66,11 +102,26 @@ Deno.serve(async (req) => {
   }
   const supabase = clientResult.client;
 
+  const authResult = await getAuthenticatedUserId(supabase, req);
+  if (!authResult.ok) {
+    return jsonResponse(
+      { success: false, error: authResult.error, error_code: authResult.error_code },
+      authResult.status,
+    );
+  }
+
   try {
     const url = new URL(req.url);
 
     if (req.method === "GET") {
-      const userId = normalizeUserKey(url.searchParams.get("user_id") ?? url.searchParams.get("userKey") ?? "guest");
+      const userResult = resolveRequestedUserId(
+        url.searchParams.get("user_id") ?? url.searchParams.get("userKey"),
+        authResult.userId,
+      );
+      if (!userResult.ok) {
+        return jsonResponse({ success: false, error: userResult.error, error_code: userResult.error_code }, 403);
+      }
+      const userId = userResult.userId;
       const { data, error } = await supabase
         .from("user_preferences")
         .select("preferences")
@@ -93,7 +144,11 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     if (body.action === "get") {
-      const userId = normalizeUserKey(body.user_id ?? body.userKey ?? "guest");
+      const userResult = resolveRequestedUserId(body.user_id ?? body.userKey, authResult.userId);
+      if (!userResult.ok) {
+        return jsonResponse({ success: false, error: userResult.error, error_code: userResult.error_code }, 403);
+      }
+      const userId = userResult.userId;
       const { data, error } = await supabase
         .from("user_preferences")
         .select("preferences")
@@ -115,7 +170,11 @@ Deno.serve(async (req) => {
     }
 
     if (body.action === "upsert") {
-      const userId = normalizeUserKey(body.user_id ?? body.userKey ?? "guest");
+      const userResult = resolveRequestedUserId(body.user_id ?? body.userKey, authResult.userId);
+      if (!userResult.ok) {
+        return jsonResponse({ success: false, error: userResult.error, error_code: userResult.error_code }, 403);
+      }
+      const userId = userResult.userId;
       const preferences = sanitizePreferences(body.preferences);
 
       const { error } = await supabase

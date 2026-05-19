@@ -5,6 +5,7 @@ import ChartPanel from './components/ChartPanel'
 import AnalysisPanel from './components/AnalysisPanel'
 import AIAnalysisPanel from './components/AIAnalysisPanel'
 import EducationPanel from './components/EducationPanel'
+import { useAuth } from './hooks/useAuth'
 import {
   EDGE_FUNCTION_UNAVAILABLE_MESSAGE,
   invokeFunction,
@@ -24,22 +25,6 @@ const DEFAULT_CHART_PREFERENCES = {
   showResistance: false,
   showPivots: false,
   showStandardPivots: false,
-}
-
-function resolveUserKey() {
-  try {
-    const stored = localStorage.getItem('vcb_user') || sessionStorage.getItem('vcb_user')
-    if (stored) {
-      const parsed = JSON.parse(stored)
-      const candidate = parsed?.email || parsed?.username || parsed?.id || parsed?.name
-      if (candidate) return String(candidate).toLowerCase().replace(/\s+/g, '-')
-    }
-  } catch {
-    // Ignore malformed user object and fall back.
-  }
-
-  const token = localStorage.getItem('vcb_auth_token') || sessionStorage.getItem('vcb_auth_token') || 'guest'
-  return String(token).toLowerCase().replace(/[^a-z0-9_.@-]/g, '').slice(0, 128) || 'guest'
 }
 
 function applyTheme(theme) {
@@ -578,6 +563,8 @@ function buildTechnicalAnalysis(candles, selectedSymbol, selectedInterval) {
 }
 
 export default function App() {
+  const { user, signOut } = useAuth()
+  const currentUserId = user?.id || 'guest'
   const [symbolInput, setSymbolInput] = useState('BTCUSDT')
   const [symbol, setSymbol] = useState('BTCUSDT')
   const [interval, setInterval] = useState('4h')
@@ -617,7 +604,7 @@ export default function App() {
   const [chartPreferences, setChartPreferences] = useState(DEFAULT_CHART_PREFERENCES)
   const [chartPrefsReady, setChartPrefsReady] = useState(false)
   const [preferencesSyncError, setPreferencesSyncError] = useState('')
-  const userKeyRef = useRef(resolveUserKey())
+  const userKeyRef = useRef(currentUserId)
   const preferencesCloudUnavailableRef = useRef(false)
 
   const wsRef = useRef(null)
@@ -754,6 +741,9 @@ export default function App() {
   }
 
   useEffect(() => {
+    userKeyRef.current = currentUserId
+    setChartPrefsReady(false)
+
     const fetchPreferences = async () => {
       const localPreferences = loadLocalPreferences(userKeyRef.current)
       if (localPreferences) {
@@ -791,7 +781,7 @@ export default function App() {
     }
 
     fetchPreferences()
-  }, [])
+  }, [currentUserId])
 
   useEffect(() => {
     if (!chartPrefsReady) return
@@ -829,7 +819,7 @@ export default function App() {
     }, 250)
 
     return () => clearTimeout(saveTimer)
-  }, [chartPreferences, chartPrefsReady])
+  }, [chartPreferences, chartPrefsReady, currentUserId])
 
   const runAIAnalysis = async (currentCandles = null) => {
     const candleData = currentCandles
@@ -1014,12 +1004,11 @@ export default function App() {
     setTheme(newTheme)
   }
 
-  const logout = () => {
-    localStorage.removeItem('vcb_auth_token')
-    localStorage.removeItem('vcb_user')
-    sessionStorage.removeItem('vcb_auth_token')
-    sessionStorage.removeItem('vcb_user')
-    window.location.href = 'welcome.html'
+  const logout = async () => {
+    const { error: signOutError } = await signOut()
+    if (signOutError) {
+      setError('Unable to sign out. Please try again.')
+    }
   }
 
   return (

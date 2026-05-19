@@ -11,14 +11,6 @@
   </head>
   <body>
     <div id="root"></div>
-    <script>
-      (function() {
-        const token = localStorage.getItem('vcb_auth_token') || sessionStorage.getItem('vcb_auth_token');
-        if (!token) {
-          window.location.href = 'welcome.html';
-        }
-      })();
-    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

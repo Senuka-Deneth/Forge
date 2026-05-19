@@ -266,42 +266,12 @@
     .motion-stage {
       position: relative;
       width: 100%;
-      height: min(760px, calc(100svh - 120px));
+      height: 100vh;
       min-height: 540px;
-      border: 1px solid var(--border-subtle);
-      border-radius: var(--radius-lg);
       overflow: hidden;
       isolation: isolate;
-      background:
-        radial-gradient(circle at 48% 44%, hsla(42, 90%, 56%, 0.22), transparent 22%),
-        radial-gradient(circle at 75% 18%, hsla(158, 64%, 52%, 0.12), transparent 24%),
-        linear-gradient(135deg, hsl(222, 20%, 8%) 0%, hsl(225, 14%, 12%) 48%, hsl(220, 10%, 7%) 100%);
-      box-shadow: 0 40px 120px hsla(0, 0%, 0%, 0.34);
+      background: transparent;
       contain: layout paint style;
-    }
-
-    .motion-stage::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      background-image:
-        linear-gradient(hsla(220, 20%, 90%, 0.045) 1px, transparent 1px),
-        linear-gradient(90deg, hsla(220, 20%, 90%, 0.035) 1px, transparent 1px);
-      background-size: 64px 64px;
-      mask-image: radial-gradient(circle at 50% 45%, black, transparent 72%);
-      opacity: 0.42;
-    }
-
-    .motion-stage::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      background:
-        linear-gradient(90deg, hsla(222, 20%, 7%, 0.82), transparent 38%, transparent 66%, hsla(222, 20%, 7%, 0.62)),
-        linear-gradient(180deg, hsla(222, 20%, 7%, 0.08), transparent 34%, hsla(222, 20%, 7%, 0.48));
-      z-index: 1;
     }
 
     .motion-copy {
@@ -314,36 +284,33 @@
     .motion-chapter {
       position: absolute;
       width: min(390px, 34vw);
-      opacity: 0.3;
-      transform: translate3d(0, 10px, 0) scale(0.96);
-      transition: opacity 0.22s ease, transform 0.22s ease, filter 0.22s ease;
-      filter: saturate(0.74);
-      will-change: opacity, transform, filter;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+      will-change: opacity;
     }
 
     .motion-chapter.is-active {
       opacity: 1;
-      transform: translate3d(0, 0, 0) scale(1);
-      filter: saturate(1);
+      pointer-events: auto;
     }
 
     .motion-chapter:nth-child(1) {
-      left: clamp(28px, 7vw, 96px);
-      bottom: clamp(48px, 10vh, 84px);
+      left: clamp(40px, 8vw, 120px);
+      top: clamp(80px, 15vh, 180px);
     }
 
     .motion-chapter:nth-child(2) {
-      right: clamp(44px, 7vw, 96px);
-      top: clamp(36px, 7vh, 58px);
-      width: min(330px, 30vw);
+      right: clamp(40px, 8vw, 120px);
+      bottom: clamp(80px, 15vh, 180px);
+      width: min(390px, 34vw);
       text-align: right;
     }
 
     .motion-chapter:nth-child(3) {
-      right: clamp(44px, 7vw, 96px);
-      bottom: clamp(42px, 8vh, 64px);
-      width: min(330px, 30vw);
-      text-align: right;
+      left: clamp(40px, 8vw, 120px);
+      bottom: clamp(80px, 15vh, 180px);
+      width: min(390px, 34vw);
     }
 
     .motion-kicker {
@@ -359,17 +326,27 @@
       text-wrap: balance;
     }
 
-    .motion-chapter:nth-child(2) .motion-title,
-    .motion-chapter:nth-child(3) .motion-title {
+    .motion-chapter:nth-child(2) .motion-title {
       margin-left: auto;
       font-size: clamp(2.35rem, 4vw, 4.15rem);
       line-height: 0.98;
       margin-bottom: 16px;
     }
 
-    .motion-chapter:nth-child(2) .motion-text,
-    .motion-chapter:nth-child(3) .motion-text {
+    .motion-chapter:nth-child(3) .motion-title {
+      font-size: clamp(2.35rem, 4vw, 4.15rem);
+      line-height: 0.98;
+      margin-bottom: 16px;
+    }
+
+    .motion-chapter:nth-child(2) .motion-text {
       margin-left: auto;
+      max-width: 315px;
+      font-size: 15px;
+      line-height: 1.55;
+    }
+
+    .motion-chapter:nth-child(3) .motion-text {
       max-width: 315px;
       font-size: 15px;
       line-height: 1.55;
@@ -776,9 +753,8 @@
         text-align: left;
       }
       .motion-chapter:nth-child(1) { top: 76px; bottom: auto; }
-      .motion-chapter:nth-child(2) { top: 43%; transform: translate3d(0, -50%, 0) scale(0.96); }
+      .motion-chapter:nth-child(2) { top: 43%; }
       .motion-chapter:nth-child(3) { top: auto; bottom: 90px; }
-      .motion-chapter:nth-child(2).is-active { transform: translate3d(0, -50%, 0) scale(1); }
       .motion-title {
         max-width: 12ch;
         font-size: clamp(2rem, 8.5vw, 3rem);
@@ -1171,16 +1147,15 @@
         const mix = (from, to, amount) => from + (to - from) * amount;
         let keyframes = [];
         const desktopKeyframes = [
-          { p: 0, x: -7, y: 12, s: 0.82, rx: 12, ry: 72, rz: -10 },
-          { p: 0.28, x: 2, y: 2, s: 0.9, rx: -4, ry: 168, rz: 7 },
-          { p: 0.5, x: 11, y: -12, s: 0.82, rx: 10, ry: 246, rz: -6 },
-          { p: 0.75, x: 5, y: 0, s: 0.92, rx: -6, ry: 326, rz: 8 },
-          { p: 1, x: 11, y: 13, s: 0.88, rx: 4, ry: 392, rz: 0 },
+          { p: 0, x: 22, y: -18, s: 0.95, rx: 12, ry: 72, rz: -10 },
+          { p: 0.35, x: -22, y: 18, s: 0.95, rx: -4, ry: 180, rz: 8 },
+          { p: 0.7, x: 22, y: 0, s: 0.95, rx: 10, ry: 288, rz: -6 },
+          { p: 1, x: 22, y: 12, s: 0.95, rx: 4, ry: 396, rz: 0 },
         ];
         const mobileKeyframes = [
-          { p: 0, x: 30, y: -25, s: 0.62, rx: 10, ry: 70, rz: -8 },
-          { p: 0.5, x: 30, y: -1, s: 0.58, rx: -6, ry: 246, rz: 5 },
-          { p: 1, x: 30, y: 24, s: 0.6, rx: 4, ry: 392, rz: 0 },
+          { p: 0, x: 24, y: -25, s: 0.62, rx: 10, ry: 70, rz: -8 },
+          { p: 0.5, x: 24, y: -2, s: 0.58, rx: -6, ry: 246, rz: 5 },
+          { p: 1, x: 24, y: 22, s: 0.6, rx: 4, ry: 392, rz: 0 },
         ];
         const chapterStops = [0, 0.38, 0.72];
         let start = 0;

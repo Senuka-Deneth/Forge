@@ -244,8 +244,8 @@
     /* ── SCROLL MOTION SHOWCASE ── */
     .motion-section {
       position: relative;
-      min-height: 340vh;
-      padding: 24px 0 80px;
+      height: 300vh;
+      padding: 0;
       background:
         linear-gradient(180deg, transparent 0%, hsla(42, 84%, 52%, 0.035) 42%, transparent 100%);
     }
@@ -272,44 +272,47 @@
       isolation: isolate;
       background: transparent;
       contain: layout paint style;
+      perspective: 1200px;
     }
 
     .motion-copy {
       position: absolute;
-      inset: 0;
-      z-index: 4;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100%;
+      max-width: 1280px;
+      padding: 0 clamp(1.5rem, 5vw, 4rem);
+      z-index: 10;
       pointer-events: none;
+      display: flex;
+      flex-direction: column;
     }
 
     .motion-chapter {
-      position: absolute;
+      position: relative;
       width: min(390px, 34vw);
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.3s ease;
-      will-change: opacity;
-    }
-
-    .motion-chapter.is-active {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
       opacity: 1;
       pointer-events: auto;
     }
 
     .motion-chapter:nth-child(1) {
-      left: clamp(40px, 8vw, 120px);
-      top: clamp(80px, 15vh, 180px);
+      margin-left: clamp(10px, 2vw, 40px);
     }
 
     .motion-chapter:nth-child(2) {
-      right: clamp(40px, 8vw, 120px);
-      bottom: clamp(80px, 15vh, 180px);
+      margin-left: auto;
+      margin-right: clamp(10px, 2vw, 40px);
       width: min(390px, 34vw);
       text-align: right;
     }
 
     .motion-chapter:nth-child(3) {
-      left: clamp(40px, 8vw, 120px);
-      bottom: clamp(80px, 15vh, 180px);
+      margin-left: clamp(10px, 2vw, 40px);
       width: min(390px, 34vw);
     }
 
@@ -493,88 +496,7 @@
     .coin-spark.one { top: 17%; left: 26%; }
     .coin-spark.two { right: 19%; bottom: 25%; opacity: 0.58; }
 
-    .motion-shadow {
-      position: absolute;
-      left: 50%;
-      top: 74%;
-      width: clamp(190px, 30vw, 400px);
-      height: 44px;
-      z-index: 2;
-      border-radius: 999px;
-      background: radial-gradient(ellipse, hsla(0, 0%, 0%, 0.46), transparent 68%);
-      transform: translate3d(-50%, 0, 0) scale(var(--motion-shadow-scale, 0.85));
-      opacity: var(--motion-shadow-opacity, 0.4);
-      filter: blur(8px);
-      will-change: transform, opacity;
-    }
 
-    .motion-ribbon {
-      position: absolute;
-      left: 50%;
-      bottom: clamp(24px, 6vh, 54px);
-      z-index: 2;
-      width: min(320px, 30vw);
-      padding: 18px;
-      border: 1px solid hsla(220, 20%, 80%, 0.1);
-      border-radius: var(--radius-md);
-      background: hsla(222, 18%, 10%, 0.72);
-      backdrop-filter: blur(16px);
-      transform: translate3d(-50%, var(--motion-ribbon-y, 18px), 0);
-      opacity: var(--motion-ribbon-opacity, 0.45);
-      will-change: transform, opacity;
-    }
-
-    .motion-ribbon-top {
-      display: flex;
-      justify-content: space-between;
-      gap: 16px;
-      color: var(--text-secondary);
-      font-size: 13px;
-      margin-bottom: 14px;
-    }
-
-    .motion-ribbon strong {
-      color: var(--text-primary);
-      font-family: var(--font-mono);
-      font-weight: 500;
-    }
-
-    .motion-ribbon svg {
-      width: 100%;
-      height: 72px;
-      overflow: visible;
-    }
-
-    .motion-ribbon path {
-      fill: none;
-      stroke: var(--accent-primary);
-      stroke-width: 2;
-      stroke-linecap: round;
-    }
-
-    .motion-progress {
-      position: absolute;
-      right: 28px;
-      top: 50%;
-      z-index: 5;
-      width: 3px;
-      height: 160px;
-      border-radius: 999px;
-      background: hsla(220, 20%, 80%, 0.12);
-      transform: translateY(-50%);
-      overflow: hidden;
-    }
-
-    .motion-progress-bar {
-      display: block;
-      width: 100%;
-      height: 100%;
-      border-radius: inherit;
-      background: linear-gradient(180deg, var(--accent-primary), hsl(42, 96%, 58%));
-      transform: translateY(var(--motion-progress-offset, -100%));
-      transform-origin: bottom;
-      will-change: transform;
-    }
 
     /* ── SOCIAL PROOF BAR ── */
     .social-proof {
@@ -971,23 +893,6 @@
     <div class="motion-sticky">
       <div class="container">
         <div class="motion-stage" data-motion-stage>
-          <div class="motion-copy">
-            <article class="motion-chapter is-active" data-motion-chapter>
-              <div class="motion-kicker label-caps">Market Focus</div>
-              <h2 class="font-display motion-title">Bitcoin in motion.</h2>
-              <p class="motion-text">Track the asset as price structure shifts from raw momentum into readable support, resistance, and trend context.</p>
-            </article>
-            <article class="motion-chapter" data-motion-chapter>
-              <div class="motion-kicker label-caps">Signal Layer</div>
-              <h2 class="font-display motion-title">Structure stays visible.</h2>
-              <p class="motion-text">The motion follows the scroll while the dashboard logic keeps pivot levels, EMA pressure, and momentum state in view.</p>
-            </article>
-            <article class="motion-chapter" data-motion-chapter>
-              <div class="motion-kicker label-caps">Execution View</div>
-              <h2 class="font-display motion-title">Decide with context.</h2>
-              <p class="motion-text">AI summaries turn technical movement into clean scenarios without burying the chart beneath noisy decoration.</p>
-            </article>
-          </div>
 
           <div class="bitcoin-orbit" data-bitcoin-orbit aria-hidden="true">
             <div class="coin-edge">
@@ -1012,23 +917,26 @@
               <span class="coin-mark">&#8383;</span>
             </div>
           </div>
-          <div class="motion-shadow" aria-hidden="true"></div>
-
-          <div class="motion-ribbon" aria-hidden="true">
-            <div class="motion-ribbon-top">
-              <span>BTCUSDT</span>
-              <strong>+2.4%</strong>
-            </div>
-            <svg viewBox="0 0 280 72" preserveAspectRatio="none">
-              <path d="M0 54 C20 44 29 48 45 42 S73 16 96 24 S127 59 151 39 S184 13 212 21 S247 46 280 18" />
-            </svg>
-          </div>
-
-          <div class="motion-progress" aria-hidden="true">
-            <span class="motion-progress-bar"></span>
-          </div>
         </div>
       </div>
+    </div>
+    
+    <div class="container motion-copy">
+      <article class="motion-chapter" data-motion-chapter>
+        <div class="motion-kicker label-caps">Market Focus</div>
+        <h2 class="font-display motion-title">Bitcoin in motion.</h2>
+        <p class="motion-text">Track the asset as price structure shifts from raw momentum into readable support, resistance, and trend context.</p>
+      </article>
+      <article class="motion-chapter" data-motion-chapter>
+        <div class="motion-kicker label-caps">Signal Layer</div>
+        <h2 class="font-display motion-title">Structure stays visible.</h2>
+        <p class="motion-text">The motion follows the scroll while the dashboard logic keeps pivot levels, EMA pressure, and momentum state in view.</p>
+      </article>
+      <article class="motion-chapter" data-motion-chapter>
+        <div class="motion-kicker label-caps">Execution View</div>
+        <h2 class="font-display motion-title">Decide with context.</h2>
+        <p class="motion-text">AI summaries turn technical movement into clean scenarios without burying the chart beneath noisy decoration.</p>
+      </article>
     </div>
   </section>
 
@@ -1147,15 +1055,16 @@
         const mix = (from, to, amount) => from + (to - from) * amount;
         let keyframes = [];
         const desktopKeyframes = [
-          { p: 0, x: 22, y: -18, s: 0.95, rx: 12, ry: 72, rz: -10 },
-          { p: 0.35, x: -22, y: 18, s: 0.95, rx: -4, ry: 180, rz: 8 },
-          { p: 0.7, x: 22, y: 0, s: 0.95, rx: 10, ry: 288, rz: -6 },
-          { p: 1, x: 22, y: 12, s: 0.95, rx: 4, ry: 396, rz: 0 },
+          { p: 0, x: 22, y: 0, s: 0.95, rx: 0, ry: 0, rz: 0 },
+          { p: 0.25, x: 0, y: 10, s: 0.95, rx: 15, ry: 90, rz: 10 },
+          { p: 0.5, x: -22, y: 0, s: 0.95, rx: 0, ry: 180, rz: 0 },
+          { p: 0.75, x: 0, y: -10, s: 0.95, rx: -15, ry: 270, rz: -10 },
+          { p: 1, x: 22, y: 0, s: 0.95, rx: 0, ry: 360, rz: 0 },
         ];
         const mobileKeyframes = [
-          { p: 0, x: 24, y: -25, s: 0.62, rx: 10, ry: 70, rz: -8 },
-          { p: 0.5, x: 24, y: -2, s: 0.58, rx: -6, ry: 246, rz: 5 },
-          { p: 1, x: 24, y: 22, s: 0.6, rx: 4, ry: 392, rz: 0 },
+          { p: 0, x: 35, y: -15, s: 0.7, rx: 0, ry: 0, rz: 0 },
+          { p: 0.5, x: 35, y: 15, s: 0.7, rx: 0, ry: 180, rz: 0 },
+          { p: 1, x: 35, y: -15, s: 0.7, rx: 0, ry: 360, rz: 0 },
         ];
         const chapterStops = [0, 0.38, 0.72];
         let start = 0;
@@ -1190,12 +1099,6 @@
 
         const render = (progress) => {
           const state = sample(progress);
-          motionStage.style.setProperty("--motion-progress", progress.toFixed(4));
-          motionStage.style.setProperty("--motion-shadow-scale", (0.85 + progress * 0.25).toFixed(3));
-          motionStage.style.setProperty("--motion-shadow-opacity", (0.4 + progress * 0.25).toFixed(3));
-          motionStage.style.setProperty("--motion-ribbon-y", `${(18 - progress * 18).toFixed(2)}px`);
-          motionStage.style.setProperty("--motion-ribbon-opacity", (0.45 + progress * 0.55).toFixed(3));
-          motionStage.style.setProperty("--motion-progress-offset", `${(-100 + progress * 100).toFixed(2)}%`);
           bitcoinOrbit.style.transform = `translate3d(calc(-50% + ${state.x.toFixed(2)}vw), calc(-50% + ${state.y.toFixed(2)}vh), 0) rotateX(${state.rx.toFixed(2)}deg) rotateY(${state.ry.toFixed(2)}deg) rotateZ(${state.rz.toFixed(2)}deg) scale(${state.s.toFixed(3)})`;
 
           let activeChapter = 0;

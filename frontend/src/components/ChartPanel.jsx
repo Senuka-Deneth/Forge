@@ -46,6 +46,8 @@ export default function ChartPanel({
   interval,
   candles,
   loading,
+  error,
+  status,
   analysis,
   pivotData,
   chartPreferences,
@@ -785,7 +787,19 @@ export default function ChartPanel({
         </div>
       )}
 
-      <div id="chart-container" className="chart-container" ref={priceContainerRef}></div>
+      <div className="chart-container-shell">
+        <div id="chart-container" className="chart-container" ref={priceContainerRef}></div>
+        {(loading || error || (!candles.length && !loading)) && (
+          <div className={`chart-state-overlay ${error ? 'error' : ''}`}>
+            <div className="chart-state-title">
+              {error ? 'Chart data unavailable' : loading ? 'Loading candles' : 'No candle data'}
+            </div>
+            <div className="chart-state-copy">
+              {error || status || 'Load a symbol and timeframe to render the chart.'}
+            </div>
+          </div>
+        )}
+      </div>
       <div id="rsi-container" className="subchart-container" ref={rsiContainerRef} style={{ position: 'relative' }}>
         <div style={{ position: 'absolute', top: 5, left: 10, color: '#8b8b9e', zIndex: 10, fontSize: '12px', fontWeight: 'bold', pointerEvents: 'none' }}>RSI</div>
       </div>

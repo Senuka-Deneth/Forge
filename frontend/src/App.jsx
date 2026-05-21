@@ -14,7 +14,7 @@ import {
 
 const COMMON_QUOTES = ['USDT', 'BUSD', 'BTC', 'ETH', 'FDUSD']
 const BINANCE_KLINES_URL = 'https://api.binance.com/api/v3/klines'
-const LOCAL_PREFERENCES_PREFIX = 'visionchartbot_chart_preferences'
+const LOCAL_PREFERENCES_PREFIX = 'forge_chart_preferences'
 const DEFAULT_CHART_PREFERENCES = {
   showCandles: true,
   showEma20: false,
@@ -30,14 +30,14 @@ const DEFAULT_CHART_PREFERENCES = {
 function applyTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme)
   document.body.setAttribute('data-theme', theme)
-  localStorage.setItem('visionchartbot_theme', theme)
+  localStorage.setItem('forge_theme', theme)
   
   // Dispatch custom event to tell chart panels to update colors
   window.dispatchEvent(new CustomEvent('themeChanged', { detail: { theme } }))
 }
 
 function initTheme() {
-  const saved = localStorage.getItem('visionchartbot_theme') || 'dark'
+  const saved = localStorage.getItem('forge_theme') || 'dark'
   applyTheme(saved)
   return saved
 }
@@ -1019,7 +1019,7 @@ export default function App() {
             <div className="brand-icon-wrap">
               <svg viewBox="0 0 24 24"><path d="M3 3v18h18M9 15l3-3 4 4 5-5"/></svg>
             </div>
-            <span className="brand-name">Vision Chart</span>
+            <span className="brand-name">Forge</span>
           </a>
           <button className={`sidebar-toggle-btn ${!isSidebarCollapsed ? 'open' : ''}`} onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}>
             <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">

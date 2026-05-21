@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sign In - Vision Chart Bot</title>
+  <title>Sign In - Forge</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
   <style>
@@ -378,7 +378,7 @@
     <div class="brand-side">
       <a href="welcome.html" class="brand-top">
         <svg viewBox="0 0 24 24"><path d="M3 3v18h18M9 15l3-3 4 4 5-5"/></svg>
-        Vision Chart
+        Forge
       </a>
 
       <div class="brand-middle">
@@ -601,13 +601,13 @@
       btn.classList.add('loading');
       btn.disabled = true;
       setTimeout(() => {
-        localStorage.setItem('vcb_auth_token', 'demo_' + Date.now());
+        localStorage.setItem('forge_auth_token', 'demo_' + Date.now());
         const safeUser = {
           id: user.id || (user.email ? user.email.toLowerCase() : 'demo-user'),
           name: user.name || 'Demo User',
-          email: user.email || 'demo@visionchartbot.local'
+          email: user.email || 'demo@forge.local'
         };
-        localStorage.setItem('vcb_user', JSON.stringify(safeUser));
+        localStorage.setItem('forge_user', JSON.stringify(safeUser));
         window.location.href = 'index.html';
       }, 1000);
     };
@@ -626,11 +626,11 @@
     
     document.getElementById('google-login-btn').addEventListener('click', () => simulateAuth('google-login-btn', {
       name: 'Google Demo User',
-      email: 'google-demo@visionchartbot.local'
+      email: 'google-demo@forge.local'
     }));
     document.getElementById('google-signup-btn').addEventListener('click', () => simulateAuth('google-signup-btn', {
       name: 'Google Demo User',
-      email: 'google-demo@visionchartbot.local'
+      email: 'google-demo@forge.local'
     }));
 
     document.getElementById('forgot-form').addEventListener('submit', (e) => {
@@ -647,7 +647,7 @@
     });
 
     // Session redirect
-    if (localStorage.getItem('vcb_auth_token')) {
+    if (localStorage.getItem('forge_auth_token')) {
       window.location.href = 'index.html';
     }
   </script>

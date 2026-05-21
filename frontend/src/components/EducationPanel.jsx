@@ -150,7 +150,7 @@ export default function EducationPanel() {
                 <div className="edu-hero-eyebrow">Knowledge Base</div>
                 <h1 className="edu-hero-title">Education <i>Center</i></h1>
                 <p className="edu-hero-desc">
-                  Master the tools, indicators, and AI analysis powering Vision Chart Bot.
+                  Master the tools, indicators, and AI analysis powering Forge.
                   Everything you need to understand the dashboard — explained clearly.
                 </p>
               </>

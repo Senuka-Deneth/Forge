@@ -9,7 +9,7 @@ import SignIn from './pages/SignIn'
 import SignUp from './pages/SignUp'
 import './index.css'
 
-const savedTheme = localStorage.getItem('visionchartbot_theme') || 'dark'
+const savedTheme = localStorage.getItem('forge_theme') || 'dark'
 document.documentElement.setAttribute('data-theme', savedTheme)
 document.body.setAttribute('data-theme', savedTheme)
 

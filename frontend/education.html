@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Education - Vision Chart</title>
+  <title>Education - Forge</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
   <style>
@@ -722,7 +722,7 @@
           <div class="app-brand-icon">
             <svg viewBox="0 0 24 24"><path d="M3 3v18h18M9 15l3-3 4 4 5-5"/></svg>
           </div>
-          <span class="app-brand-name">Vision Chart</span>
+          <span class="app-brand-name">Forge</span>
         </a>
         <button class="app-sidebar-toggle-btn" id="app-sidebar-toggle-btn" onclick="toggleSidebar()">
           <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
@@ -806,7 +806,7 @@
   <script>
     // ── App Sidebar: Theme + Logout (mirrors dashboard behaviour) ──
     (function() {
-      const STORAGE_KEY = 'visionchartbot_theme';
+      const STORAGE_KEY = 'forge_theme';
       const btnText = document.getElementById('app-theme-btn-text');
 
       function applyTheme(theme) {
@@ -826,10 +826,10 @@
       };
 
       window.appLogout = function() {
-        localStorage.removeItem('vcb_auth_token');
-        localStorage.removeItem('vcb_user');
-        sessionStorage.removeItem('vcb_auth_token');
-        sessionStorage.removeItem('vcb_user');
+        localStorage.removeItem('forge_auth_token');
+        localStorage.removeItem('forge_user');
+        sessionStorage.removeItem('forge_auth_token');
+        sessionStorage.removeItem('forge_user');
         window.location.href = 'welcome.html';
       };
 

@@ -1,6 +1,6 @@
-# Vision Chart Bot 📊
+# Forge 📊
 
-Vision Chart Bot is a high-performance, real-time market visualization and AI-powered analysis dashboard specifically designed for Binance Spot trading. It combines modern technical indicators with advanced AI models to provide traders with deep market intelligence.
+Forge is a high-performance, real-time market visualization and AI-powered analysis dashboard specifically designed for Binance Spot trading. It combines modern technical indicators with advanced AI models to provide traders with deep market intelligence.
 
 ## ✨ Key Features
 

@@ -399,7 +399,7 @@ def get_confidence(trend, momentum, nearest_support, nearest_resistance):
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({
-        "message": "Vision Chart Bot backend is running",
+        "message": "Forge backend is running",
         "available_routes": [
             "/api/health",
             "/api/klines?symbol=BTCUSDT&interval=4h&limit=300",
@@ -413,7 +413,7 @@ def home():
 def health():
     return jsonify({
         "status": "ok",
-        "message": "Vision Chart Bot backend is running"
+        "message": "Forge backend is running"
     })
 
 

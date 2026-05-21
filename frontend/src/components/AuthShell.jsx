@@ -9,7 +9,7 @@ export default function AuthShell({ title, subtitle, activeTab, children }) {
       <div className="brand-side">
         <button type="button" className="brand-top brand-link" onClick={() => window.location.assign('/welcome.html')}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18M9 15l3-3 4 4 5-5" /></svg>
-          Vision Chart
+          Forge
         </button>
 
         <div className="brand-middle">

@@ -30,7 +30,7 @@ BASE_HEADERS = {
     "Authorization": f"Bearer {API_KEY}",
     "Content-Type": "application/json",
     "HTTP-Referer": f"http://localhost:{BACKEND_PORT}",   # required by OpenRouter
-    "X-Title": "Vision Chart Bot"              # shows in OpenRouter dashboard
+    "X-Title": "Forge"              # shows in OpenRouter dashboard
 }
 
 

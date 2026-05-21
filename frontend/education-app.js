@@ -65,7 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
     <div class="edu-hero-eyebrow">Knowledge Base</div>
     <h1 class="edu-hero-title">Education <i>Center</i></h1>
     <p class="edu-hero-desc">
-      Master the tools, indicators, and AI analysis powering Vision Chart Bot.
+      Master the tools, indicators, and AI analysis powering Forge.
       Everything you need to understand the dashboard — explained clearly.
     </p>
   `;

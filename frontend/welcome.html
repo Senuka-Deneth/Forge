@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Vision Chart Bot - Real-Time Analysis</title>
+  <title>Forge - Real-Time Analysis</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
   <style>
@@ -241,6 +241,245 @@
     .dp-chart svg { width: 100%; height: 100%; overflow: visible; }
     .dp-chart path { fill: none; stroke: var(--color-bull); stroke-width: 2; }
 
+    /* ── SCROLL MOTION SHOWCASE ── */
+    .motion-section {
+      position: relative;
+      height: 220vh;
+      padding: 0;
+      background:
+        linear-gradient(180deg, transparent 0%, hsla(42, 84%, 52%, 0.035) 42%, transparent 100%);
+    }
+
+    .motion-sticky {
+      position: sticky;
+      top: 0;
+      min-height: 100svh;
+      display: flex;
+      align-items: center;
+      overflow: clip;
+    }
+
+    .motion-sticky .container {
+      width: 100%;
+    }
+
+    .motion-stage {
+      position: relative;
+      width: 100%;
+      height: 100vh;
+      min-height: 540px;
+      overflow: hidden;
+      isolation: isolate;
+      background: transparent;
+      contain: layout paint style;
+      perspective: 1200px;
+    }
+
+    .motion-copy {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100%;
+      max-width: 1280px;
+      padding: 20vh clamp(1.5rem, 5vw, 4rem) 0;
+      z-index: 10;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .motion-chapter {
+      position: relative;
+      width: min(390px, 34vw);
+      height: 60vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .motion-chapter:nth-child(1) {
+      margin-left: clamp(10px, 2vw, 40px);
+    }
+
+    .motion-chapter:nth-child(2) {
+      margin-left: auto;
+      margin-right: clamp(10px, 2vw, 40px);
+      width: min(390px, 34vw);
+      text-align: right;
+    }
+
+    .motion-chapter:nth-child(3) {
+      margin-left: clamp(10px, 2vw, 40px);
+      width: min(390px, 34vw);
+    }
+
+    .motion-kicker {
+      color: var(--accent-primary);
+      margin-bottom: 18px;
+    }
+
+    .motion-title {
+      max-width: 10ch;
+      font-size: clamp(3rem, 6vw, 5.7rem);
+      line-height: 0.94;
+      margin-bottom: 24px;
+      text-wrap: balance;
+    }
+
+    .motion-chapter:nth-child(2) .motion-title {
+      margin-left: auto;
+      font-size: clamp(2.35rem, 4vw, 4.15rem);
+      line-height: 0.98;
+      margin-bottom: 16px;
+    }
+
+    .motion-chapter:nth-child(3) .motion-title {
+      font-size: clamp(2.35rem, 4vw, 4.15rem);
+      line-height: 0.98;
+      margin-bottom: 16px;
+    }
+
+    .motion-chapter:nth-child(2) .motion-text {
+      margin-left: auto;
+      max-width: 315px;
+      font-size: 15px;
+      line-height: 1.55;
+    }
+
+    .motion-chapter:nth-child(3) .motion-text {
+      max-width: 315px;
+      font-size: 15px;
+      line-height: 1.55;
+    }
+
+    .motion-text {
+      color: var(--text-secondary);
+      font-size: 17px;
+      max-width: 390px;
+    }
+
+    .bitcoin-orbit {
+      --coin-size: clamp(140px, 18vw, 260px);
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: var(--coin-size);
+      aspect-ratio: 1;
+      z-index: 3;
+      transform-style: preserve-3d;
+      transform:
+        translate3d(calc(-50% - 3vw), calc(-50% + 11vh), 0)
+        rotateX(12deg)
+        rotateY(68deg)
+        rotateZ(-10deg)
+        scale(0.84);
+      will-change: transform;
+      pointer-events: none;
+    }
+
+
+
+    .coin-edge {
+      position: absolute;
+      inset: 0;
+      transform-style: preserve-3d;
+      transform: translateZ(0);
+    }
+
+    .edge-face {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: calc(var(--coin-size) * 0.0875 + 1px);
+      height: 64px;
+      background: repeating-linear-gradient(90deg, 
+        hsl(31, 84%, 34%) 0, 
+        hsl(45, 96%, 63%) 1px, 
+        hsl(36, 88%, 43%) 2px, 
+        hsl(31, 84%, 34%) 3px
+      );
+      transform: 
+        translate(-50%, -50%)
+        rotateZ(calc(var(--i) * 10deg))
+        translateY(calc(var(--coin-size) / -2))
+        rotateX(90deg);
+    }
+
+    .coin-face {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      backface-visibility: hidden;
+      transform-style: preserve-3d;
+      background:
+        repeating-radial-gradient(circle at center, transparent 0, transparent 3px, rgba(0,0,0,0.06) 3px, rgba(0,0,0,0.06) 5px),
+        radial-gradient(circle, hsl(43, 60%, 30%) 45%, hsl(43, 70%, 15%) 65%, hsl(43, 80%, 25%) 100%);
+      border: 12px solid hsl(45, 80%, 45%);
+      box-shadow:
+        inset 0 0 0 3px hsl(43, 60%, 25%),
+        inset 0 0 16px rgba(0,0,0,0.8);
+      transform: translateZ(32px);
+    }
+
+    .coin-face::before,
+    .coin-face::after {
+      content: "";
+      position: absolute;
+      inset: 12%;
+      border-radius: inherit;
+      border: 2px solid hsla(45, 100%, 78%, 0.25);
+    }
+
+    .coin-face::after {
+      inset: 22%;
+      border: 3px solid hsla(45, 80%, 30%, 0.5);
+    }
+
+    .coin-back {
+      transform: rotateY(180deg) translateZ(32px);
+      filter: saturate(0.92) brightness(0.9);
+    }
+
+    .coin-back .logo-3d {
+      transform: scaleX(-1);
+    }
+
+    .logo-3d {
+      position: relative;
+      width: 100px;
+      height: 100px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transform-style: preserve-3d;
+    }
+
+    .logo-3d span {
+      position: absolute;
+      font-family: 'Arial', sans-serif;
+      font-size: clamp(80px, 11vw, 150px);
+      font-weight: 900;
+      color: hsl(40, 70%, 25%);
+      transform: translateZ(var(--z));
+    }
+
+    .logo-3d span:nth-child(1) {
+      filter: drop-shadow(0 0 6px rgba(0,0,0,0.6));
+    }
+
+    .logo-3d span.logo-face {
+      color: hsl(45, 90%, 55%);
+      text-shadow: 0 1px 1px hsl(40, 80%, 70%);
+    }
+
+
+
     /* ── SOCIAL PROOF BAR ── */
     .social-proof {
       border-top: 1px solid var(--border-subtle);
@@ -394,13 +633,101 @@
     }
 
     @media (max-width: 900px) {
+      .nav-brand,
+      .nav-link,
+      .btn-primary {
+        white-space: nowrap;
+      }
       .hero-grid { grid-template-columns: 1fr; }
       .hero-title i { margin-left: 0; }
+      .motion-section { min-height: 390vh; padding-top: 8px; }
+      .motion-stage {
+        height: calc(100svh - 96px);
+        min-height: 560px;
+      }
+      .motion-copy {
+        inset: 0;
+      }
+      .motion-chapter,
+      .motion-chapter:nth-child(2),
+      .motion-chapter:nth-child(3) {
+        width: min(270px, calc(100% - 92px));
+        left: 32px;
+        right: auto;
+        text-align: left;
+      }
+      .motion-chapter:nth-child(1) { top: 76px; bottom: auto; }
+      .motion-chapter:nth-child(2) { top: 43%; }
+      .motion-chapter:nth-child(3) { top: auto; bottom: 90px; }
+      .motion-title {
+        max-width: 12ch;
+        font-size: clamp(2rem, 8.5vw, 3rem);
+        line-height: 1;
+        margin-bottom: 16px;
+      }
+      .motion-text {
+        font-size: 13px;
+        line-height: 1.55;
+        max-width: 250px;
+      }
+      .motion-chapter:not(.is-active) .motion-text {
+        display: none;
+      }
+      .bitcoin-orbit {
+        --coin-size: clamp(128px, 34vw, 190px);
+      }
+      .coin-mark { font-size: clamp(66px, 18vw, 98px); }
+      .motion-ribbon {
+        width: min(300px, calc(100% - 48px));
+        left: 24px;
+        right: auto;
+        top: 24px;
+        bottom: auto;
+      }
+      .motion-progress {
+        right: 18px;
+        height: 112px;
+      }
       .features-grid { grid-template-columns: 1fr; }
       .how-grid { grid-template-columns: 1fr; }
       .footer-flex { flex-direction: column; gap: 40px; }
       .footer-links { flex-direction: column; gap: 40px; }
       .footer-links { flex-direction: column; gap: 40px; }
+    }
+
+    @media (max-width: 640px) {
+      .container {
+        padding: 0 24px;
+      }
+      .nav-inner {
+        height: 72px;
+      }
+      .nav-brand {
+        gap: 8px;
+        font-size: 14px;
+      }
+      .nav-brand svg {
+        width: 18px;
+        height: 18px;
+      }
+      .nav-links {
+        gap: 16px;
+      }
+      .nav-links .nav-link:not([style]) {
+        display: none;
+      }
+      .nav-link {
+        font-size: 13px;
+      }
+      .btn-primary {
+        padding: 10px 16px;
+      }
+      .motion-stage {
+        border-radius: 30px;
+      }
+      .motion-ribbon {
+        display: none;
+      }
     }
 
     /* FIX 7: WELCOME PAGE ENTRANCE ANIMATIONS */
@@ -427,6 +754,17 @@
     .social-proof { opacity: 0; animation: fadeIn 0.6s ease forwards; animation-delay: 0.9s; }
     .hero-visual .data-panel { opacity: 0; animation: slideInRight 0.7s ease forwards; animation-delay: 0.5s; }
 
+    .motion-stage {
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 0.7s ease, transform 0.7s ease;
+    }
+
+    .motion-stage.is-visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
     .feature-card {
       opacity: 0; 
       transform: translateY(16px); 
@@ -439,6 +777,34 @@
 
     @media (prefers-reduced-motion: reduce) {
       * { animation: none !important; transition: none !important; }
+      .motion-section { min-height: auto; padding: 80px 0; }
+      .motion-sticky { position: relative; min-height: auto; }
+      .motion-stage { opacity: 1; transform: none; }
+      .motion-copy { position: relative; inset: auto; display: grid; gap: 32px; padding: 48px; }
+      .motion-chapter,
+      .motion-chapter:nth-child(1),
+      .motion-chapter:nth-child(2),
+      .motion-chapter:nth-child(3) {
+        position: relative;
+        inset: auto;
+        width: min(420px, 100%);
+        opacity: 1;
+        text-align: left;
+        transform: none;
+        filter: none;
+      }
+      .motion-chapter:nth-child(2) .motion-title,
+      .motion-chapter:nth-child(3) .motion-title {
+        margin-left: 0;
+      }
+      .bitcoin-orbit {
+        transform:
+          translate3d(calc(-50% + 22vw), calc(-50% + 2vh), 0)
+          rotateX(8deg)
+          rotateY(44deg)
+          rotateZ(-8deg)
+          scale(0.72) !important;
+      }
     }
   </style>
 </head>
@@ -449,13 +815,13 @@
     <div class="container nav-inner">
       <a href="welcome.html" class="nav-brand">
         <svg viewBox="0 0 24 24"><path d="M3 3v18h18M9 15l3-3 4 4 5-5"/></svg>
-        Vision Chart
+        Forge
       </a>
       <div class="nav-links">
         <a href="#features" class="nav-link">Features</a>
         <a href="education.html" class="nav-link">Education</a>
-        <a href="login.html" class="nav-link" style="color:var(--text-primary)">Sign In</a>
-        <a href="login.html" class="btn-primary" id="navActionBtn">Get Started</a>
+        <a href="/signin" class="nav-link" style="color:var(--text-primary)">Sign In</a>
+        <a href="/signup" class="btn-primary" id="navActionBtn">Get Started</a>
       </div>
     </div>
   </nav>
@@ -473,7 +839,7 @@
           High-performance technical tracking combined with logical AI market insights. Make confident decisions based on data, not guesswork.
         </p>
         <div class="hero-ctas">
-          <a href="login.html" class="btn-primary">Launch Dashboard</a>
+          <a href="/signin" class="btn-primary">Launch Dashboard</a>
           <a href="education.html" class="btn-secondary">
             Read the Docs
             <span style="font-family:var(--font-mono)">→</span>
@@ -501,6 +867,55 @@
           </div>
         </div>
       </div>
+    </div>
+  </section>
+
+  <!-- SCROLL MOTION SHOWCASE -->
+  <section class="motion-section" data-scroll-motion aria-label="Bitcoin market motion">
+    <div class="motion-sticky">
+      <div class="container">
+        <div class="motion-stage" data-motion-stage>
+
+          <div class="bitcoin-orbit" data-bitcoin-orbit aria-hidden="true">
+            <div class="coin-edge">
+              <div class="edge-face" style="--i:0"></div><div class="edge-face" style="--i:1"></div><div class="edge-face" style="--i:2"></div><div class="edge-face" style="--i:3"></div><div class="edge-face" style="--i:4"></div><div class="edge-face" style="--i:5"></div>
+              <div class="edge-face" style="--i:6"></div><div class="edge-face" style="--i:7"></div><div class="edge-face" style="--i:8"></div><div class="edge-face" style="--i:9"></div><div class="edge-face" style="--i:10"></div><div class="edge-face" style="--i:11"></div>
+              <div class="edge-face" style="--i:12"></div><div class="edge-face" style="--i:13"></div><div class="edge-face" style="--i:14"></div><div class="edge-face" style="--i:15"></div><div class="edge-face" style="--i:16"></div><div class="edge-face" style="--i:17"></div>
+              <div class="edge-face" style="--i:18"></div><div class="edge-face" style="--i:19"></div><div class="edge-face" style="--i:20"></div><div class="edge-face" style="--i:21"></div><div class="edge-face" style="--i:22"></div><div class="edge-face" style="--i:23"></div>
+              <div class="edge-face" style="--i:24"></div><div class="edge-face" style="--i:25"></div><div class="edge-face" style="--i:26"></div><div class="edge-face" style="--i:27"></div><div class="edge-face" style="--i:28"></div><div class="edge-face" style="--i:29"></div>
+              <div class="edge-face" style="--i:30"></div><div class="edge-face" style="--i:31"></div><div class="edge-face" style="--i:32"></div><div class="edge-face" style="--i:33"></div><div class="edge-face" style="--i:34"></div><div class="edge-face" style="--i:35"></div>
+            </div>
+            <div class="coin-face coin-front">
+              <div class="logo-3d">
+                <span style="--z: 0px">&#8383;</span><span style="--z: 1px">&#8383;</span><span style="--z: 2px">&#8383;</span><span style="--z: 3px">&#8383;</span><span style="--z: 4px">&#8383;</span><span style="--z: 5px">&#8383;</span><span class="logo-face" style="--z: 6px">&#8383;</span>
+              </div>
+            </div>
+            <div class="coin-face coin-back">
+              <div class="logo-3d">
+                <span style="--z: 0px">&#8383;</span><span style="--z: 1px">&#8383;</span><span style="--z: 2px">&#8383;</span><span style="--z: 3px">&#8383;</span><span style="--z: 4px">&#8383;</span><span style="--z: 5px">&#8383;</span><span class="logo-face" style="--z: 6px">&#8383;</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="container motion-copy">
+      <article class="motion-chapter" data-motion-chapter>
+        <div class="motion-kicker label-caps">Market Focus</div>
+        <h2 class="font-display motion-title">Bitcoin in motion.</h2>
+        <p class="motion-text">Track the asset as price structure shifts from raw momentum into readable support, resistance, and trend context.</p>
+      </article>
+      <article class="motion-chapter" data-motion-chapter>
+        <div class="motion-kicker label-caps">Signal Layer</div>
+        <h2 class="font-display motion-title">Structure stays visible.</h2>
+        <p class="motion-text">The motion follows the scroll while the dashboard logic keeps pivot levels, EMA pressure, and momentum state in view.</p>
+      </article>
+      <article class="motion-chapter" data-motion-chapter>
+        <div class="motion-kicker label-caps">Execution View</div>
+        <h2 class="font-display motion-title">Decide with context.</h2>
+        <p class="motion-text">AI summaries turn technical movement into clean scenarios without burying the chart beneath noisy decoration.</p>
+      </article>
     </div>
   </section>
 
@@ -568,14 +983,14 @@
     <div class="container">
       <div class="footer-flex">
         <div class="footer-brand">
-          <div class="brand">Vision Chart</div>
+          <div class="brand">Forge</div>
           <p>Analytical tooling designed for objective market assessment structure.</p>
         </div>
         <div class="footer-links">
           <div class="fl-col">
             <span class="label-caps">Platform</span>
             <a href="welcome.html">Overview</a>
-            <a href="login.html">Dashboard</a>
+            <a href="/signin">Dashboard</a>
           </div>
           <div class="fl-col">
             <span class="label-caps">Resources</span>
@@ -585,7 +1000,7 @@
         </div>
       </div>
       <div class="footer-bottom">
-        &copy; 2026 Vision Chart Bot. For educational use only.
+        &copy; 2026 Forge. For educational use only.
       </div>
     </div>
   </footer>
@@ -594,18 +1009,112 @@
     // Nav scroll
     window.addEventListener('scroll', () => {
       document.getElementById('nav').classList.toggle('scrolled', window.scrollY > 20);
-    });
+    }, { passive: true });
 
-    // Check login state
-    if (localStorage.getItem('vcb_auth_token') || sessionStorage.getItem('vcb_auth_token')) {
-      const btn = document.getElementById('navActionBtn');
-      if(btn) {
-        btn.textContent = 'Dashboard';
-        btn.href = 'index.html';
-      }
+    const btn = document.getElementById('navActionBtn');
+    if(btn) {
+      btn.href = '/signup';
     }
     // Feature Cards scroll animation
     document.addEventListener("DOMContentLoaded", () => {
+      const motionSection = document.querySelector("[data-scroll-motion]");
+      const motionStage = document.querySelector("[data-motion-stage]");
+      const bitcoinOrbit = document.querySelector("[data-bitcoin-orbit]");
+      const motionChapters = Array.from(document.querySelectorAll("[data-motion-chapter]"));
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+      if (motionSection && motionStage && bitcoinOrbit) {
+        motionStage.classList.add("is-visible");
+
+        const clamp = (value, min = 0, max = 1) => Math.min(Math.max(value, min), max);
+        const mix = (from, to, amount) => from + (to - from) * amount;
+        let keyframes = [];
+        const desktopKeyframes = [
+          { p: 0, x: 22, y: 0, s: 0.95, rx: 0, ry: 0, rz: 0 },
+          { p: 0.25, x: 0, y: 10, s: 0.95, rx: 15, ry: 90, rz: 10 },
+          { p: 0.5, x: -22, y: 0, s: 0.95, rx: 0, ry: 180, rz: 0 },
+          { p: 0.75, x: 0, y: -10, s: 0.95, rx: -15, ry: 270, rz: -10 },
+          { p: 1, x: 22, y: 0, s: 0.95, rx: 0, ry: 360, rz: 0 },
+        ];
+        const mobileKeyframes = [
+          { p: 0, x: 35, y: -15, s: 0.7, rx: 0, ry: 0, rz: 0 },
+          { p: 0.5, x: 35, y: 15, s: 0.7, rx: 0, ry: 180, rz: 0 },
+          { p: 1, x: 35, y: -15, s: 0.7, rx: 0, ry: 360, rz: 0 },
+        ];
+        const chapterStops = [0, 0.38, 0.72];
+        let start = 0;
+        let length = 1;
+        let target = 0;
+        let current = 0;
+        let frame = null;
+
+        const sample = (progress) => {
+          let index = 0;
+          while (index < keyframes.length - 2 && progress > keyframes[index + 1].p) index += 1;
+          const a = keyframes[index];
+          const b = keyframes[index + 1];
+          const local = clamp((progress - a.p) / (b.p - a.p));
+          const eased = local * local * (3 - 2 * local);
+          return {
+            x: mix(a.x, b.x, eased),
+            y: mix(a.y, b.y, eased),
+            s: mix(a.s, b.s, eased),
+            rx: mix(a.rx, b.rx, eased),
+            ry: mix(a.ry, b.ry, eased),
+            rz: mix(a.rz, b.rz, eased),
+          };
+        };
+
+        const refreshBounds = () => {
+          const rect = motionSection.getBoundingClientRect();
+          keyframes = window.innerWidth <= 900 ? mobileKeyframes : desktopKeyframes;
+          start = window.scrollY + rect.top;
+          length = Math.max(1, motionSection.offsetHeight - window.innerHeight);
+        };
+
+        const render = (progress) => {
+          const state = sample(progress);
+          bitcoinOrbit.style.transform = `translate3d(calc(-50% + ${state.x.toFixed(2)}vw), calc(-50% + ${state.y.toFixed(2)}vh), 0) rotateX(${state.rx.toFixed(2)}deg) rotateY(${state.ry.toFixed(2)}deg) rotateZ(${state.rz.toFixed(2)}deg) scale(${state.s.toFixed(3)})`;
+
+          let activeChapter = 0;
+          chapterStops.forEach((stop, index) => {
+            if (progress >= stop) activeChapter = index;
+          });
+          motionChapters.forEach((chapter, index) => {
+            chapter.classList.toggle("is-active", index === activeChapter);
+          });
+        };
+
+        const tick = () => {
+          current += (target - current) * 0.16;
+          if (Math.abs(target - current) < 0.001) current = target;
+          render(current);
+          frame = current === target ? null : requestAnimationFrame(tick);
+        };
+
+        const requestTick = () => {
+          if (!frame) frame = requestAnimationFrame(tick);
+        };
+
+        const updateTarget = () => {
+          target = clamp((window.scrollY - start) / length);
+          requestTick();
+        };
+
+        refreshBounds();
+        target = clamp((window.scrollY - start) / length);
+        current = target;
+        render(current);
+
+        if (!reduceMotion.matches) {
+          window.addEventListener("scroll", updateTarget, { passive: true });
+          window.addEventListener("resize", () => {
+            refreshBounds();
+            updateTarget();
+          }, { passive: true });
+        }
+      }
+
       const featureCards = document.querySelectorAll(".feature-card");
       if(featureCards.length > 0) {
         const observer = new IntersectionObserver((entries) => {

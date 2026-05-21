@@ -6,9 +6,11 @@ export default function HeaderControls({
   onLoad,
   isLive,
   toggleTheme,
-  theme
+  theme,
+  preferencesWarning,
 }) {
   return (
+    <div className="topbar-stack">
     <header className="topbar">
       <div className="topbar-left">
         <label className="label-caps" style={{marginRight:'12px', color:'var(--text-muted)'}}>Pair</label>
@@ -47,5 +49,13 @@ export default function HeaderControls({
         )}
       </div>
     </header>
+    {preferencesWarning ? (
+      <div className="prefs-sync-banner" role="status">
+        <strong>Chart settings sync:</strong>
+        {' '}
+        {preferencesWarning}
+      </div>
+    ) : null}
+    </div>
   )
 }

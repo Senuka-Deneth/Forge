@@ -307,6 +307,10 @@ body, #root {
   font-size: 11px;
   border-radius: var(--radius-md);
   white-space: nowrap;
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
 }
 
 .sidebar.collapsed .nav-item {

@@ -18,8 +18,8 @@ export default function AnalysisPanel({
   symbol,
   interval,
   analysis,
-  loading,
-  error,
+  loading = false,
+  error = '',
   pivotData
 }) {
   const zoneColors = {

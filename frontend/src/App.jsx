@@ -592,8 +592,7 @@ export default function App() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true)
 
   const [analysis, setAnalysis] = useState(null)
-  const [analysisLoading, setAnalysisLoading] = useState(false)
-  const [analysisError, setAnalysisError] = useState('')
+  const [theme, setTheme] = useState(() => localStorage.getItem('forge_theme') || 'dark')
 
   const [aiAnalysis, setAIAnalysis] = useState(null)
   const [aiLoading, setAILoading] = useState(false)
@@ -763,7 +762,7 @@ export default function App() {
         }
         preferencesCloudUnavailableRef.current = false
         setPreferencesSyncError('')
-        if (data.success && data.preferences) {
+        if (data?.success && data.preferences) {
           const preferences = sanitizePreferences(data.preferences)
           setChartPreferences((prev) => ({ ...prev, ...preferences }))
           saveLocalPreferences(userKeyRef.current, preferences)
@@ -903,7 +902,7 @@ export default function App() {
         fibonacci: fibPivots,
         traditional: traditionalPivots,
         binance: traditionalPivots,
-        analysis: {
+        analysis: pivotAnalysis ? {
           zone: pivotAnalysis.zone,
           bias: pivotAnalysis.bias,
           nearestPivotResistance: pivotAnalysis.nearestResistance,
@@ -913,39 +912,23 @@ export default function App() {
           atInflectionPoint: pivotAnalysis.atInflectionPoint,
           inflectionLevel: pivotAnalysis.inflectionLevel,
           sessionBullish: pivotAnalysis.sessionBullish,
-        },
+        } : null,
         binanceAnalysis: traditionalAnalysis,
       } : null,
     }
 
     try {
       const data = await invokeFunction('ai-analysis', payload)
-      if (data.success) {
+      if (data?.success) {
         setAIAnalysis(data.analysis)
         lastAICallRef.current = Date.now()
       } else {
-        setAIError(data.error || data.fallback || 'AI analysis failed.')
+        setAIError(data?.error || data?.fallback || 'AI analysis failed.')
       }
     } catch (err) {
       setAIError(err.message || 'Failed to reach AI service.')
     } finally {
       setAILoading(false)
-    }
-  }
-
-  const runAnalysis = async (selectedSymbol = symbol, selectedInterval = interval) => {
-    setAnalysisLoading(true)
-    setAnalysisError('')
-
-    try {
-      const sourceCandles = selectedSymbol === symbol && selectedInterval === interval ? candles : []
-      const data = buildTechnicalAnalysis(sourceCandles, selectedSymbol, selectedInterval)
-      setAnalysis(data)
-    } catch (err) {
-      setAnalysisError(err.message || 'Analysis failed.')
-      setAnalysis(null)
-    } finally {
-      setAnalysisLoading(false)
     }
   }
 
@@ -962,7 +945,6 @@ export default function App() {
     setError('')
     setStatus('Loading historical candles...')
     setAnalysis(null)
-    setAnalysisError('')
     setPivotData(null)
     closeSocket()
 
@@ -976,7 +958,7 @@ export default function App() {
       startWebSocket(cleaned, selectedInterval)
       setAnalysis(buildTechnicalAnalysis(data, cleaned, selectedInterval))
       fetchPivotData(cleaned, selectedInterval, data).then((pivotResponse) => {
-        if (pivotResponse.success) setPivotData({ ...pivotResponse, symbol: cleaned })
+        if (pivotResponse?.success) setPivotData({ ...pivotResponse, symbol: cleaned })
       }).catch((err) => {
         console.error('Failed to fetch pivots:', err)
       })
@@ -990,12 +972,9 @@ export default function App() {
 
   useEffect(() => {
     loadChart('BTCUSDT', '4h')
-    const initialTheme = initTheme()
-    setTheme(initialTheme)
+    setTheme(initTheme())
     return () => closeSocket()
   }, [])
-
-  const [theme, setTheme] = useState('dark')
 
   const toggleTheme = () => {
     const currentTheme = document.body.getAttribute('data-theme') || 'dark'
@@ -1031,18 +1010,18 @@ export default function App() {
         </div>
 
         <nav className="sidebar-nav">
-          <a className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>
+          <button type="button" className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>
             <span className="nav-item-text">Dashboard</span>
-          </a>
-          <a className={`nav-item ${activeTab === 'analysis' ? 'active' : ''}`} onClick={() => setActiveTab('analysis')}>
+          </button>
+          <button type="button" className={`nav-item ${activeTab === 'analysis' ? 'active' : ''}`} onClick={() => setActiveTab('analysis')}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path><path d="M5 3v4"></path><path d="M19 17v4"></path><path d="M3 5h4"></path><path d="M17 19h4"></path></svg>
             <span className="nav-item-text">Analysis</span>
-          </a>
-          <a className={`nav-item ${activeTab === 'learning' ? 'active' : ''}`} onClick={() => setActiveTab('learning')}>
+          </button>
+          <button type="button" className={`nav-item ${activeTab === 'learning' ? 'active' : ''}`} onClick={() => setActiveTab('learning')}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
             <span className="nav-item-text">Learning</span>
-          </a>
+          </button>
         </nav>
 
         <div className="sidebar-footer">
@@ -1107,8 +1086,6 @@ export default function App() {
                 symbol={symbol}
                 interval={interval}
                 analysis={analysis}
-                loading={analysisLoading}
-                error={analysisError}
                 pivotData={pivotData}
               />
             </div>

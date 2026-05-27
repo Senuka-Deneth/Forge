@@ -23,7 +23,8 @@
 }
 
 [data-theme="dark"] {
-  --bg-base:    hsl(222, 20%, 7%);
+  /* Dark Theme Default */
+  --bg-base:    hsl(212, 48%, 5%);
   --bg-surface: hsl(222, 18%, 10%);
   --bg-raised:  hsl(222, 16%, 13%);
   --bg-overlay: hsl(222, 14%, 16%);
@@ -35,7 +36,7 @@
   --text-primary:   hsl(220, 20%, 92%);
   --text-secondary: hsl(220, 12%, 60%);
   --text-muted:     hsl(220, 10%, 40%);
-  --text-inverse:   hsl(222, 20%, 7%);
+  --text-inverse:   hsl(212, 48%, 5%);
 
   --color-bull:  hsl(158, 55%, 48%);
   --color-bear:  hsl(358, 68%, 58%);

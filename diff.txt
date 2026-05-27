@@ -1,0 +1,426 @@
+diff --git a/frontend/welcome.html b/frontend/welcome.html
+index a753994..126a153 100644
+--- a/frontend/welcome.html
++++ b/frontend/welcome.html
+@@ -14,7 +14,7 @@
+       --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+ 
+       /* Dark Theme Default */
+-      --bg-base:    hsl(222, 20%, 7%);
++      --bg-base:    hsl(212, 48%, 5%);
+       --bg-surface: hsl(222, 18%, 10%);
+       --bg-raised:  hsl(222, 16%, 13%);
+       
+@@ -25,7 +25,7 @@
+       --text-primary:   hsl(220, 20%, 92%);
+       --text-secondary: hsl(220, 12%, 60%);
+       --text-muted:     hsl(220, 10%, 40%);
+-      --text-inverse:   hsl(222, 20%, 7%);
++      --text-inverse:   hsl(212, 48%, 5%);
+ 
+       --color-bull:  hsl(158, 55%, 48%);
+       --color-bear:  hsl(358, 68%, 58%);
+@@ -282,38 +282,30 @@
+       transform: translateX(-50%);
+       width: 100%;
+       max-width: 1280px;
+-      padding: 20vh clamp(1.5rem, 5vw, 4rem) 0;
++      height: 100%;
+       z-index: 10;
+       pointer-events: none;
+       display: flex;
+-      flex-direction: column;
++      justify-content: center;
++      align-items: center;
+     }
+ 
+     .motion-chapter {
+-      position: relative;
+-      width: min(390px, 34vw);
+-      height: 60vh;
++      position: absolute;
++      width: min(460px, 90vw);
+       display: flex;
+       flex-direction: column;
+-      justify-content: center;
+-      opacity: 1;
+-      pointer-events: auto;
+-    }
+-
+-    .motion-chapter:nth-child(1) {
+-      margin-left: clamp(10px, 2vw, 40px);
+-    }
+-
+-    .motion-chapter:nth-child(2) {
+-      margin-left: auto;
+-      margin-right: clamp(10px, 2vw, 40px);
+-      width: min(390px, 34vw);
+-      text-align: right;
++      align-items: center;
++      text-align: center;
++      opacity: 0;
++      transition: opacity 0.5s ease;
++      pointer-events: none;
++      transform: translateY(22vh);
+     }
+ 
+-    .motion-chapter:nth-child(3) {
+-      margin-left: clamp(10px, 2vw, 40px);
+-      width: min(390px, 34vw);
++    .motion-chapter.is-active {
++      opacity: 1;
++      pointer-events: auto;
+     }
+ 
+     .motion-kicker {
+@@ -322,164 +314,31 @@
+     }
+ 
+     .motion-title {
+-      max-width: 10ch;
++      max-width: 12ch;
+       font-size: clamp(3rem, 6vw, 5.7rem);
+       line-height: 0.94;
+       margin-bottom: 24px;
+       text-wrap: balance;
+     }
+ 
+-    .motion-chapter:nth-child(2) .motion-title {
+-      margin-left: auto;
+-      font-size: clamp(2.35rem, 4vw, 4.15rem);
+-      line-height: 0.98;
+-      margin-bottom: 16px;
+-    }
+-
+-    .motion-chapter:nth-child(3) .motion-title {
+-      font-size: clamp(2.35rem, 4vw, 4.15rem);
+-      line-height: 0.98;
+-      margin-bottom: 16px;
+-    }
+-
+-    .motion-chapter:nth-child(2) .motion-text {
+-      margin-left: auto;
+-      max-width: 315px;
+-      font-size: 15px;
+-      line-height: 1.55;
+-    }
+-
+-    .motion-chapter:nth-child(3) .motion-text {
+-      max-width: 315px;
+-      font-size: 15px;
+-      line-height: 1.55;
+-    }
+-
+     .motion-text {
+       color: var(--text-secondary);
+       font-size: 17px;
+-      max-width: 390px;
++      max-width: 420px;
+     }
+ 
+-    .bitcoin-orbit {
+-      --coin-size: clamp(140px, 18vw, 260px);
++    .bitcoin-orbit-img {
+       position: absolute;
+       left: 50%;
+       top: 50%;
+-      width: var(--coin-size);
+-      aspect-ratio: 1;
++      width: clamp(200px, 25vw, 350px);
++      transform: translate(-50%, -75%);
+       z-index: 3;
+-      transform-style: preserve-3d;
+-      transform:
+-        translate3d(calc(-50% - 3vw), calc(-50% + 11vh), 0)
+-        rotateX(12deg)
+-        rotateY(68deg)
+-        rotateZ(-10deg)
+-        scale(0.84);
+-      will-change: transform;
+       pointer-events: none;
+     }
+ 
+ 
+ 
+-    .coin-edge {
+-      position: absolute;
+-      inset: 0;
+-      transform-style: preserve-3d;
+-      transform: translateZ(0);
+-    }
+-
+-    .edge-face {
+-      position: absolute;
+-      left: 50%;
+-      top: 50%;
+-      width: calc(var(--coin-size) * 0.0875 + 1px);
+-      height: 64px;
+-      background: repeating-linear-gradient(90deg, 
+-        hsl(31, 84%, 34%) 0, 
+-        hsl(45, 96%, 63%) 1px, 
+-        hsl(36, 88%, 43%) 2px, 
+-        hsl(31, 84%, 34%) 3px
+-      );
+-      transform: 
+-        translate(-50%, -50%)
+-        rotateZ(calc(var(--i) * 10deg))
+-        translateY(calc(var(--coin-size) / -2))
+-        rotateX(90deg);
+-    }
+-
+-    .coin-face {
+-      position: absolute;
+-      inset: 0;
+-      display: flex;
+-      align-items: center;
+-      justify-content: center;
+-      border-radius: 999px;
+-      backface-visibility: hidden;
+-      transform-style: preserve-3d;
+-      background:
+-        repeating-radial-gradient(circle at center, transparent 0, transparent 3px, rgba(0,0,0,0.06) 3px, rgba(0,0,0,0.06) 5px),
+-        radial-gradient(circle, hsl(43, 60%, 30%) 45%, hsl(43, 70%, 15%) 65%, hsl(43, 80%, 25%) 100%);
+-      border: 12px solid hsl(45, 80%, 45%);
+-      box-shadow:
+-        inset 0 0 0 3px hsl(43, 60%, 25%),
+-        inset 0 0 16px rgba(0,0,0,0.8);
+-      transform: translateZ(32px);
+-    }
+-
+-    .coin-face::before,
+-    .coin-face::after {
+-      content: "";
+-      position: absolute;
+-      inset: 12%;
+-      border-radius: inherit;
+-      border: 2px solid hsla(45, 100%, 78%, 0.25);
+-    }
+-
+-    .coin-face::after {
+-      inset: 22%;
+-      border: 3px solid hsla(45, 80%, 30%, 0.5);
+-    }
+-
+-    .coin-back {
+-      transform: rotateY(180deg) translateZ(32px);
+-      filter: saturate(0.92) brightness(0.9);
+-    }
+-
+-    .coin-back .logo-3d {
+-      transform: scaleX(-1);
+-    }
+-
+-    .logo-3d {
+-      position: relative;
+-      width: 100px;
+-      height: 100px;
+-      display: flex;
+-      align-items: center;
+-      justify-content: center;
+-      transform-style: preserve-3d;
+-    }
+-
+-    .logo-3d span {
+-      position: absolute;
+-      font-family: 'Arial', sans-serif;
+-      font-size: clamp(80px, 11vw, 150px);
+-      font-weight: 900;
+-      color: hsl(40, 70%, 25%);
+-      transform: translateZ(var(--z));
+-    }
+-
+-    .logo-3d span:nth-child(1) {
+-      filter: drop-shadow(0 0 6px rgba(0,0,0,0.6));
+-    }
+-
+-    .logo-3d span.logo-face {
+-      color: hsl(45, 90%, 55%);
+-      text-shadow: 0 1px 1px hsl(40, 80%, 70%);
+-    }
+-
+-
+-
+     /* ── SOCIAL PROOF BAR ── */
+     .social-proof {
+       border-top: 1px solid var(--border-subtle);
+@@ -649,16 +508,16 @@
+         inset: 0;
+       }
+       .motion-chapter,
++      .motion-chapter:nth-child(1),
+       .motion-chapter:nth-child(2),
+       .motion-chapter:nth-child(3) {
+-        width: min(270px, calc(100% - 92px));
+-        left: 32px;
+-        right: auto;
+-        text-align: left;
++        width: min(320px, calc(100% - 48px));
++        left: 50%;
++        transform: translateX(-50%) translateY(18vh);
++        text-align: center;
++        top: auto;
++        bottom: auto;
+       }
+-      .motion-chapter:nth-child(1) { top: 76px; bottom: auto; }
+-      .motion-chapter:nth-child(2) { top: 43%; }
+-      .motion-chapter:nth-child(3) { top: auto; bottom: 90px; }
+       .motion-title {
+         max-width: 12ch;
+         font-size: clamp(2rem, 8.5vw, 3rem);
+@@ -671,7 +530,11 @@
+         max-width: 250px;
+       }
+       .motion-chapter:not(.is-active) .motion-text {
+-        display: none;
++        display: block;
++      }
++      .bitcoin-orbit-img {
++        width: clamp(160px, 40vw, 220px);
++        transform: translate(-50%, -70%);
+       }
+       .bitcoin-orbit {
+         --coin-size: clamp(128px, 34vw, 190px);
+@@ -789,21 +652,15 @@
+         inset: auto;
+         width: min(420px, 100%);
+         opacity: 1;
+-        text-align: left;
++        text-align: center;
+         transform: none;
+         filter: none;
+       }
+-      .motion-chapter:nth-child(2) .motion-title,
+-      .motion-chapter:nth-child(3) .motion-title {
+-        margin-left: 0;
+-      }
+-      .bitcoin-orbit {
+-        transform:
+-          translate3d(calc(-50% + 22vw), calc(-50% + 2vh), 0)
+-          rotateX(8deg)
+-          rotateY(44deg)
+-          rotateZ(-8deg)
+-          scale(0.72) !important;
++      .bitcoin-orbit-img {
++        position: relative;
++        transform: none;
++        left: auto;
++        top: auto;
+       }
+     }
+   </style>
+@@ -848,24 +705,7 @@
+       </div>
+ 
+       <div class="hero-visual">
+-        <div class="data-panel">
+-          <div class="dp-header">
+-            <div>
+-              <div class="dp-symbol font-mono">BTCUSDT</div>
+-              <div class="dp-name">Bitcoin / Tether US</div>
+-            </div>
+-            <div class="label-caps" style="color:var(--text-muted)">Live</div>
+-          </div>
+-          <div class="dp-price font-mono">68,429.50</div>
+-          <div class="dp-delta font-mono">
+-            ↑ +2.4% (24H)
+-          </div>
+-          <div class="dp-chart">
+-            <svg viewBox="0 0 200 40" preserveAspectRatio="none">
+-              <path d="M 0 30 Q 20 20 40 25 T 80 15 T 120 20 T 160 5 T 200 10"/>
+-            </svg>
+-          </div>
+-        </div>
++        <img src="chart.png" alt="Market Chart" style="width: 100%; max-width: 500px; height: auto; object-fit: contain;" />
+       </div>
+     </div>
+   </section>
+@@ -876,47 +716,28 @@
+       <div class="container">
+         <div class="motion-stage" data-motion-stage>
+ 
+-          <div class="bitcoin-orbit" data-bitcoin-orbit aria-hidden="true">
+-            <div class="coin-edge">
+-              <div class="edge-face" style="--i:0"></div><div class="edge-face" style="--i:1"></div><div class="edge-face" style="--i:2"></div><div class="edge-face" style="--i:3"></div><div class="edge-face" style="--i:4"></div><div class="edge-face" style="--i:5"></div>
+-              <div class="edge-face" style="--i:6"></div><div class="edge-face" style="--i:7"></div><div class="edge-face" style="--i:8"></div><div class="edge-face" style="--i:9"></div><div class="edge-face" style="--i:10"></div><div class="edge-face" style="--i:11"></div>
+-              <div class="edge-face" style="--i:12"></div><div class="edge-face" style="--i:13"></div><div class="edge-face" style="--i:14"></div><div class="edge-face" style="--i:15"></div><div class="edge-face" style="--i:16"></div><div class="edge-face" style="--i:17"></div>
+-              <div class="edge-face" style="--i:18"></div><div class="edge-face" style="--i:19"></div><div class="edge-face" style="--i:20"></div><div class="edge-face" style="--i:21"></div><div class="edge-face" style="--i:22"></div><div class="edge-face" style="--i:23"></div>
+-              <div class="edge-face" style="--i:24"></div><div class="edge-face" style="--i:25"></div><div class="edge-face" style="--i:26"></div><div class="edge-face" style="--i:27"></div><div class="edge-face" style="--i:28"></div><div class="edge-face" style="--i:29"></div>
+-              <div class="edge-face" style="--i:30"></div><div class="edge-face" style="--i:31"></div><div class="edge-face" style="--i:32"></div><div class="edge-face" style="--i:33"></div><div class="edge-face" style="--i:34"></div><div class="edge-face" style="--i:35"></div>
+-            </div>
+-            <div class="coin-face coin-front">
+-              <div class="logo-3d">
+-                <span style="--z: 0px">&#8383;</span><span style="--z: 1px">&#8383;</span><span style="--z: 2px">&#8383;</span><span style="--z: 3px">&#8383;</span><span style="--z: 4px">&#8383;</span><span style="--z: 5px">&#8383;</span><span class="logo-face" style="--z: 6px">&#8383;</span>
+-              </div>
+-            </div>
+-            <div class="coin-face coin-back">
+-              <div class="logo-3d">
+-                <span style="--z: 0px">&#8383;</span><span style="--z: 1px">&#8383;</span><span style="--z: 2px">&#8383;</span><span style="--z: 3px">&#8383;</span><span style="--z: 4px">&#8383;</span><span style="--z: 5px">&#8383;</span><span class="logo-face" style="--z: 6px">&#8383;</span>
+-              </div>
+-            </div>
+-          </div>
++          <img src="coin.png" class="bitcoin-orbit-img" alt="Coin" aria-hidden="true" />
++        </div>
++        
++        <div class="container motion-copy">
++          <article class="motion-chapter" data-motion-chapter>
++            <div class="motion-kicker label-caps">Market Focus</div>
++            <h2 class="font-display motion-title">Bitcoin in motion.</h2>
++            <p class="motion-text">Track the asset as price structure shifts from raw momentum into readable support, resistance, and trend context.</p>
++          </article>
++          <article class="motion-chapter" data-motion-chapter>
++            <div class="motion-kicker label-caps">Signal Layer</div>
++            <h2 class="font-display motion-title">Structure stays visible.</h2>
++            <p class="motion-text">The motion follows the scroll while the dashboard logic keeps pivot levels, EMA pressure, and momentum state in view.</p>
++          </article>
++          <article class="motion-chapter" data-motion-chapter>
++            <div class="motion-kicker label-caps">Execution View</div>
++            <h2 class="font-display motion-title">Decide with context.</h2>
++            <p class="motion-text">AI summaries turn technical movement into clean scenarios without burying the chart beneath noisy decoration.</p>
++          </article>
+         </div>
+       </div>
+     </div>
+-    
+-    <div class="container motion-copy">
+-      <article class="motion-chapter" data-motion-chapter>
+-        <div class="motion-kicker label-caps">Market Focus</div>
+-        <h2 class="font-display motion-title">Bitcoin in motion.</h2>
+-        <p class="motion-text">Track the asset as price structure shifts from raw momentum into readable support, resistance, and trend context.</p>
+-      </article>
+-      <article class="motion-chapter" data-motion-chapter>
+-        <div class="motion-kicker label-caps">Signal Layer</div>
+-        <h2 class="font-display motion-title">Structure stays visible.</h2>
+-        <p class="motion-text">The motion follows the scroll while the dashboard logic keeps pivot levels, EMA pressure, and momentum state in view.</p>
+-      </article>
+-      <article class="motion-chapter" data-motion-chapter>
+-        <div class="motion-kicker label-caps">Execution View</div>
+-        <h2 class="font-display motion-title">Decide with context.</h2>
+-        <p class="motion-text">AI summaries turn technical movement into clean scenarios without burying the chart beneath noisy decoration.</p>
+-      </article>
+-    </div>
+   </section>
+ 
+   <!-- SOCIAL PROOF -->
+@@ -1019,11 +840,10 @@
+     document.addEventListener("DOMContentLoaded", () => {
+       const motionSection = document.querySelector("[data-scroll-motion]");
+       const motionStage = document.querySelector("[data-motion-stage]");
+-      const bitcoinOrbit = document.querySelector("[data-bitcoin-orbit]");
+       const motionChapters = Array.from(document.querySelectorAll("[data-motion-chapter]"));
+       const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+ 
+-      if (motionSection && motionStage && bitcoinOrbit) {
++      if (motionSection && motionStage) {
+         motionStage.classList.add("is-visible");
+ 
+         const clamp = (value, min = 0, max = 1) => Math.min(Math.max(value, min), max);
+@@ -1073,9 +893,6 @@
+         };
+ 
+         const render = (progress) => {
+-          const state = sample(progress);
+-          bitcoinOrbit.style.transform = `translate3d(calc(-50% + ${state.x.toFixed(2)}vw), calc(-50% + ${state.y.toFixed(2)}vh), 0) rotateX(${state.rx.toFixed(2)}deg) rotateY(${state.ry.toFixed(2)}deg) rotateZ(${state.rz.toFixed(2)}deg) scale(${state.s.toFixed(3)})`;
+-
+           let activeChapter = 0;
+           chapterStops.forEach((stop, index) => {
+             if (progress >= stop) activeChapter = index;

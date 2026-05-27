@@ -37,6 +37,12 @@
       --radius-sm: 14px;
       --radius-md: 24px;
       --radius-lg: 40px;
+
+      /* Scroll Motion Showcase dynamic dimensions */
+      --coin-width: clamp(110px, 13vw, 170px);
+      --coin-height: calc(1.559 * var(--coin-width));
+      --gap: 28px;
+      --text-height: 160px;
     }
 
     *, *::before, *::after {
@@ -292,6 +298,8 @@
 
     .motion-chapter {
       position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
       width: min(340px, 34vw);
       display: flex;
       flex-direction: column;
@@ -300,7 +308,7 @@
       opacity: 0;
       transition: opacity 0.5s ease;
       pointer-events: none;
-      transform: translateY(20vh);
+      top: calc(50vh + 40px + (var(--coin-height) + var(--gap) - var(--text-height)) / 2);
     }
 
     .motion-chapter.is-active {
@@ -330,9 +338,10 @@
     .bitcoin-orbit-img {
       position: absolute;
       left: 50%;
-      top: 50%;
-      width: clamp(120px, 15vw, 200px);
-      transform: translate(-50%, -100%);
+      transform: translateX(-50%);
+      width: var(--coin-width);
+      height: var(--coin-height);
+      top: calc(50vh + 40px - (var(--coin-height) + var(--gap) + var(--text-height)) / 2);
       z-index: 3;
       pointer-events: none;
     }
@@ -492,6 +501,12 @@
     }
 
     @media (max-width: 900px) {
+      :root {
+        --coin-width: clamp(90px, 16vw, 120px);
+        --gap: 20px;
+        --text-height: 140px;
+      }
+
       .nav-brand,
       .nav-link,
       .btn-primary {
@@ -513,10 +528,7 @@
       .motion-chapter:nth-child(3) {
         width: min(270px, calc(100% - 48px));
         left: 50%;
-        transform: translateX(-50%) translateY(20vh);
         text-align: center;
-        top: auto;
-        bottom: auto;
       }
       .motion-title {
         max-width: 12ch;
@@ -531,10 +543,6 @@
       }
       .motion-chapter:not(.is-active) .motion-text {
         display: block;
-      }
-      .bitcoin-orbit-img {
-        width: clamp(100px, 20vw, 150px);
-        transform: translate(-50%, -100%);
       }
       .bitcoin-orbit {
         --coin-size: clamp(128px, 34vw, 190px);

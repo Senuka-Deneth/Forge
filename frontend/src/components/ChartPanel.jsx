@@ -48,6 +48,113 @@ const getPivotTypeName = (type) => {
   return t.charAt(0).toUpperCase() + t.slice(1)
 }
 
+const POPULAR_PAIRS = [
+  { symbol: 'BTCUSDT', name: 'BTC', quote: 'USDT', fullName: 'Bitcoin', volume: '10.46B', price: '71,682.12', change: '-2.98%' },
+  { symbol: 'ETHUSDT', name: 'ETH', quote: 'USDT', fullName: 'Ethereum', volume: '7.77B', price: '1,977.75', change: '-2.21%' },
+  { symbol: 'BNBUSDT', name: 'BNB', quote: 'USDT', fullName: 'BNB', volume: '1.98B', price: '688.04', change: '-5.55%' },
+  { symbol: 'SOLUSDT', name: 'SOL', quote: 'USDT', fullName: 'Solana', volume: '1.45B', price: '164.20', change: '+3.15%' },
+  { symbol: 'XRPUSDT', name: 'XRP', quote: 'USDT', fullName: 'Ripple', volume: '629.14M', price: '1.2960', change: '-3.59%' },
+  { symbol: 'ADAUSDT', name: 'ADA', quote: 'USDT', fullName: 'Cardano', volume: '182.64M', price: '0.2295', change: '-3.16%' },
+  { symbol: 'DOGEUSDT', name: 'DOGE', quote: 'USDT', fullName: 'Dogecoin', volume: '345.12M', price: '0.1412', change: '+1.88%' },
+  { symbol: 'LTCUSDT', name: 'LTC', quote: 'USDT', fullName: 'Litecoin', volume: '62.07M', price: '51.06', change: '-2.68%' },
+  { symbol: 'LINKUSDT', name: 'LINK', quote: 'USDT', fullName: 'Chainlink', volume: '99.88M', price: '8.958', change: '-2.87%' }
+]
+
+function getCryptoIcon(symbol, size = 18) {
+  const symbolUpper = symbol.toUpperCase().replace('USDT', '').replace('BUSD', '')
+  const char = symbolUpper.charAt(0)
+  
+  if (symbolUpper === 'BTC') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 32 32" style={{ borderRadius: '50%', flexShrink: 0 }}>
+        <rect width="32" height="32" fill="#f7931a" />
+        <text x="16" y="23" fill="white" fontSize="18" fontWeight="bold" textAnchor="middle" fontFamily="sans-serif">₿</text>
+      </svg>
+    )
+  }
+  if (symbolUpper === 'ETH') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 32 32" style={{ borderRadius: '50%', flexShrink: 0 }}>
+        <rect width="32" height="32" fill="#627eea" />
+        <text x="16" y="23" fill="white" fontSize="18" fontWeight="bold" textAnchor="middle" fontFamily="sans-serif">Ξ</text>
+      </svg>
+    )
+  }
+  if (symbolUpper === 'BNB') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 32 32" style={{ borderRadius: '50%', flexShrink: 0 }}>
+        <rect width="32" height="32" fill="#f3ba2f" />
+        <path d="M16 8l5 5-5 5-5-5 5-5zm0 11l5 5-5 5-5-5 5-5z" fill="white" />
+      </svg>
+    )
+  }
+  if (symbolUpper === 'SOL') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 32 32" style={{ borderRadius: '50%', flexShrink: 0 }}>
+        <defs>
+          <linearGradient id="solGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#14f195" />
+            <stop offset="100%" stopColor="#9945ff" />
+          </linearGradient>
+        </defs>
+        <rect width="32" height="32" fill="url(#solGrad)" />
+        <path d="M10 10h12l-3 4H10v-4zm12 8H10l3-4h12v4z" fill="white" />
+      </svg>
+    )
+  }
+  if (symbolUpper === 'XRP') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 32 32" style={{ borderRadius: '50%', flexShrink: 0 }}>
+        <rect width="32" height="32" fill="#23292f" />
+        <text x="16" y="22" fill="white" fontSize="16" fontWeight="bold" textAnchor="middle" fontFamily="sans-serif">✕</text>
+      </svg>
+    )
+  }
+  if (symbolUpper === 'ADA') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 32 32" style={{ borderRadius: '50%', flexShrink: 0 }}>
+        <rect width="32" height="32" fill="#0033ad" />
+        <circle cx="16" cy="16" r="4" fill="white" />
+        <circle cx="16" cy="9" r="2" fill="white" />
+        <circle cx="16" cy="23" r="2" fill="white" />
+        <circle cx="9" cy="16" r="2" fill="white" />
+        <circle cx="23" cy="16" r="2" fill="white" />
+      </svg>
+    )
+  }
+  if (symbolUpper === 'DOGE') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 32 32" style={{ borderRadius: '50%', flexShrink: 0 }}>
+        <rect width="32" height="32" fill="#c2a633" />
+        <text x="16" y="23" fill="white" fontSize="18" fontWeight="bold" textAnchor="middle" fontFamily="sans-serif">Ð</text>
+      </svg>
+    )
+  }
+  if (symbolUpper === 'LTC') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 32 32" style={{ borderRadius: '50%', flexShrink: 0 }}>
+        <rect width="32" height="32" fill="#345d9d" />
+        <text x="16" y="23" fill="white" fontSize="18" fontWeight="bold" textAnchor="middle" fontFamily="sans-serif">Ł</text>
+      </svg>
+    )
+  }
+  if (symbolUpper === 'LINK') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 32 32" style={{ borderRadius: '50%', flexShrink: 0 }}>
+        <rect width="32" height="32" fill="#2a6cbf" />
+        <polygon points="16,6 25,11 25,21 16,26 7,21 7,11" fill="none" stroke="white" strokeWidth="2.5" />
+      </svg>
+    )
+  }
+
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" style={{ borderRadius: '50%', flexShrink: 0 }}>
+      <rect width="32" height="32" fill="#4b5563" />
+      <text x="16" y="22" fill="white" fontSize="15" fontWeight="bold" textAnchor="middle" fontFamily="sans-serif">{char}</text>
+    </svg>
+  )
+}
+
 export default function ChartPanel({
   symbol,
   interval,
@@ -59,6 +166,12 @@ export default function ChartPanel({
   pivotData,
   chartPreferences,
   onChartPreferencesChange,
+  symbolInput,
+  setSymbolInput,
+  setInterval,
+  onLoadChart,
+  isMaximized,
+  setIsMaximized,
 }) {
   const priceContainerRef = useRef(null)
   const rsiContainerRef = useRef(null)
@@ -91,10 +204,19 @@ export default function ChartPanel({
   const dragStartRef = useRef({ isDragging: false, startY: 0, startMin: null, startMax: null })
 
   const [showIndicatorPanel, setShowIndicatorPanel] = useState(false)
-  const [isMaximized, setIsMaximized] = useState(false)
   const [hiddenIndicators, setHiddenIndicators] = useState([])
   const [showPivotSettings, setShowPivotSettings] = useState(false)
   const [legendCollapsed, setLegendCollapsed] = useState(false)
+  
+  const pairSelectorRef = useRef(null)
+  const [showPairDropdown, setShowPairDropdown] = useState(false)
+  const [pairSearchQuery, setPairSearchQuery] = useState('')
+  const [pairsData, setPairsData] = useState(POPULAR_PAIRS)
+  const candlesRef = useRef(candles)
+
+  useEffect(() => {
+    candlesRef.current = candles
+  }, [candles])
 
   const updatePreference = (key) => {
     onChartPreferencesChange((prev) => ({
@@ -150,6 +272,63 @@ export default function ChartPanel({
       }
     }
   }, [symbol, interval])
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (pairSelectorRef.current && !pairSelectorRef.current.contains(event.target)) {
+        setShowPairDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  useEffect(() => {
+    const fetchTickers = async () => {
+      try {
+        const symbolsList = POPULAR_PAIRS.map(p => p.symbol)
+        const url = `https://api.binance.com/api/v3/ticker/24hr?symbols=${encodeURIComponent(JSON.stringify(symbolsList))}`
+        const res = await fetch(url)
+        if (!res.ok) return
+        const data = await res.json()
+        if (Array.isArray(data)) {
+          setPairsData(prev => {
+            return prev.map(p => {
+              const ticker = data.find(t => t.symbol === p.symbol)
+              if (ticker) {
+                const priceNum = parseFloat(ticker.lastPrice)
+                const changeNum = parseFloat(ticker.priceChangePercent)
+                const quoteVolNum = parseFloat(ticker.quoteVolume)
+                
+                let volStr = p.volume
+                if (quoteVolNum >= 1e9) {
+                  volStr = `${(quoteVolNum / 1e9).toFixed(2)}B`
+                } else if (quoteVolNum >= 1e6) {
+                  volStr = `${(quoteVolNum / 1e6).toFixed(2)}M`
+                }
+                
+                let priceStr = priceNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+
+                return {
+                  ...p,
+                  price: priceStr,
+                  change: `${changeNum >= 0 ? '+' : ''}${changeNum.toFixed(2)}%`,
+                  volume: volStr
+                }
+              }
+              return p
+            })
+          })
+        }
+      } catch (err) {
+        console.warn('Failed to fetch dynamic tickers from Binance:', err)
+      }
+    }
+    
+    fetchTickers()
+    const intervalId = setInterval(fetchTickers, 10000)
+    return () => clearInterval(intervalId)
+  }, [])
 
   useEffect(() => {
     if (!priceContainerRef.current || !rsiContainerRef.current || !macdContainerRef.current) return
@@ -419,7 +598,8 @@ export default function ChartPanel({
 
     const handlePriceWheel = (e) => {
       const container = priceContainerRef.current
-      if (!container || !priceChartRef.current || !candleSeriesRef.current || !candles.length) return
+      const candlesList = candlesRef.current
+      if (!container || !priceChartRef.current || !candleSeriesRef.current || !candlesList.length) return
 
       const rect = container.getBoundingClientRect()
       const x = e.clientX - rect.left
@@ -440,7 +620,7 @@ export default function ChartPanel({
           let maxPrice = -Infinity
 
           if (visibleRange) {
-            candles.forEach((c) => {
+            candlesList.forEach((c) => {
               if (c.time >= visibleRange.from && c.time <= visibleRange.to) {
                 if (c.low < minPrice) minPrice = c.low
                 if (c.high > maxPrice) maxPrice = c.high
@@ -449,7 +629,7 @@ export default function ChartPanel({
           }
 
           if (minPrice === Infinity || maxPrice === -Infinity) {
-            const lastCandle = candles[candles.length - 1]
+            const lastCandle = candlesList[candlesList.length - 1]
             minPrice = lastCandle.low
             maxPrice = lastCandle.high
           }
@@ -517,7 +697,8 @@ export default function ChartPanel({
 
     const handlePriceMouseDown = (e) => {
       const container = priceContainerRef.current
-      if (!container || !priceChartRef.current || !candleSeriesRef.current || !candles.length) return
+      const candlesList = candlesRef.current
+      if (!container || !priceChartRef.current || !candleSeriesRef.current || !candlesList.length) return
 
       const rect = container.getBoundingClientRect()
       const x = e.clientX - rect.left
@@ -532,7 +713,7 @@ export default function ChartPanel({
           let maxPrice = -Infinity
 
           if (visibleRange) {
-            candles.forEach((c) => {
+            candlesList.forEach((c) => {
               if (c.time >= visibleRange.from && c.time <= visibleRange.to) {
                 if (c.low < minPrice) minPrice = c.low
                 if (c.high > maxPrice) maxPrice = c.high
@@ -541,7 +722,7 @@ export default function ChartPanel({
           }
 
           if (minPrice === Infinity || maxPrice === -Infinity) {
-            const lastCandle = candles[candles.length - 1]
+            const lastCandle = candlesList[candlesList.length - 1]
             minPrice = lastCandle.low
             maxPrice = lastCandle.high
           }
@@ -895,12 +1076,225 @@ export default function ChartPanel({
 
   return (
     <div className={`chart-card ${isMaximized ? 'chart-card-maximized' : ''}`}>
-      <div className="chart-card-header">
-        <div className="chart-card-title-row">
-          <div className="chart-card-title">
-            <span id="chart-symbol-display">{symbol}</span>
-            <span className="chart-timeframe-badge" id="chart-tf-display">{interval}</span>
+      <div className="chart-card-header" style={{ position: 'relative', padding: '8px 24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', flexWrap: 'wrap', gap: '16px' }}>
+          
+          {/* Pair & Timeframe Controls (TradingView / Binance layout style) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            
+            {/* Searchable Pair Dropdown Selector */}
+            <div style={{ position: 'relative' }} ref={pairSelectorRef}>
+              <button
+                onClick={() => setShowPairDropdown(!showPairDropdown)}
+                style={{
+                  background: 'var(--bg-raised)',
+                  border: '1px solid var(--border-medium)',
+                  borderRadius: '12px',
+                  padding: '6px 12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  cursor: 'pointer',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  color: 'var(--text-primary)',
+                  transition: 'all 0.16s ease',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                  outline: 'none'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--accent-primary)'}
+                onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border-medium)'}
+              >
+                {getCryptoIcon(symbol, 18)}
+                <span>{symbol}</span>
+                <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>▼</span>
+              </button>
+
+              {/* Searchable Pair Dropdown Panel */}
+              {showPairDropdown && (
+                <div className="glass-panel" style={{
+                  position: 'absolute',
+                  top: '36px',
+                  left: '0',
+                  zIndex: 200,
+                  background: 'rgba(7, 12, 20, 0.98)',
+                  border: '1px solid var(--border-medium)',
+                  borderRadius: '16px',
+                  padding: '16px',
+                  width: '420px',
+                  boxShadow: '0 24px 60px rgba(0,0,0,0.6)',
+                  animation: 'fadeIn 0.15s ease-out',
+                  backdropFilter: 'blur(20px)',
+                  fontFamily: 'var(--font-ui), sans-serif'
+                }}>
+                  {/* Search Input Box */}
+                  <div style={{ position: 'relative', marginBottom: '12px' }}>
+                    <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '12px' }}>🔍</span>
+                    <input
+                      type="text"
+                      placeholder="Search pair..."
+                      value={pairSearchQuery}
+                      onChange={(e) => setPairSearchQuery(e.target.value.toUpperCase())}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px 8px 28px',
+                        background: 'var(--bg-raised)',
+                        border: '1px solid var(--border-medium)',
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        color: 'var(--text-primary)',
+                        outline: 'none',
+                        fontFamily: 'var(--font-mono)'
+                      }}
+                      autoFocus
+                    />
+                  </div>
+
+                  {/* Tabs Row */}
+                  <div style={{ display: 'flex', gap: '12px', marginBottom: '12px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '8px' }}>
+                    {['USDⓈ-M', 'COIN-M', 'Favorites'].map(tab => (
+                      <span key={tab} style={{
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        color: tab === 'USDⓈ-M' ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                        borderBottom: tab === 'USDⓈ-M' ? '2px solid var(--accent-primary)' : 'none',
+                        paddingBottom: '6px',
+                        cursor: 'pointer'
+                      }}>{tab}</span>
+                    ))}
+                  </div>
+
+                  {/* Table Column Headers */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1.4fr 1.1fr 1fr',
+                    fontSize: '10px',
+                    fontWeight: 600,
+                    color: 'var(--text-muted)',
+                    padding: '0 8px 6px',
+                    borderBottom: '1px solid var(--border-subtle)'
+                  }}>
+                    <span>Symbol / Vol</span>
+                    <span style={{ textAlign: 'right' }}>Last Price</span>
+                    <span style={{ textAlign: 'right' }}>24h Chg</span>
+                  </div>
+
+                  {/* Tickers Scroll Area */}
+                  <div style={{ maxHeight: '240px', overflowY: 'auto', marginTop: '6px', paddingRight: '4px' }}>
+                    {pairsData
+                      .filter(p => p.symbol.includes(pairSearchQuery))
+                      .map(p => {
+                        const isBear = p.change.startsWith('-')
+                        return (
+                          <div
+                            key={p.symbol}
+                            onClick={() => {
+                              setSymbolInput(p.symbol)
+                              setShowPairDropdown(false)
+                              onLoadChart(p.symbol, interval)
+                            }}
+                            style={{
+                              display: 'grid',
+                              gridTemplateColumns: '1.4fr 1.1fr 1fr',
+                              alignItems: 'center',
+                              padding: '8px 8px',
+                              borderRadius: '8px',
+                              cursor: 'pointer',
+                              transition: 'background 0.12s ease'
+                            }}
+                            className="pair-row-hover"
+                            onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              {getCryptoIcon(p.symbol, 16)}
+                              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{p.symbol}</span>
+                                  <span style={{ fontSize: '9px', color: 'var(--accent-primary)', background: 'var(--accent-subtle)', padding: '0px 3px', borderRadius: '3px', fontWeight: 600 }}>Perp</span>
+                                </div>
+                                <span style={{ fontSize: '9px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{p.volume}</span>
+                              </div>
+                            </div>
+                            <span style={{ textAlign: 'right', fontSize: '11px', fontWeight: 500, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{p.price}</span>
+                            <span style={{
+                              textAlign: 'right',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              color: isBear ? 'var(--color-bear)' : 'var(--color-bull)',
+                              fontFamily: 'var(--font-mono)'
+                            }}>{p.change}</span>
+                          </div>
+                        )
+                      })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Timeframe Select Dropdown (TradingView-styled pill) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '12px' }}>
+              <select
+                id="timeframe-select-chart"
+                value={interval}
+                onChange={(e) => setInterval(e.target.value)}
+                style={{
+                  background: 'var(--bg-raised)',
+                  border: '1px solid var(--border-medium)',
+                  borderRadius: '12px',
+                  padding: '6px 12px',
+                  fontSize: '13px',
+                  fontFamily: 'var(--font-ui)',
+                  fontWeight: 600,
+                  color: 'var(--text-secondary)',
+                  outline: 'none',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
+                }}
+              >
+                <option value="15m">15m</option>
+                <option value="1h">1H</option>
+                <option value="4h">4H</option>
+                <option value="1d">1D</option>
+                <option value="1w">1W</option>
+              </select>
+            </div>
+
+            {/* Premium Vibrant Green Pill Load Button (matching 1st image) */}
+            <button
+              onClick={() => onLoadChart(symbolInput, interval)}
+              disabled={loading}
+              style={{
+                background: 'hsl(158, 64%, 52%)',
+                color: 'hsl(212, 48%, 5%)',
+                border: 'none',
+                borderRadius: '9999px',
+                padding: '6px 16px',
+                fontSize: '13px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                transition: 'all 0.16s ease',
+                boxShadow: '0 4px 14px hsla(158, 64%, 52%, 0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginLeft: '8px'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'hsl(158, 64%, 44%)'
+                e.currentTarget.style.boxShadow = '0 6px 20px hsla(158, 64%, 52%, 0.45)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'hsl(158, 64%, 52%)'
+                e.currentTarget.style.boxShadow = '0 4px 14px hsla(158, 64%, 52%, 0.3)'
+              }}
+            >
+              {loading ? 'Loading...' : 'Load'}
+            </button>
           </div>
+
+          {/* Indicators and Screen Controls on Right */}
           <div className="chart-toggles chart-toggles-inline">
             <button
               className={`toggle-btn ${chartPreferences.showCandles ? 'active' : ''}`}
@@ -921,6 +1315,7 @@ export default function ChartPanel({
               {isMaximized ? 'Restore' : 'Maximize'}
             </button>
           </div>
+
         </div>
       </div>
 

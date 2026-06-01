@@ -88,6 +88,7 @@ export default function ChartPanel({
   const isInitializedRef = useRef(false)
   const marginStateRef = useRef({ top: 0.1, bottom: 0.1 })
   const priceZoomRef = useRef({ min: null, max: null })
+  const dragStartRef = useRef({ isDragging: false, startY: 0, startMin: null, startMax: null })
 
   const [showIndicatorPanel, setShowIndicatorPanel] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
@@ -429,7 +430,8 @@ export default function ChartPanel({
         e.preventDefault()
         e.stopPropagation()
 
-        const zoomFactor = e.deltaY > 0 ? 1.15 : 0.85
+        // Smooth out zoom sensitivity by dynamically scaling the zoom factor relative to e.deltaY intensity
+        const zoomFactor = Math.max(0.7, Math.min(1.4, 1 + e.deltaY * 0.0012))
 
         // Initialize manual price bounds from currently visible candles if not already zooming
         if (priceZoomRef.current.min === null || priceZoomRef.current.max === null) {
@@ -513,10 +515,92 @@ export default function ChartPanel({
       }
     }
 
+    const handlePriceMouseDown = (e) => {
+      const container = priceContainerRef.current
+      if (!container || !priceChartRef.current || !candleSeriesRef.current || !candles.length) return
+
+      const rect = container.getBoundingClientRect()
+      const x = e.clientX - rect.left
+      const isOverPriceScale = x > rect.width - 80
+
+      // Only drag if not clicking on the price scale itself
+      if (!isOverPriceScale) {
+        // Initialize price bounds if not already set (e.g. if auto-scaling was active)
+        if (priceZoomRef.current.min === null || priceZoomRef.current.max === null) {
+          const visibleRange = priceChartRef.current.timeScale().getVisibleRange()
+          let minPrice = Infinity
+          let maxPrice = -Infinity
+
+          if (visibleRange) {
+            candles.forEach((c) => {
+              if (c.time >= visibleRange.from && c.time <= visibleRange.to) {
+                if (c.low < minPrice) minPrice = c.low
+                if (c.high > maxPrice) maxPrice = c.high
+              }
+            })
+          }
+
+          if (minPrice === Infinity || maxPrice === -Infinity) {
+            const lastCandle = candles[candles.length - 1]
+            minPrice = lastCandle.low
+            maxPrice = lastCandle.high
+          }
+
+          const padding = (maxPrice - minPrice) * 0.1
+          priceZoomRef.current.min = minPrice - padding
+          priceZoomRef.current.max = maxPrice + padding
+        }
+
+        dragStartRef.current = {
+          isDragging: true,
+          startY: e.clientY,
+          startMin: priceZoomRef.current.min,
+          startMax: priceZoomRef.current.max,
+        }
+      }
+    }
+
+    const handlePriceMouseMove = (e) => {
+      if (!dragStartRef.current.isDragging) return
+
+      const container = priceContainerRef.current
+      if (!container || !candleSeriesRef.current) return
+
+      const dy = e.clientY - dragStartRef.current.startY
+      // We drag down to shift the price scale up
+      const range = dragStartRef.current.startMax - dragStartRef.current.startMin
+      const height = container.clientHeight
+      const priceDelta = (dy / height) * range
+
+      // Shift the bounds
+      const nextMin = dragStartRef.current.startMin + priceDelta
+      const nextMax = dragStartRef.current.startMax + priceDelta
+
+      priceZoomRef.current.min = nextMin
+      priceZoomRef.current.max = nextMax
+
+      // Apply the manual price range to autoscaleInfoProvider
+      candleSeriesRef.current.applyOptions({
+        autoscaleInfoProvider: () => ({
+          priceRange: {
+            minValue: nextMin,
+            maxValue: nextMax,
+          },
+        }),
+      })
+    }
+
+    const handlePriceMouseUp = () => {
+      dragStartRef.current.isDragging = false
+    }
+
     const priceContainer = priceContainerRef.current
     if (priceContainer) {
       priceContainer.addEventListener('wheel', handlePriceWheel, { capture: true, passive: false })
       priceContainer.addEventListener('dblclick', handleDblClick, { capture: true })
+      priceContainer.addEventListener('mousedown', handlePriceMouseDown)
+      window.addEventListener('mousemove', handlePriceMouseMove)
+      window.addEventListener('mouseup', handlePriceMouseUp)
     }
 
     window.addEventListener('resize', handleResize)
@@ -526,7 +610,10 @@ export default function ChartPanel({
       if (priceContainer) {
         priceContainer.removeEventListener('wheel', handlePriceWheel, { capture: true })
         priceContainer.removeEventListener('dblclick', handleDblClick, { capture: true })
+        priceContainer.removeEventListener('mousedown', handlePriceMouseDown)
       }
+      window.removeEventListener('mousemove', handlePriceMouseMove)
+      window.removeEventListener('mouseup', handlePriceMouseUp)
       window.removeEventListener('resize', handleResize)
       window.removeEventListener('themeChanged', handleThemeChange)
       priceChart.remove()
@@ -627,9 +714,9 @@ export default function ChartPanel({
       candleSeriesRef.current.applyOptions({ visible: chartPreferences.showCandles })
     }
     if (volumeSeriesRef.current) {
-      volumeSeriesRef.current.applyOptions({ visible: chartPreferences.showCandles })
+      volumeSeriesRef.current.applyOptions({ visible: chartPreferences.showCandles && !hiddenIndicators.includes('volume') })
     }
-  }, [chartPreferences.showCandles])
+  }, [chartPreferences.showCandles, hiddenIndicators])
 
   useEffect(() => {
     if (ema20SeriesRef.current) ema20SeriesRef.current.applyOptions({ visible: chartPreferences.showEma20 && !hiddenIndicators.includes('ema20') })
@@ -1016,6 +1103,12 @@ export default function ChartPanel({
                   onRemove: () => updatePreference('showPivots')
                 },
                 {
+                  id: 'volume',
+                  label: 'Volume',
+                  active: chartPreferences.showCandles,
+                  onRemove: null
+                },
+                {
                   id: 'standard-pivots',
                   label: `Pivots ${getPivotTypeName(chartPreferences.pivotType)} Auto ${chartPreferences.pivotsBack || 15}`,
                   active: chartPreferences.showStandardPivots,
@@ -1090,22 +1183,24 @@ export default function ChartPanel({
                       )}
 
                       {/* Remove Button */}
-                      <button
-                        onClick={ind.onRemove}
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          color: 'var(--color-bear)',
-                          cursor: 'pointer',
-                          padding: '2px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          fontSize: '11px'
-                        }}
-                        title="Remove"
-                      >
-                        ✕
-                      </button>
+                      {ind.onRemove && (
+                        <button
+                          onClick={ind.onRemove}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: 'var(--color-bear)',
+                            cursor: 'pointer',
+                            padding: '2px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            fontSize: '11px'
+                          }}
+                          title="Remove"
+                        >
+                          ✕
+                        </button>
+                      )}
                     </div>
                   </div>
                 )

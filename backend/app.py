@@ -47,6 +47,7 @@ DEFAULT_CHART_PREFERENCES = {
     "showPivots": False,
     "showStandardPivots": False,
     "pivotType": "traditional",
+    "pivotsBack": 15,
 }
 
 
@@ -87,6 +88,11 @@ def sanitize_preferences(payload):
         if key in payload:
             if key == "pivotType":
                 sanitized[key] = str(payload[key])
+            elif key == "pivotsBack":
+                try:
+                    sanitized[key] = max(1, min(50, int(payload[key])))
+                except Exception:
+                    sanitized[key] = 15
             else:
                 sanitized[key] = bool(payload[key])
     return sanitized
@@ -534,14 +540,23 @@ def get_pivots():
         timeframe = request.args.get("timeframe", "4h").strip()
         pivot_type = request.args.get("pivotType", "traditional").strip().lower()
 
+        pivots_back = 15
+        pivots_back_raw = request.args.get("pivotsBack")
+        if pivots_back_raw:
+            try:
+                pivots_back = max(1, min(50, int(pivots_back_raw)))
+            except Exception:
+                pass
+
         if not validate_symbol(symbol):
             return jsonify({"error": "Invalid symbol format."}), 400
 
         if timeframe not in ALLOWED_INTERVALS:
             return jsonify({"error": "Invalid interval."}), 400
 
-        # Fetch enough candles to cover at least 2 full periods
-        candles = fetch_binance_klines(symbol, timeframe, 200)
+        # Fetch enough candles to cover all historical periods
+        candle_count = max(400, (pivots_back + 2) * 45)
+        candles = fetch_binance_klines(symbol, timeframe, candle_count)
 
         if not candles:
             return jsonify({"success": False, "error": "No candle data available."}), 400
@@ -569,7 +584,7 @@ def get_pivots():
         camarilla_analysis = analyze_price_vs_pivots(current_price, camarilla_pivots)
 
         standard_period = get_pivot_period(timeframe)
-        completed_periods = get_recent_completed_period_candles(candles, standard_period, count=4)
+        completed_periods = get_recent_completed_period_candles(candles, standard_period, count=pivots_back + 1)
         standard_periods = []
         for i in range(1, len(completed_periods)):
             prev_candle = completed_periods[i - 1]

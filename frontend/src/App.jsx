@@ -26,6 +26,7 @@ const DEFAULT_CHART_PREFERENCES = {
   showPivots: false,
   showStandardPivots: false,
   pivotType: 'traditional',
+  pivotsBack: 15,
 }
 
 function applyTheme(theme) {
@@ -219,6 +220,8 @@ function sanitizePreferences(payload) {
     if (key in payload) {
       if (key === 'pivotType') {
         sanitized[key] = String(payload[key])
+      } else if (key === 'pivotsBack') {
+        sanitized[key] = Math.max(1, Math.min(50, Number(payload[key]) || 15))
       } else {
         sanitized[key] = Boolean(payload[key])
       }
@@ -486,7 +489,7 @@ function buildPivotData(candles, timeframe, selectedSymbol, chartPrefs = DEFAULT
   const dmPivots = withPivotMeta(calculatePivotsGeneric(completed.high, completed.low, completed.close, completed.open, currOpen, 'dm'), 'dm', period, completed)
   const camarillaPivots = withPivotMeta(calculatePivotsGeneric(completed.high, completed.low, completed.close, completed.open, currOpen, 'camarilla'), 'camarilla', period, completed)
 
-  const completedPeriods = groupCompletedCandles(candles, period, 4)
+  const completedPeriods = groupCompletedCandles(candles, period, (chartPrefs.pivotsBack || 15) + 1)
   const standardPeriods = []
   for (let i = 1; i < completedPeriods.length; i++) {
     const prevCandle = completedPeriods[i - 1]
@@ -517,7 +520,7 @@ function buildPivotData(candles, timeframe, selectedSymbol, chartPrefs = DEFAULT
 
 async function fetchPivotData(symbol, timeframe, candles, pivotType = 'traditional', chartPrefs = DEFAULT_CHART_PREFERENCES) {
   try {
-    const data = await invokeFunction('calculate-pivots', { symbol, timeframe, candles, pivotType })
+    const data = await invokeFunction('calculate-pivots', { symbol, timeframe, candles, pivotType, pivotsBack: chartPrefs.pivotsBack || 15 })
     if (data?.success) return { ...data, symbol }
     throw new Error(data?.error || 'Pivot function returned no pivot data.')
   } catch (edgeError) {
@@ -918,7 +921,7 @@ export default function App() {
     }).catch((err) => {
       console.error('Failed to fetch pivots on preference change:', err)
     })
-  }, [chartPreferences.pivotType, symbol, interval])
+  }, [chartPreferences.pivotType, chartPreferences.pivotsBack, symbol, interval])
 
   const runAIAnalysis = async (currentCandles = null) => {
     const candleData = currentCandles

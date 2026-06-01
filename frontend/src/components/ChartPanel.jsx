@@ -35,9 +35,9 @@ const standardPivotConfig = {
   S5: { color: STANDARD_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'S5' },
 }
 
-function subtractSixMonths(unixTime) {
+function subtractFiveMonths(unixTime) {
   const date = new Date(unixTime * 1000)
-  date.setUTCMonth(date.getUTCMonth() - 6)
+  date.setUTCMonth(date.getUTCMonth() - 5)
   return Math.floor(date.getTime() / 1000)
 }
 
@@ -140,7 +140,7 @@ export default function ChartPanel({
     const isDark = initialTheme === 'dark'
 
     const sharedLayout = {
-      background: { color: isDark ? '#0d0d16' : '#ffffff' },
+      background: { color: isDark ? '#070c14' : '#ffffff' },
       textColor: isDark ? '#8b8b9e' : '#6b6b7e',
       fontFamily: 'ui-sans-serif, system-ui, sans-serif',
     }
@@ -186,7 +186,7 @@ export default function ChartPanel({
         },
       },
       handleScroll: {
-        mouseWheel: true,
+        mouseWheel: false,
         pressedMouseMove: true,
         horzTouchDrag: true,
         vertTouchDrag: true,
@@ -385,7 +385,7 @@ export default function ChartPanel({
       const darkMode = theme === 'dark'
       const chartOptions = {
         layout: {
-          background: { color: darkMode ? '#0d0d16' : '#ffffff' },
+          background: { color: darkMode ? '#070c14' : '#ffffff' },
           textColor: darkMode ? '#8b8b9e' : '#6b6b7e',
         },
         grid: {
@@ -449,8 +449,8 @@ export default function ChartPanel({
 
     const priceContainer = priceContainerRef.current
     if (priceContainer) {
-      priceContainer.addEventListener('wheel', handlePriceWheel, { passive: false })
-      priceContainer.addEventListener('dblclick', handleDblClick)
+      priceContainer.addEventListener('wheel', handlePriceWheel, { capture: true, passive: false })
+      priceContainer.addEventListener('dblclick', handleDblClick, { capture: true })
     }
 
     window.addEventListener('resize', handleResize)
@@ -458,8 +458,8 @@ export default function ChartPanel({
 
     return () => {
       if (priceContainer) {
-        priceContainer.removeEventListener('wheel', handlePriceWheel)
-        priceContainer.removeEventListener('dblclick', handleDblClick)
+        priceContainer.removeEventListener('wheel', handlePriceWheel, { capture: true })
+        priceContainer.removeEventListener('dblclick', handleDblClick, { capture: true })
       }
       window.removeEventListener('resize', handleResize)
       window.removeEventListener('themeChanged', handleThemeChange)
@@ -547,8 +547,11 @@ export default function ChartPanel({
     if (!hasAppliedInitialZoomRef.current && priceChartRef.current && candles.length > 0) {
       const latestTime = candles[candles.length - 1].time
       const earliestTime = candles[0].time
-      const from = Math.max(earliestTime, subtractSixMonths(latestTime))
-      priceChartRef.current.timeScale().setVisibleRange({ from, to: latestTime })
+      const from = Math.max(earliestTime, subtractFiveMonths(latestTime))
+      const candleCount = candles.length
+      const candleDuration = candleCount > 1 ? (candles[candleCount - 1].time - candles[candleCount - 2].time) : 24 * 60 * 60
+      const to = latestTime + 15 * candleDuration
+      priceChartRef.current.timeScale().setVisibleRange({ from, to })
       hasAppliedInitialZoomRef.current = true
     }
   }, [candles, analysis])

@@ -12,6 +12,7 @@ const DEFAULT_CHART_PREFERENCES = {
   showPivots: false,
   showStandardPivots: false,
   pivotType: "traditional",
+  pivotsBack: 15,
 };
 
 const USER_KEY_REGEX = /^[a-zA-Z0-9_.@-]{3,128}$/;
@@ -65,6 +66,8 @@ function sanitizePreferences(payload: unknown) {
     if (key in source) {
       if (key === "pivotType") {
         sanitized[key] = String(source[key]);
+      } else if (key === "pivotsBack") {
+        sanitized[key] = Math.max(1, Math.min(50, Number(source[key]) || 15));
       } else {
         sanitized[key] = Boolean(source[key]);
       }

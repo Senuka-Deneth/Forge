@@ -11,6 +11,7 @@ export const DEFAULT_CHART_PREFERENCES = {
   showPivots: false,
   showStandardPivots: false,
   pivotType: 'traditional',
+  pivotsBack: 15,
 }
 
 export function sanitizePreferences(payload) {
@@ -21,6 +22,8 @@ export function sanitizePreferences(payload) {
     if (key in payload) {
       if (key === 'pivotType') {
         sanitized[key] = String(payload[key])
+      } else if (key === 'pivotsBack') {
+        sanitized[key] = Math.max(1, Math.min(50, Number(payload[key]) || 15))
       } else {
         sanitized[key] = Boolean(payload[key])
       }

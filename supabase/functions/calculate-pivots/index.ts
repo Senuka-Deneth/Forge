@@ -272,6 +272,7 @@ Deno.serve(async (req) => {
     const candles = body.candles;
     const timeframe = String(body.timeframe ?? body.interval ?? "4h").trim();
     const pivotType = String(body.pivotType ?? "traditional").trim().toLowerCase();
+    const pivotsBack = Math.max(1, Math.min(50, Number(body.pivotsBack ?? body.pivots_back) || 15));
 
     if (!Array.isArray(candles) || candles.length < 2) {
       return jsonResponse({ success: false, error: "candles array is required." }, 400);
@@ -304,7 +305,7 @@ Deno.serve(async (req) => {
     const dmPivots = withMeta(calculatePivotsGeneric(completed.high, completed.low, completed.close, completed.open, currOpen, "dm"), "dm", period, completed);
     const camarillaPivots = withMeta(calculatePivotsGeneric(completed.high, completed.low, completed.close, completed.open, currOpen, "camarilla"), "camarilla", period, completed);
 
-    const completedPeriods = groupCompletedCandles(normalizedCandles, period, 4);
+    const completedPeriods = groupCompletedCandles(normalizedCandles, period, pivotsBack + 1);
     const standardPeriods = [];
     for (let i = 1; i < completedPeriods.length; i++) {
       const prevCandle = completedPeriods[i - 1];

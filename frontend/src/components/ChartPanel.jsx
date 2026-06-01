@@ -87,9 +87,13 @@ export default function ChartPanel({
   const hasAppliedInitialZoomRef = useRef(false)
   const isInitializedRef = useRef(false)
   const marginStateRef = useRef({ top: 0.1, bottom: 0.1 })
+  const priceZoomRef = useRef({ min: null, max: null })
 
   const [showIndicatorPanel, setShowIndicatorPanel] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
+  const [hiddenIndicators, setHiddenIndicators] = useState([])
+  const [showPivotSettings, setShowPivotSettings] = useState(false)
+  const [legendCollapsed, setLegendCollapsed] = useState(false)
 
   const updatePreference = (key) => {
     onChartPreferencesChange((prev) => ({
@@ -132,6 +136,19 @@ export default function ChartPanel({
       hasAppliedInitialZoomRef.current = false
     }
   }, [loading])
+
+  useEffect(() => {
+    priceZoomRef.current = { min: null, max: null }
+    if (candleSeriesRef.current) {
+      try {
+        candleSeriesRef.current.applyOptions({
+          autoscaleInfoProvider: undefined,
+        })
+      } catch {
+        // Ignore
+      }
+    }
+  }, [symbol, interval])
 
   useEffect(() => {
     if (!priceContainerRef.current || !rsiContainerRef.current || !macdContainerRef.current) return
@@ -401,7 +418,7 @@ export default function ChartPanel({
 
     const handlePriceWheel = (e) => {
       const container = priceContainerRef.current
-      if (!container || !priceChartRef.current) return
+      if (!container || !priceChartRef.current || !candleSeriesRef.current || !candles.length) return
 
       const rect = container.getBoundingClientRect()
       const x = e.clientX - rect.left
@@ -413,31 +430,80 @@ export default function ChartPanel({
         e.stopPropagation()
 
         const zoomFactor = e.deltaY > 0 ? 1.15 : 0.85
-        const currentMargins = marginStateRef.current
 
-        // Calculate new margins, preserving vertical center if possible or just scaling both
-        const newMargins = {
-          top: Math.max(0.01, Math.min(0.8, currentMargins.top * zoomFactor)),
-          bottom: Math.max(0.01, Math.min(0.8, currentMargins.bottom * zoomFactor)),
+        // Initialize manual price bounds from currently visible candles if not already zooming
+        if (priceZoomRef.current.min === null || priceZoomRef.current.max === null) {
+          const visibleRange = priceChartRef.current.timeScale().getVisibleRange()
+          let minPrice = Infinity
+          let maxPrice = -Infinity
+
+          if (visibleRange) {
+            candles.forEach((c) => {
+              if (c.time >= visibleRange.from && c.time <= visibleRange.to) {
+                if (c.low < minPrice) minPrice = c.low
+                if (c.high > maxPrice) maxPrice = c.high
+              }
+            })
+          }
+
+          if (minPrice === Infinity || maxPrice === -Infinity) {
+            const lastCandle = candles[candles.length - 1]
+            minPrice = lastCandle.low
+            maxPrice = lastCandle.high
+          }
+
+          // Add standard 10% vertical margins to start with
+          const padding = (maxPrice - minPrice) * 0.1
+          priceZoomRef.current.min = minPrice - padding
+          priceZoomRef.current.max = maxPrice + padding
         }
 
-        marginStateRef.current = newMargins
-        priceChartRef.current.priceScale('right').applyOptions({
-          autoScale: true, // Keep autoScale to use margins or we can toggle based on preference
-          scaleMargins: newMargins,
+        // Apply zoom factor around the center of the current manual price range
+        const currentMin = priceZoomRef.current.min
+        const currentMax = priceZoomRef.current.max
+        const mid = (currentMax + currentMin) / 2
+        const range = currentMax - currentMin
+        const newRange = range * zoomFactor
+
+        const nextMin = mid - newRange / 2
+        const nextMax = mid + newRange / 2
+
+        priceZoomRef.current.min = nextMin
+        priceZoomRef.current.max = nextMax
+
+        // Dynamically override autoscaleInfoProvider to stretch scale vertically infinitely
+        candleSeriesRef.current.applyOptions({
+          autoscaleInfoProvider: () => ({
+            priceRange: {
+              minValue: nextMin,
+              maxValue: nextMax,
+            },
+          }),
         })
       }
     }
 
     const handleDblClick = (e) => {
       const container = priceContainerRef.current
-      if (!container || !priceChartRef.current) return
+      if (!container || !priceChartRef.current || !candleSeriesRef.current) return
 
       const rect = container.getBoundingClientRect()
       const x = e.clientX - rect.left
       const isOverPriceScale = x > rect.width - 80
 
       if (isOverPriceScale) {
+        e.preventDefault()
+        e.stopPropagation()
+
+        // Reset manual price bounds
+        priceZoomRef.current = { min: null, max: null }
+
+        // Clear custom autoscaleInfoProvider to restore automatic scaling
+        candleSeriesRef.current.applyOptions({
+          autoscaleInfoProvider: undefined,
+        })
+
+        // Also reset margins to default standard
         const defaultMargins = { top: 0.1, bottom: 0.1 }
         marginStateRef.current = defaultMargins
         priceChartRef.current.priceScale('right').applyOptions({
@@ -566,39 +632,39 @@ export default function ChartPanel({
   }, [chartPreferences.showCandles])
 
   useEffect(() => {
-    if (ema20SeriesRef.current) ema20SeriesRef.current.applyOptions({ visible: chartPreferences.showEma20 })
-  }, [chartPreferences.showEma20])
+    if (ema20SeriesRef.current) ema20SeriesRef.current.applyOptions({ visible: chartPreferences.showEma20 && !hiddenIndicators.includes('ema20') })
+  }, [chartPreferences.showEma20, hiddenIndicators])
 
   useEffect(() => {
-    if (ema50SeriesRef.current) ema50SeriesRef.current.applyOptions({ visible: chartPreferences.showEma50 })
-  }, [chartPreferences.showEma50])
+    if (ema50SeriesRef.current) ema50SeriesRef.current.applyOptions({ visible: chartPreferences.showEma50 && !hiddenIndicators.includes('ema50') })
+  }, [chartPreferences.showEma50, hiddenIndicators])
 
   useEffect(() => {
     if (rsiContainerRef.current) {
-      rsiContainerRef.current.style.display = chartPreferences.showRsi ? 'block' : 'none'
+      rsiContainerRef.current.style.display = (chartPreferences.showRsi && !hiddenIndicators.includes('rsi')) ? 'block' : 'none'
       window.dispatchEvent(new Event('resize'))
     }
-  }, [chartPreferences.showRsi])
+  }, [chartPreferences.showRsi, hiddenIndicators])
 
   useEffect(() => {
     if (macdContainerRef.current) {
-      macdContainerRef.current.style.display = chartPreferences.showMacd ? 'block' : 'none'
+      macdContainerRef.current.style.display = (chartPreferences.showMacd && !hiddenIndicators.includes('macd')) ? 'block' : 'none'
       window.dispatchEvent(new Event('resize'))
     }
-  }, [chartPreferences.showMacd])
+  }, [chartPreferences.showMacd, hiddenIndicators])
 
   useEffect(() => {
-    if (supportLineRef.current) supportLineRef.current.applyOptions({ visible: chartPreferences.showSupport })
-  }, [chartPreferences.showSupport])
+    if (supportLineRef.current) supportLineRef.current.applyOptions({ visible: chartPreferences.showSupport && !hiddenIndicators.includes('support') })
+  }, [chartPreferences.showSupport, hiddenIndicators])
 
   useEffect(() => {
-    if (resistanceLineRef.current) resistanceLineRef.current.applyOptions({ visible: chartPreferences.showResistance })
-  }, [chartPreferences.showResistance])
+    if (resistanceLineRef.current) resistanceLineRef.current.applyOptions({ visible: chartPreferences.showResistance && !hiddenIndicators.includes('resistance') })
+  }, [chartPreferences.showResistance, hiddenIndicators])
 
   useEffect(() => {
     clearFibPivotLines()
 
-    if (!chartPreferences.showPivots || !pivotData?.fibonacci?.pivots || !candleSeriesRef.current) {
+    if (!chartPreferences.showPivots || !pivotData?.fibonacci?.pivots || !candleSeriesRef.current || hiddenIndicators.includes('fibonacci-pivots')) {
       return
     }
 
@@ -617,12 +683,12 @@ export default function ChartPanel({
 
       fibPivotLinesRef.current.push(line)
     })
-  }, [chartPreferences.showPivots, pivotData])
+  }, [chartPreferences.showPivots, pivotData, hiddenIndicators])
 
   useEffect(() => {
     clearStandardPivotSegments()
 
-    if (!chartPreferences.showStandardPivots || !pivotData?.standardPeriods?.items || !priceChartRef.current) {
+    if (!chartPreferences.showStandardPivots || !pivotData?.standardPeriods?.items || !priceChartRef.current || hiddenIndicators.includes('standard-pivots')) {
       return
     }
 
@@ -645,10 +711,22 @@ export default function ChartPanel({
           { time: periodItem.endTime, value },
         ])
 
+        // Add text marker right on the line segment
+        lineSeries.setMarkers([
+          {
+            time: periodItem.startTime,
+            position: 'inBar',
+            color: 'rgba(255, 159, 67, 0.85)',
+            shape: 'circle',
+            text: cfg.label,
+            size: 0
+          }
+        ])
+
         standardPivotSeriesRef.current.push(lineSeries)
       })
     })
-  }, [chartPreferences.showStandardPivots, pivotData, chartPreferences.pivotType])
+  }, [chartPreferences.showStandardPivots, pivotData, chartPreferences.pivotType, hiddenIndicators])
 
   useEffect(() => {
     return () => {
@@ -846,26 +924,281 @@ export default function ChartPanel({
         </div>
       )}
 
-      <div className="chart-container-shell">
-        {chartPreferences.showStandardPivots && pivotData && (
-          <div className="chart-legend-overlay" style={{
+      <div className="chart-container-shell" style={{ position: 'relative' }}>
+        {/* Dynamic Sliding Legend list */}
+        <div className="chart-legend-container" style={{
+          position: 'absolute',
+          top: '12px',
+          left: '12px',
+          zIndex: 40,
+          fontFamily: 'var(--font-ui), ui-sans-serif, system-ui, sans-serif',
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: '8px',
+          pointerEvents: 'auto',
+          userSelect: 'none',
+          transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          transform: legendCollapsed ? 'translateX(-10px)' : 'none'
+        }}>
+          {/* Collapse/Expand Toggle Button */}
+          <button
+            onClick={() => setLegendCollapsed(!legendCollapsed)}
+            style={{
+              background: 'rgba(7, 12, 20, 0.85)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: '6px',
+              width: '24px',
+              height: '24px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--text-secondary)',
+              cursor: 'pointer',
+              fontSize: '12px',
+              transition: 'all 0.2s ease',
+              backdropFilter: 'blur(8px)',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+            }}
+            title={legendCollapsed ? 'Expand Legend' : 'Collapse Legend'}
+          >
+            {legendCollapsed ? '»' : '«'}
+          </button>
+
+          {/* List of active indicator badges */}
+          {!legendCollapsed && (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+              transition: 'all 0.3s ease'
+            }}>
+              {[
+                {
+                  id: 'ema20',
+                  label: 'EMA 20',
+                  active: chartPreferences.showEma20,
+                  onRemove: () => updatePreference('showEma20')
+                },
+                {
+                  id: 'ema50',
+                  label: 'EMA 50',
+                  active: chartPreferences.showEma50,
+                  onRemove: () => updatePreference('showEma50')
+                },
+                {
+                  id: 'rsi',
+                  label: 'RSI 14',
+                  active: chartPreferences.showRsi,
+                  onRemove: () => updatePreference('showRsi')
+                },
+                {
+                  id: 'macd',
+                  label: 'MACD',
+                  active: chartPreferences.showMacd,
+                  onRemove: () => updatePreference('showMacd')
+                },
+                {
+                  id: 'support',
+                  label: 'Support',
+                  active: chartPreferences.showSupport,
+                  onRemove: () => updatePreference('showSupport')
+                },
+                {
+                  id: 'resistance',
+                  label: 'Resistance',
+                  active: chartPreferences.showResistance,
+                  onRemove: () => updatePreference('showResistance')
+                },
+                {
+                  id: 'fibonacci-pivots',
+                  label: 'Fib Pivots',
+                  active: chartPreferences.showPivots,
+                  onRemove: () => updatePreference('showPivots')
+                },
+                {
+                  id: 'standard-pivots',
+                  label: `Pivots ${getPivotTypeName(chartPreferences.pivotType)} Auto ${chartPreferences.pivotsBack || 15}`,
+                  active: chartPreferences.showStandardPivots,
+                  hasSettings: true,
+                  onRemove: () => updatePreference('showStandardPivots')
+                }
+              ].filter(ind => ind.active).map(ind => {
+                const isHidden = hiddenIndicators.includes(ind.id)
+                return (
+                  <div
+                    key={ind.id}
+                    className="indicator-legend-badge"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      background: 'rgba(7, 12, 20, 0.85)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: '6px',
+                      padding: '4px 8px',
+                      fontSize: '11px',
+                      fontWeight: 500,
+                      color: isHidden ? 'var(--text-muted)' : 'var(--text-primary)',
+                      backdropFilter: 'blur(8px)',
+                      opacity: isHidden ? 0.6 : 1,
+                      transition: 'all 0.2s ease',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                    }}
+                  >
+                    <span>{ind.label}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {/* Hide/Show Eye Icon */}
+                      <button
+                        onClick={() => {
+                          setHiddenIndicators(prev => 
+                            prev.includes(ind.id) ? prev.filter(x => x !== ind.id) : [...prev, ind.id]
+                          )
+                        }}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: isHidden ? 'var(--text-muted)' : 'var(--text-secondary)',
+                          cursor: 'pointer',
+                          padding: '2px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          fontSize: '11px'
+                        }}
+                        title={isHidden ? 'Show' : 'Hide'}
+                      >
+                        {isHidden ? '👁️' : '👁️'}
+                      </button>
+
+                      {/* Settings Gear Button (Only for Standard Pivots) */}
+                      {ind.hasSettings && !isHidden && (
+                        <button
+                          onClick={() => setShowPivotSettings(!showPivotSettings)}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: 'var(--text-secondary)',
+                            cursor: 'pointer',
+                            padding: '2px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            fontSize: '11px'
+                          }}
+                          title="Settings"
+                        >
+                          ⚙️
+                        </button>
+                      )}
+
+                      {/* Remove Button */}
+                      <button
+                        onClick={ind.onRemove}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: 'var(--color-bear)',
+                          cursor: 'pointer',
+                          padding: '2px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          fontSize: '11px'
+                        }}
+                        title="Remove"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Dynamic Glassmorphic settings popover overlay */}
+        {showPivotSettings && chartPreferences.showStandardPivots && !hiddenIndicators.includes('standard-pivots') && (
+          <div className="pivot-settings-popover glass-panel" style={{
             position: 'absolute',
-            top: '12px',
-            left: '16px',
-            zIndex: 10,
-            fontSize: '11px',
-            fontFamily: 'ui-sans-serif, system-ui, sans-serif',
-            color: '#8b8b9e',
-            background: 'rgba(13, 13, 22, 0.65)',
-            padding: '4px 8px',
-            borderRadius: '4px',
-            pointerEvents: 'none',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            fontWeight: 500,
+            top: '40px',
+            left: '180px',
+            zIndex: 80,
+            background: 'rgba(7, 12, 20, 0.95)',
+            border: '1px solid var(--border-medium)',
+            borderRadius: '16px',
+            padding: '20px',
+            width: '320px',
+            boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
+            animation: 'fadeIn 0.2s ease-in-out',
+            color: 'var(--text-primary)',
+            fontFamily: 'var(--font-ui), ui-sans-serif, system-ui, sans-serif',
+            backdropFilter: 'blur(16px)'
           }}>
-            <span>Pivots {getPivotTypeName(chartPreferences.pivotType)} Auto 15</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '8px' }}>
+              <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)' }}>Standard Pivots Settings</span>
+              <button onClick={() => setShowPivotSettings(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '16px' }}>&times;</button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Calculation Type</label>
+                <select
+                  value={chartPreferences.pivotType || 'traditional'}
+                  onChange={(e) => {
+                    onChartPreferencesChange((prev) => ({ ...prev, pivotType: e.target.value }))
+                  }}
+                  style={{
+                    background: 'var(--bg-raised)',
+                    border: '1px solid var(--border-medium)',
+                    borderRadius: '8px',
+                    padding: '6px 10px',
+                    fontSize: '12px',
+                    color: 'var(--text-primary)',
+                    outline: 'none',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="traditional">Traditional</option>
+                  <option value="fibonacci">Fibonacci</option>
+                  <option value="woodie">Woodie</option>
+                  <option value="classic">Classic</option>
+                  <option value="dm">DM (DeMark)</option>
+                  <option value="camarilla">Camarilla</option>
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Number of Pivots Back</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="50"
+                  value={chartPreferences.pivotsBack || 15}
+                  onChange={(e) => {
+                    const val = Math.max(1, Math.min(50, parseInt(e.target.value) || 15))
+                    onChartPreferencesChange((prev) => ({ ...prev, pivotsBack: val }))
+                  }}
+                  style={{
+                    background: 'var(--bg-raised)',
+                    border: '1px solid var(--border-medium)',
+                    borderRadius: '8px',
+                    padding: '6px 10px',
+                    fontSize: '12px',
+                    color: 'var(--text-primary)',
+                    outline: 'none',
+                  }}
+                />
+              </div>
+            </div>
+            <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowPivotSettings(false)} style={{
+                background: 'var(--accent-primary)',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '6px 14px',
+                fontSize: '12px',
+                fontWeight: 500,
+                cursor: 'pointer'
+              }}>Apply</button>
+            </div>
           </div>
         )}
         <div id="chart-container" className="chart-container" ref={priceContainerRef}></div>

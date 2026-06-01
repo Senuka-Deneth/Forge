@@ -2,19 +2,24 @@ import { handleOptions, jsonResponse } from "../_shared/cors.ts";
 
 type Candle = {
   time: number;
+  open: number;
   high: number;
   low: number;
   close: number;
 };
 
-type PivotLevels = Record<string, number> & {
-  PP: number;
-  R1: number;
-  R2: number;
-  R3: number;
-  S1: number;
-  S2: number;
-  S3: number;
+type PivotLevels = Record<string, number | null> & {
+  PP: number | null;
+  R1: number | null;
+  R2: number | null;
+  R3: number | null;
+  R4: number | null;
+  R5: number | null;
+  S1: number | null;
+  S2: number | null;
+  S3: number | null;
+  S4: number | null;
+  S5: number | null;
 };
 
 const ALLOWED_INTERVALS = new Set([
@@ -27,67 +32,103 @@ function round2(value: number): number {
   return Number(value.toFixed(2));
 }
 
-function calculateClassicPivots(high: number, low: number, close: number): PivotLevels {
-  // Classic/Floor formula, matching Python:
-  // PP = (high + low + close) / 3
-  // R1 = 2*PP - low, R2 = PP + (high-low), R3 = high + 2*(PP-low)
-  // S1 = 2*PP - high, S2 = PP - (high-low), S3 = low - 2*(high-PP)
-  const pp = (high + low + close) / 3;
-  return {
-    PP: round2(pp),
-    R1: round2(2 * pp - low),
-    R2: round2(pp + (high - low)),
-    R3: round2(high + 2 * (pp - low)),
-    S1: round2(2 * pp - high),
-    S2: round2(pp - (high - low)),
-    S3: round2(low - 2 * (high - pp)),
+function calculatePivotsGeneric(
+  prevHigh: number,
+  prevLow: number,
+  prevClose: number,
+  prevOpen?: number | null,
+  currOpen?: number | null,
+  pivotType = "traditional"
+): PivotLevels {
+  const levels: PivotLevels = {
+    PP: null,
+    R1: null, R2: null, R3: null, R4: null, R5: null,
+    S1: null, S2: null, S3: null, S4: null, S5: null,
   };
-}
 
-function calculateFibonacciPivots(high: number, low: number, close: number): PivotLevels {
-  // Fibonacci formula, matching Python:
-  // PP = (high + low + close) / 3, range = high - low
-  // R1/R2/R3 = PP + 0.382/0.618/1.000 * range
-  // S1/S2/S3 = PP - 0.382/0.618/1.000 * range
-  const pp = (high + low + close) / 3;
-  const range = high - low;
-  return {
-    PP: round2(pp),
-    R1: round2(pp + 0.382 * range),
-    R2: round2(pp + 0.618 * range),
-    R3: round2(pp + 1.000 * range),
-    S1: round2(pp - 0.382 * range),
-    S2: round2(pp - 0.618 * range),
-    S3: round2(pp - 1.000 * range),
-  };
-}
+  if (pivotType === "traditional") {
+    const pp = (prevHigh + prevLow + prevClose) / 3;
+    levels.PP = pp;
+    levels.R1 = pp * 2 - prevLow;
+    levels.S1 = pp * 2 - prevHigh;
+    levels.R2 = pp + (prevHigh - prevLow);
+    levels.S2 = pp - (prevHigh - prevLow);
+    levels.R3 = pp * 2 + (prevHigh - 2 * prevLow);
+    levels.S3 = pp * 2 - (2 * prevHigh - prevLow);
+    levels.R4 = pp * 3 + (prevHigh - 3 * prevLow);
+    levels.S4 = pp * 3 - (3 * prevHigh - prevLow);
+    levels.R5 = pp * 4 + (prevHigh - 4 * prevLow);
+    levels.S5 = pp * 4 - (4 * prevHigh - prevLow);
+  } else if (pivotType === "fibonacci") {
+    const pp = (prevHigh + prevLow + prevClose) / 3;
+    levels.PP = pp;
+    levels.R1 = pp + 0.382 * (prevHigh - prevLow);
+    levels.S1 = pp - 0.382 * (prevHigh - prevLow);
+    levels.R2 = pp + 0.618 * (prevHigh - prevLow);
+    levels.S2 = pp - 0.618 * (prevHigh - prevLow);
+    levels.R3 = pp + (prevHigh - prevLow);
+    levels.S3 = pp - (prevHigh - prevLow);
+  } else if (pivotType === "woodie") {
+    const co = currOpen ?? prevClose;
+    const pp = (prevHigh + prevLow + 2 * co) / 4;
+    levels.PP = pp;
+    levels.R1 = 2 * pp - prevLow;
+    levels.S1 = 2 * pp - prevHigh;
+    levels.R2 = pp + (prevHigh - prevLow);
+    levels.S2 = pp - (prevHigh - prevLow);
+    levels.R3 = prevHigh + 2 * (pp - prevLow);
+    levels.S3 = prevLow - 2 * (prevHigh - pp);
+    levels.R4 = (levels.R3 ?? 0) + (prevHigh - prevLow);
+    levels.S4 = (levels.S3 ?? 0) - (prevHigh - prevLow);
+  } else if (pivotType === "classic") {
+    const pp = (prevHigh + prevLow + prevClose) / 3;
+    levels.PP = pp;
+    levels.R1 = 2 * pp - prevLow;
+    levels.S1 = 2 * pp - prevHigh;
+    levels.R2 = pp + (prevHigh - prevLow);
+    levels.S2 = pp - (prevHigh - prevLow);
+    levels.R3 = pp + 2 * (prevHigh - prevLow);
+    levels.S3 = pp - 2 * (prevHigh - prevLow);
+    levels.R4 = pp + 3 * (prevHigh - prevLow);
+    levels.S4 = pp - 3 * (prevHigh - prevLow);
+  } else if (pivotType === "dm") {
+    const po = prevOpen ?? prevClose;
+    let X = 0;
+    if (po === prevClose) {
+      X = prevHigh + prevLow + 2 * prevClose;
+    } else if (prevClose > po) {
+      X = 2 * prevHigh + prevLow + prevClose;
+    } else {
+      X = 2 * prevLow + prevHigh + prevClose;
+    }
+    const pp = X / 4;
+    levels.PP = pp;
+    levels.R1 = X / 2 - prevLow;
+    levels.S1 = X / 2 - prevHigh;
+  } else if (pivotType === "camarilla") {
+    const pp = (prevHigh + prevLow + prevClose) / 3;
+    levels.PP = pp;
+    levels.R1 = prevClose + 1.1 * (prevHigh - prevLow) / 12;
+    levels.S1 = prevClose - 1.1 * (prevHigh - prevLow) / 12;
+    levels.R2 = prevClose + 1.1 * (prevHigh - prevLow) / 6;
+    levels.S2 = prevClose - 1.1 * (prevHigh - prevLow) / 6;
+    levels.R3 = prevClose + 1.1 * (prevHigh - prevLow) / 4;
+    levels.S3 = prevClose - 1.1 * (prevHigh - prevLow) / 4;
+    levels.R4 = prevClose + 1.1 * (prevHigh - prevLow) / 2;
+    levels.S4 = prevClose - 1.1 * (prevHigh - prevLow) / 2;
+    levels.R5 = (prevHigh / prevLow) * prevClose;
+    levels.S5 = prevClose - (levels.R5 - prevClose);
+  }
 
-function calculateTraditionalPivots(high: number, low: number, close: number): PivotLevels & Record<"R4" | "R5" | "S4" | "S5", number> {
-  const pp = (high + low + close) / 3;
-  const range = high - low;
-  const r1 = pp * 2 - low;
-  const r2 = pp + range;
-  const r3 = pp * 2 + (high - 2 * low);
-  const r4 = r3 + range;
-  const r5 = r4 + range;
-  const s1 = pp * 2 - high;
-  const s2 = pp - range;
-  const s3 = pp * 2 - (2 * high - low);
-  const s4 = s3 - range;
-  const s5 = s4 - range;
-  return {
-    PP: round2(pp),
-    R1: round2(r1),
-    R2: round2(r2),
-    R3: round2(r3),
-    R4: round2(r4),
-    R5: round2(r5),
-    S1: round2(s1),
-    S2: round2(s2),
-    S3: round2(s3),
-    S4: round2(s4),
-    S5: round2(s5),
-  };
+  // Round values
+  for (const key of Object.keys(levels)) {
+    const val = levels[key];
+    if (val !== null && val !== undefined) {
+      levels[key] = round2(val);
+    }
+  }
+
+  return levels;
 }
 
 function getPivotPeriod(timeframe: string): string {
@@ -139,6 +180,7 @@ function groupCompletedCandles(candles: Candle[], period: string, count = 1) {
       high: Math.max(...periodCandles.map((c) => c.high)),
       low: Math.min(...periodCandles.map((c) => c.low)),
       close: periodCandles[periodCandles.length - 1].close,
+      open: periodCandles[0].open,
       period: key,
       startTime: periodCandles[0].time,
       endTime: periodCandles[periodCandles.length - 1].time,
@@ -146,7 +188,20 @@ function groupCompletedCandles(candles: Candle[], period: string, count = 1) {
   });
 }
 
-function withMeta(levels: Record<string, number>, type: string, period: string, basedOn: unknown) {
+function getCurrentPeriodOpen(candles: Candle[], period: string): number | null {
+  if (!candles.length) return null;
+  const groups = new Map<string, Candle[]>();
+  for (const candle of candles) {
+    const key = bucketStart(candle.time, period);
+    groups.set(key, [...(groups.get(key) ?? []), candle]);
+  }
+  const keys = [...groups.keys()].sort();
+  const currentKey = keys[keys.length - 1];
+  const currentCandles = [...(groups.get(currentKey) ?? [])].sort((a, b) => a.time - b.time);
+  return currentCandles.length ? currentCandles[0].open : null;
+}
+
+function withMeta(levels: PivotLevels, type: string, period: string, basedOn: unknown) {
   return {
     ...levels,
     type,
@@ -156,23 +211,24 @@ function withMeta(levels: Record<string, number>, type: string, period: string, 
   };
 }
 
-function analyzePriceVsPivots(currentPrice: number, pivots: Record<string, number | string | unknown>) {
-  const pp = Number(pivots.PP);
-  const r1 = Number(pivots.R1);
-  const r2 = Number(pivots.R2);
-  const r3 = Number(pivots.R3);
-  const s1 = Number(pivots.S1);
-  const s2 = Number(pivots.S2);
-  const s3 = Number(pivots.S3);
+function analyzePriceVsPivots(currentPrice: number, pivots: PivotLevels) {
+  const pp = pivots.PP;
+  const r1 = pivots.R1;
+  const r2 = pivots.R2;
+  const r3 = pivots.R3;
+  const s1 = pivots.S1;
+  const s2 = pivots.S2;
+  const s3 = pivots.S3;
 
   let zone = "below_S3";
-  if (currentPrice > r3) zone = "above_R3";
-  else if (currentPrice > r2) zone = "between_R2_R3";
-  else if (currentPrice > r1) zone = "between_R1_R2";
-  else if (currentPrice > pp) zone = "between_PP_R1";
-  else if (currentPrice > s1) zone = "between_S1_PP";
-  else if (currentPrice > s2) zone = "between_S2_S1";
-  else if (currentPrice > s3) zone = "between_S3_S2";
+  if (pp === null) zone = "unknown";
+  else if (r3 !== null && currentPrice > r3) zone = "above_R3";
+  else if (r2 !== null && r3 !== null && currentPrice > r2) zone = "between_R2_R3";
+  else if (r1 !== null && r2 !== null && currentPrice > r1) zone = "between_R1_R2";
+  else if (r1 !== null && currentPrice > pp) zone = "between_PP_R1";
+  else if (s1 !== null && currentPrice > s1) zone = "between_S1_PP";
+  else if (s1 !== null && s2 !== null && currentPrice > s2) zone = "between_S2_S1";
+  else if (s2 !== null && s3 !== null && currentPrice > s3) zone = "between_S3_S2";
 
   const order: Record<string, number> = { S5: 1, S4: 2, S3: 3, S2: 4, S1: 5, PP: 6, R1: 7, R2: 8, R3: 9, R4: 10, R5: 11 };
   const excluded = new Set(["type", "period", "basedOn", "generatedAt"]);
@@ -193,14 +249,14 @@ function analyzePriceVsPivots(currentPrice: number, pivots: Record<string, numbe
 
   return {
     zone,
-    bias: currentPrice > pp ? "bullish" : currentPrice < pp ? "bearish" : "neutral",
+    bias: pp === null ? "neutral" : currentPrice > pp ? "bullish" : currentPrice < pp ? "bearish" : "neutral",
     nearestResistance,
     nearestSupport,
     distToResistance: nearestResistance ? Number((((nearestResistance.value - currentPrice) / currentPrice) * 100).toFixed(3)) : null,
     distToSupport: nearestSupport ? Number((((currentPrice - nearestSupport.value) / currentPrice) * 100).toFixed(3)) : null,
     atInflectionPoint,
-    inflectionLevel: atInflectionPoint ? { label: nearestLevel.label, value: nearestLevel.value } : null,
-    sessionBullish: currentPrice > pp,
+    inflectionLevel: atInflectionPoint && nearestLevel ? { label: nearestLevel.label, value: nearestLevel.value } : null,
+    sessionBullish: pp === null ? false : currentPrice > pp,
     allLevels,
   };
 }
@@ -215,6 +271,7 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const candles = body.candles;
     const timeframe = String(body.timeframe ?? body.interval ?? "4h").trim();
+    const pivotType = String(body.pivotType ?? "traditional").trim().toLowerCase();
 
     if (!Array.isArray(candles) || candles.length < 2) {
       return jsonResponse({ success: false, error: "candles array is required." }, 400);
@@ -225,10 +282,11 @@ Deno.serve(async (req) => {
 
     const normalizedCandles = candles.map((c) => ({
       time: Number(c.time),
+      open: Number(c.open),
       high: Number(c.high),
       low: Number(c.low),
       close: Number(c.close),
-    })).filter((c) => Number.isFinite(c.time) && Number.isFinite(c.high) && Number.isFinite(c.low) && Number.isFinite(c.close));
+    })).filter((c) => Number.isFinite(c.time) && Number.isFinite(c.open) && Number.isFinite(c.high) && Number.isFinite(c.low) && Number.isFinite(c.close));
 
     const period = getPivotPeriod(timeframe);
     const completed = groupCompletedCandles(normalizedCandles, period, 1)[0];
@@ -237,15 +295,27 @@ Deno.serve(async (req) => {
     }
 
     const currentPrice = normalizedCandles[normalizedCandles.length - 1].close;
-    const classicPivots = withMeta(calculateClassicPivots(completed.high, completed.low, completed.close), "classic", period, completed);
-    const fibonacciPivots = withMeta(calculateFibonacciPivots(completed.high, completed.low, completed.close), "fibonacci", period, completed);
-    const traditionalPivots = withMeta(calculateTraditionalPivots(completed.high, completed.low, completed.close), "traditional", period, completed);
-    const standardPeriods = groupCompletedCandles(normalizedCandles, period, 3).map((periodCandle) => ({
-      period: periodCandle.period,
-      startTime: periodCandle.startTime,
-      endTime: periodCandle.endTime,
-      pivots: calculateTraditionalPivots(periodCandle.high, periodCandle.low, periodCandle.close),
-    }));
+    const currOpen = getCurrentPeriodOpen(normalizedCandles, period);
+
+    const classicPivots = withMeta(calculatePivotsGeneric(completed.high, completed.low, completed.close, completed.open, currOpen, "classic"), "classic", period, completed);
+    const fibonacciPivots = withMeta(calculatePivotsGeneric(completed.high, completed.low, completed.close, completed.open, currOpen, "fibonacci"), "fibonacci", period, completed);
+    const traditionalPivots = withMeta(calculatePivotsGeneric(completed.high, completed.low, completed.close, completed.open, currOpen, "traditional"), "traditional", period, completed);
+    const woodiePivots = withMeta(calculatePivotsGeneric(completed.high, completed.low, completed.close, completed.open, currOpen, "woodie"), "woodie", period, completed);
+    const dmPivots = withMeta(calculatePivotsGeneric(completed.high, completed.low, completed.close, completed.open, currOpen, "dm"), "dm", period, completed);
+    const camarillaPivots = withMeta(calculatePivotsGeneric(completed.high, completed.low, completed.close, completed.open, currOpen, "camarilla"), "camarilla", period, completed);
+
+    const completedPeriods = groupCompletedCandles(normalizedCandles, period, 4);
+    const standardPeriods = [];
+    for (let i = 1; i < completedPeriods.length; i++) {
+      const prevCandle = completedPeriods[i - 1];
+      const currCandle = completedPeriods[i];
+      standardPeriods.push({
+        period: currCandle.period,
+        startTime: currCandle.startTime,
+        endTime: currCandle.endTime,
+        pivots: calculatePivotsGeneric(prevCandle.high, prevCandle.low, prevCandle.close, prevCandle.open, currCandle.open, pivotType),
+      });
+    }
 
     return jsonResponse({
       success: true,
@@ -254,6 +324,9 @@ Deno.serve(async (req) => {
       classic: { pivots: classicPivots, analysis: analyzePriceVsPivots(currentPrice, classicPivots) },
       fibonacci: { pivots: fibonacciPivots, analysis: analyzePriceVsPivots(currentPrice, fibonacciPivots) },
       traditional: { pivots: traditionalPivots, analysis: analyzePriceVsPivots(currentPrice, traditionalPivots) },
+      woodie: { pivots: woodiePivots, analysis: analyzePriceVsPivots(currentPrice, woodiePivots) },
+      dm: { pivots: dmPivots, analysis: analyzePriceVsPivots(currentPrice, dmPivots) },
+      camarilla: { pivots: camarillaPivots, analysis: analyzePriceVsPivots(currentPrice, camarillaPivots) },
       binance: { pivots: traditionalPivots, analysis: analyzePriceVsPivots(currentPrice, traditionalPivots) },
       standardPeriods: { periodType: period, items: standardPeriods },
     });

@@ -52,11 +52,9 @@ export default function AuthCallback() {
         return
       }
 
-      try {
-        await ensureUserPreferences(data.session.user.id)
-      } catch (preferencesError) {
+      ensureUserPreferences(data.session.user.id).catch((preferencesError) => {
         console.warn('Unable to ensure preferences after auth callback:', preferencesError)
-      }
+      })
 
       window.history.replaceState(null, '', '/dashboard')
       window.dispatchEvent(new PopStateEvent('popstate'))

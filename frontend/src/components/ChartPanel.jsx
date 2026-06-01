@@ -41,6 +41,13 @@ function subtractSixMonths(unixTime) {
   return Math.floor(date.getTime() / 1000)
 }
 
+const getPivotTypeName = (type) => {
+  if (!type) return 'Traditional'
+  const t = type.toLowerCase()
+  if (t === 'dm') return 'DM (DeMark)'
+  return t.charAt(0).toUpperCase() + t.slice(1)
+}
+
 export default function ChartPanel({
   symbol,
   interval,
@@ -638,7 +645,7 @@ export default function ChartPanel({
         standardPivotSeriesRef.current.push(lineSeries)
       })
     })
-  }, [chartPreferences.showStandardPivots, pivotData])
+  }, [chartPreferences.showStandardPivots, pivotData, chartPreferences.pivotType])
 
   useEffect(() => {
     return () => {
@@ -762,24 +769,73 @@ export default function ChartPanel({
 
             <div className="indicator-list">
               {indicatorItems.map((item) => (
-                <div key={item.id} className={`indicator-row ${item.applied ? 'applied' : ''}`}>
-                  <button type="button" className="indicator-row-main" onClick={item.onToggle}>
-                    <span className="indicator-row-label-wrap">
-                      <span className="indicator-row-label">{item.label}</span>
-                      <span className="indicator-row-description">{item.description}</span>
-                    </span>
-                    <span className={`indicator-status ${item.applied ? 'on' : 'off'}`}>
-                      {item.applied ? 'Applied' : 'Hidden'}
-                    </span>
-                  </button>
-                  <a
-                    className="indicator-help"
-                    href={item.href}
-                    aria-label={`Open education for ${item.label}`}
-                    title={`Open education for ${item.label}`}
-                  >
-                    ?
-                  </a>
+                <div key={item.id} className="indicator-item-container" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div className={`indicator-row ${item.applied ? 'applied' : ''}`}>
+                    <button type="button" className="indicator-row-main" onClick={item.onToggle}>
+                      <span className="indicator-row-label-wrap">
+                        <span className="indicator-row-label">{item.label}</span>
+                        <span className="indicator-row-description">{item.description}</span>
+                      </span>
+                      <span className={`indicator-status ${item.applied ? 'on' : 'off'}`}>
+                        {item.applied ? 'Applied' : 'Hidden'}
+                      </span>
+                    </button>
+                    <a
+                      className="indicator-help"
+                      href={item.href}
+                      aria-label={`Open education for ${item.label}`}
+                      title={`Open education for ${item.label}`}
+                    >
+                      ?
+                    </a>
+                  </div>
+                  {item.id === 'standard-pivots' && item.applied && (
+                    <div className="indicator-settings-subrow" style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '8px 16px',
+                      borderRadius: '12px',
+                      background: 'rgba(255, 255, 255, 0.02)',
+                      border: '1px dashed var(--border-subtle)',
+                      marginLeft: '8px',
+                      marginRight: '8px',
+                      animation: 'fadeIn 0.2s ease-in-out'
+                    }}>
+                      <label htmlFor="pivot-type-select" style={{
+                        fontSize: '12px',
+                        fontWeight: 500,
+                        color: 'var(--text-secondary)'
+                      }}>Calculation Method</label>
+                      <select
+                        id="pivot-type-select"
+                        value={chartPreferences.pivotType || 'traditional'}
+                        onChange={(e) => {
+                          onChartPreferencesChange((prev) => ({
+                            ...prev,
+                            pivotType: e.target.value
+                          }))
+                        }}
+                        style={{
+                          background: 'var(--bg-raised)',
+                          border: '1px solid var(--border-medium)',
+                          borderRadius: '8px',
+                          padding: '4px 8px',
+                          fontSize: '12px',
+                          color: 'var(--text-primary)',
+                          outline: 'none',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <option value="traditional">Traditional</option>
+                        <option value="fibonacci">Fibonacci</option>
+                        <option value="woodie">Woodie</option>
+                        <option value="classic">Classic</option>
+                        <option value="dm">DM (DeMark)</option>
+                        <option value="camarilla">Camarilla</option>
+                      </select>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -788,6 +844,27 @@ export default function ChartPanel({
       )}
 
       <div className="chart-container-shell">
+        {chartPreferences.showStandardPivots && pivotData && (
+          <div className="chart-legend-overlay" style={{
+            position: 'absolute',
+            top: '12px',
+            left: '16px',
+            zIndex: 10,
+            fontSize: '11px',
+            fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+            color: '#8b8b9e',
+            background: 'rgba(13, 13, 22, 0.65)',
+            padding: '4px 8px',
+            borderRadius: '4px',
+            pointerEvents: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            fontWeight: 500,
+          }}>
+            <span>Pivots {getPivotTypeName(chartPreferences.pivotType)} Auto 15</span>
+          </div>
+        )}
         <div id="chart-container" className="chart-container" ref={priceContainerRef}></div>
         {(loading || error || (!candles.length && !loading)) && (
           <div className={`chart-state-overlay ${error ? 'error' : ''}`}>

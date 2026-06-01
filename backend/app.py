@@ -12,6 +12,7 @@ from utils.pivotPoints import (
     get_pivot_period,
     get_recent_completed_period_candles,
     calculate_traditional_pivots,
+    calculate_pivots_generic,
 )
 
 app = Flask(__name__)
@@ -45,6 +46,7 @@ DEFAULT_CHART_PREFERENCES = {
     "showResistance": False,
     "showPivots": False,
     "showStandardPivots": False,
+    "pivotType": "traditional",
 }
 
 
@@ -83,7 +85,10 @@ def sanitize_preferences(payload):
     sanitized = DEFAULT_CHART_PREFERENCES.copy()
     for key in DEFAULT_CHART_PREFERENCES:
         if key in payload:
-            sanitized[key] = bool(payload[key])
+            if key == "pivotType":
+                sanitized[key] = str(payload[key])
+            else:
+                sanitized[key] = bool(payload[key])
     return sanitized
 
 
@@ -527,6 +532,7 @@ def get_pivots():
     try:
         symbol = request.args.get("symbol", "BTCUSDT").upper().strip()
         timeframe = request.args.get("timeframe", "4h").strip()
+        pivot_type = request.args.get("pivotType", "traditional").strip().lower()
 
         if not validate_symbol(symbol):
             return jsonify({"error": "Invalid symbol format."}), 400
@@ -545,6 +551,9 @@ def get_pivots():
         classic_pivots = compute_pivots(candles, timeframe, "classic")
         fib_pivots = compute_pivots(candles, timeframe, "fibonacci")
         traditional_pivots = compute_pivots(candles, timeframe, "traditional")
+        woodie_pivots = compute_pivots(candles, timeframe, "woodie")
+        dm_pivots = compute_pivots(candles, timeframe, "dm")
+        camarilla_pivots = compute_pivots(candles, timeframe, "camarilla")
 
         if not classic_pivots or not fib_pivots:
             return jsonify({
@@ -555,20 +564,29 @@ def get_pivots():
         classic_analysis = analyze_price_vs_pivots(current_price, classic_pivots)
         fib_analysis = analyze_price_vs_pivots(current_price, fib_pivots)
         traditional_analysis = analyze_price_vs_pivots(current_price, traditional_pivots)
+        woodie_analysis = analyze_price_vs_pivots(current_price, woodie_pivots)
+        dm_analysis = analyze_price_vs_pivots(current_price, dm_pivots)
+        camarilla_analysis = analyze_price_vs_pivots(current_price, camarilla_pivots)
 
         standard_period = get_pivot_period(timeframe)
-        completed_periods = get_recent_completed_period_candles(candles, standard_period, count=3)
+        completed_periods = get_recent_completed_period_candles(candles, standard_period, count=4)
         standard_periods = []
-        for period_candle in completed_periods:
-            pivots = calculate_traditional_pivots(
-                period_candle["high"],
-                period_candle["low"],
-                period_candle["close"]
+        for i in range(1, len(completed_periods)):
+            prev_candle = completed_periods[i - 1]
+            curr_candle = completed_periods[i]
+
+            pivots = calculate_pivots_generic(
+                prev_high=prev_candle["high"],
+                prev_low=prev_candle["low"],
+                prev_close=prev_candle["close"],
+                prev_open=prev_candle["open"],
+                curr_open=curr_candle["open"],
+                pivot_type=pivot_type
             )
             standard_periods.append({
-                "period": period_candle["period"],
-                "startTime": period_candle["startTime"],
-                "endTime": period_candle["endTime"],
+                "period": curr_candle["period"],
+                "startTime": curr_candle["startTime"],
+                "endTime": curr_candle["endTime"],
                 "pivots": pivots,
             })
 
@@ -580,6 +598,9 @@ def get_pivots():
             "classic": {"pivots": classic_pivots, "analysis": classic_analysis},
             "fibonacci": {"pivots": fib_pivots, "analysis": fib_analysis},
             "traditional": {"pivots": traditional_pivots, "analysis": traditional_analysis},
+            "woodie": {"pivots": woodie_pivots, "analysis": woodie_analysis},
+            "dm": {"pivots": dm_pivots, "analysis": dm_analysis},
+            "camarilla": {"pivots": camarilla_pivots, "analysis": camarilla_analysis},
             "binance": {"pivots": traditional_pivots, "analysis": traditional_analysis},
             "standardPeriods": {
                 "periodType": standard_period,

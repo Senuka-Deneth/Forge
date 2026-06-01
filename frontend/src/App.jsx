@@ -25,6 +25,7 @@ const DEFAULT_CHART_PREFERENCES = {
   showResistance: false,
   showPivots: false,
   showStandardPivots: false,
+  pivotType: 'traditional',
 }
 
 function applyTheme(theme) {
@@ -215,7 +216,13 @@ function sanitizePreferences(payload) {
   const sanitized = { ...DEFAULT_CHART_PREFERENCES }
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return sanitized
   Object.keys(DEFAULT_CHART_PREFERENCES).forEach((key) => {
-    if (key in payload) sanitized[key] = Boolean(payload[key])
+    if (key in payload) {
+      if (key === 'pivotType') {
+        sanitized[key] = String(payload[key])
+      } else {
+        sanitized[key] = Boolean(payload[key])
+      }
+    }
   })
   return sanitized
 }
@@ -241,54 +248,108 @@ function saveLocalPreferences(userKey, preferences) {
   }
 }
 
-function round2(value) {
-  return Number(value.toFixed(2))
+function calculatePivotsGeneric(prevHigh, prevLow, prevClose, prevOpen = null, currOpen = null, pivotType = 'traditional') {
+  const levels = {
+    PP: null,
+    R1: null, R2: null, R3: null, R4: null, R5: null,
+    S1: null, S2: null, S3: null, S4: null, S5: null
+  }
+
+  if (pivotType === 'traditional') {
+    const pp = (prevHigh + prevLow + prevClose) / 3
+    levels.PP = pp
+    levels.R1 = pp * 2 - prevLow
+    levels.S1 = pp * 2 - prevHigh
+    levels.R2 = pp + (prevHigh - prevLow)
+    levels.S2 = pp - (prevHigh - prevLow)
+    levels.R3 = pp * 2 + (prevHigh - 2 * prevLow)
+    levels.S3 = pp * 2 - (2 * prevHigh - prevLow)
+    levels.R4 = pp * 3 + (prevHigh - 3 * prevLow)
+    levels.S4 = pp * 3 - (3 * prevHigh - prevLow)
+    levels.R5 = pp * 4 + (prevHigh - 4 * prevLow)
+    levels.S5 = pp * 4 - (4 * prevHigh - prevLow)
+  } else if (pivotType === 'fibonacci') {
+    const pp = (prevHigh + prevLow + prevClose) / 3
+    levels.PP = pp
+    levels.R1 = pp + 0.382 * (prevHigh - prevLow)
+    levels.S1 = pp - 0.382 * (prevHigh - prevLow)
+    levels.R2 = pp + 0.618 * (prevHigh - prevLow)
+    levels.S2 = pp - 0.618 * (prevHigh - prevLow)
+    levels.R3 = pp + (prevHigh - prevLow)
+    levels.S3 = pp - (prevHigh - prevLow)
+  } else if (pivotType === 'woodie') {
+    const co = currOpen ?? prevClose
+    const pp = (prevHigh + prevLow + 2 * co) / 4
+    levels.PP = pp
+    levels.R1 = 2 * pp - prevLow
+    levels.S1 = 2 * pp - prevHigh
+    levels.R2 = pp + (prevHigh - prevLow)
+    levels.S2 = pp - (prevHigh - prevLow)
+    levels.R3 = prevHigh + 2 * (pp - prevLow)
+    levels.S3 = prevLow - 2 * (prevHigh - pp)
+    levels.R4 = (levels.R3 ?? 0) + (prevHigh - prevLow)
+    levels.S4 = (levels.S3 ?? 0) - (prevHigh - prevLow)
+  } else if (pivotType === 'classic') {
+    const pp = (prevHigh + prevLow + prevClose) / 3
+    levels.PP = pp
+    levels.R1 = 2 * pp - prevLow
+    levels.S1 = 2 * pp - prevHigh
+    levels.R2 = pp + (prevHigh - prevLow)
+    levels.S2 = pp - (prevHigh - prevLow)
+    levels.R3 = pp + 2 * (prevHigh - prevLow)
+    levels.S3 = pp - 2 * (prevHigh - prevLow)
+    levels.R4 = pp + 3 * (prevHigh - prevLow)
+    levels.S4 = pp - 3 * (prevHigh - prevLow)
+  } else if (pivotType === 'dm') {
+    const po = prevOpen ?? prevClose
+    let X = 0
+    if (po === prevClose) {
+      X = prevHigh + prevLow + 2 * prevClose
+    } else if (prevClose > po) {
+      X = 2 * prevHigh + prevLow + prevClose
+    } else {
+      X = 2 * prevLow + prevHigh + prevClose
+    }
+    const pp = X / 4
+    levels.PP = pp
+    levels.R1 = X / 2 - prevLow
+    levels.S1 = X / 2 - prevHigh
+  } else if (pivotType === 'camarilla') {
+    const pp = (prevHigh + prevLow + prevClose) / 3
+    levels.PP = pp
+    levels.R1 = prevClose + 1.1 * (prevHigh - prevLow) / 12
+    levels.S1 = prevClose - 1.1 * (prevHigh - prevLow) / 12
+    levels.R2 = prevClose + 1.1 * (prevHigh - prevLow) / 6
+    levels.S2 = prevClose - 1.1 * (prevHigh - prevLow) / 6
+    levels.R3 = prevClose + 1.1 * (prevHigh - prevLow) / 4
+    levels.S3 = prevClose - 1.1 * (prevHigh - prevLow) / 4
+    levels.R4 = prevClose + 1.1 * (prevHigh - prevLow) / 2
+    levels.S4 = prevClose - 1.1 * (prevHigh - prevLow) / 2
+    levels.R5 = (prevHigh / prevLow) * prevClose
+    levels.S5 = prevClose - (levels.R5 - prevClose)
+  }
+
+  // Round values
+  for (const key of Object.keys(levels)) {
+    const val = levels[key]
+    if (val !== null && val !== undefined) {
+      levels[key] = round2(val)
+    }
+  }
+
+  return levels
 }
 
 function calculateClassicPivots(high, low, close) {
-  const pp = (high + low + close) / 3
-  return {
-    PP: round2(pp),
-    R1: round2(2 * pp - low),
-    R2: round2(pp + (high - low)),
-    R3: round2(high + 2 * (pp - low)),
-    S1: round2(2 * pp - high),
-    S2: round2(pp - (high - low)),
-    S3: round2(low - 2 * (high - pp)),
-  }
+  return calculatePivotsGeneric(high, low, close, null, null, 'classic')
 }
 
 function calculateFibonacciPivots(high, low, close) {
-  const pp = (high + low + close) / 3
-  const range = high - low
-  return {
-    PP: round2(pp),
-    R1: round2(pp + 0.382 * range),
-    R2: round2(pp + 0.618 * range),
-    R3: round2(pp + range),
-    S1: round2(pp - 0.382 * range),
-    S2: round2(pp - 0.618 * range),
-    S3: round2(pp - range),
-  }
+  return calculatePivotsGeneric(high, low, close, null, null, 'fibonacci')
 }
 
 function calculateTraditionalPivots(high, low, close) {
-  const pp = (high + low + close) / 3
-  const range = high - low
-  const r1 = pp * 2 - low
-  const r2 = pp + range
-  const r3 = pp * 2 + (high - 2 * low)
-  const r4 = r3 + range
-  const r5 = r4 + range
-  const s1 = pp * 2 - high
-  const s2 = pp - range
-  const s3 = pp * 2 - (2 * high - low)
-  const s4 = s3 - range
-  const s5 = s4 - range
-  return {
-    PP: round2(pp), R1: round2(r1), R2: round2(r2), R3: round2(r3), R4: round2(r4), R5: round2(r5),
-    S1: round2(s1), S2: round2(s2), S3: round2(s3), S4: round2(s4), S5: round2(s5),
-  }
+  return calculatePivotsGeneric(high, low, close, null, null, 'traditional')
 }
 
 function getPivotPeriod(timeframe) {
@@ -334,11 +395,25 @@ function groupCompletedCandles(candles, period, count = 1) {
       high: Math.max(...periodCandles.map((c) => c.high)),
       low: Math.min(...periodCandles.map((c) => c.low)),
       close: periodCandles[periodCandles.length - 1].close,
+      open: periodCandles[0].open,
       period: key,
       startTime: periodCandles[0].time,
       endTime: periodCandles[periodCandles.length - 1].time,
     }
   })
+}
+
+function getCurrentPeriodOpen(candles, period) {
+  if (!candles.length) return null
+  const groups = new Map()
+  candles.forEach((candle) => {
+    const key = bucketStart(candle.time, period)
+    groups.set(key, [...(groups.get(key) ?? []), candle])
+  })
+  const keys = [...groups.keys()].sort()
+  const currentKey = keys[keys.length - 1]
+  const currentCandles = [...groups.get(currentKey)].sort((a, b) => a.time - b.time)
+  return currentCandles.length ? currentCandles[0].open : null
 }
 
 function withPivotMeta(levels, type, period, basedOn) {
@@ -393,7 +468,7 @@ function analyzePriceVsPivots(currentPrice, pivots) {
   }
 }
 
-function buildPivotData(candles, timeframe, selectedSymbol) {
+function buildPivotData(candles, timeframe, selectedSymbol, chartPrefs = DEFAULT_CHART_PREFERENCES) {
   if (!Array.isArray(candles) || candles.length < 2) return null
 
   const period = getPivotPeriod(timeframe)
@@ -401,15 +476,28 @@ function buildPivotData(candles, timeframe, selectedSymbol) {
   if (!completed) return null
 
   const currentPrice = candles[candles.length - 1].close
-  const classicPivots = withPivotMeta(calculateClassicPivots(completed.high, completed.low, completed.close), 'classic', period, completed)
-  const fibonacciPivots = withPivotMeta(calculateFibonacciPivots(completed.high, completed.low, completed.close), 'fibonacci', period, completed)
-  const traditionalPivots = withPivotMeta(calculateTraditionalPivots(completed.high, completed.low, completed.close), 'traditional', period, completed)
-  const standardPeriods = groupCompletedCandles(candles, period, 3).map((periodCandle) => ({
-    period: periodCandle.period,
-    startTime: periodCandle.startTime,
-    endTime: periodCandle.endTime,
-    pivots: calculateTraditionalPivots(periodCandle.high, periodCandle.low, periodCandle.close),
-  }))
+  const currOpen = getCurrentPeriodOpen(candles, period)
+  const pivotType = chartPrefs.pivotType || 'traditional'
+
+  const classicPivots = withPivotMeta(calculatePivotsGeneric(completed.high, completed.low, completed.close, completed.open, currOpen, 'classic'), 'classic', period, completed)
+  const fibonacciPivots = withPivotMeta(calculatePivotsGeneric(completed.high, completed.low, completed.close, completed.open, currOpen, 'fibonacci'), 'fibonacci', period, completed)
+  const traditionalPivots = withPivotMeta(calculatePivotsGeneric(completed.high, completed.low, completed.close, completed.open, currOpen, 'traditional'), 'traditional', period, completed)
+  const woodiePivots = withPivotMeta(calculatePivotsGeneric(completed.high, completed.low, completed.close, completed.open, currOpen, 'woodie'), 'woodie', period, completed)
+  const dmPivots = withPivotMeta(calculatePivotsGeneric(completed.high, completed.low, completed.close, completed.open, currOpen, 'dm'), 'dm', period, completed)
+  const camarillaPivots = withPivotMeta(calculatePivotsGeneric(completed.high, completed.low, completed.close, completed.open, currOpen, 'camarilla'), 'camarilla', period, completed)
+
+  const completedPeriods = groupCompletedCandles(candles, period, 4)
+  const standardPeriods = []
+  for (let i = 1; i < completedPeriods.length; i++) {
+    const prevCandle = completedPeriods[i - 1]
+    const currCandle = completedPeriods[i]
+    standardPeriods.push({
+      period: currCandle.period,
+      startTime: currCandle.startTime,
+      endTime: currCandle.endTime,
+      pivots: calculatePivotsGeneric(prevCandle.high, prevCandle.low, prevCandle.close, prevCandle.open, currCandle.open, pivotType),
+    })
+  }
 
   return {
     success: true,
@@ -419,19 +507,22 @@ function buildPivotData(candles, timeframe, selectedSymbol) {
     classic: { pivots: classicPivots, analysis: analyzePriceVsPivots(currentPrice, classicPivots) },
     fibonacci: { pivots: fibonacciPivots, analysis: analyzePriceVsPivots(currentPrice, fibonacciPivots) },
     traditional: { pivots: traditionalPivots, analysis: analyzePriceVsPivots(currentPrice, traditionalPivots) },
+    woodie: { pivots: woodiePivots, analysis: analyzePriceVsPivots(currentPrice, woodiePivots) },
+    dm: { pivots: dmPivots, analysis: analyzePriceVsPivots(currentPrice, dmPivots) },
+    camarilla: { pivots: camarillaPivots, analysis: analyzePriceVsPivots(currentPrice, camarillaPivots) },
     binance: { pivots: traditionalPivots, analysis: analyzePriceVsPivots(currentPrice, traditionalPivots) },
     standardPeriods: { periodType: period, items: standardPeriods },
   }
 }
 
-async function fetchPivotData(symbol, timeframe, candles) {
+async function fetchPivotData(symbol, timeframe, candles, pivotType = 'traditional', chartPrefs = DEFAULT_CHART_PREFERENCES) {
   try {
-    const data = await invokeFunction('calculate-pivots', { symbol, timeframe, candles })
+    const data = await invokeFunction('calculate-pivots', { symbol, timeframe, candles, pivotType })
     if (data?.success) return { ...data, symbol }
     throw new Error(data?.error || 'Pivot function returned no pivot data.')
   } catch (edgeError) {
     console.warn('Supabase pivot calculation failed; using local fallback:', edgeError)
-    return buildPivotData(candles, timeframe, symbol)
+    return buildPivotData(candles, timeframe, symbol, { ...chartPrefs, pivotType })
   }
 }
 
@@ -728,7 +819,7 @@ export default function App() {
       const marketCandles = sourceCandles?.length
         ? sourceCandles
         : await fetchMarketCandles(selectedSymbol, selectedTimeframe, 4000)
-      const nextPivotData = await fetchPivotData(selectedSymbol, selectedTimeframe, marketCandles)
+      const nextPivotData = await fetchPivotData(selectedSymbol, selectedTimeframe, marketCandles, chartPreferences.pivotType || 'traditional', chartPreferences)
       if (nextPivotData?.success) {
         setPivotData(nextPivotData)
         return nextPivotData
@@ -819,6 +910,15 @@ export default function App() {
 
     return () => clearTimeout(saveTimer)
   }, [chartPreferences, chartPrefsReady, currentUserId])
+
+  useEffect(() => {
+    if (!candles.length) return
+    fetchPivotData(symbol, interval, candles, chartPreferences.pivotType || 'traditional', chartPreferences).then((pivotResponse) => {
+      if (pivotResponse?.success) setPivotData({ ...pivotResponse, symbol })
+    }).catch((err) => {
+      console.error('Failed to fetch pivots on preference change:', err)
+    })
+  }, [chartPreferences.pivotType, symbol, interval])
 
   const runAIAnalysis = async (currentCandles = null) => {
     const candleData = currentCandles

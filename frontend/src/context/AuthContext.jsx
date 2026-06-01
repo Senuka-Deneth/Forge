@@ -26,16 +26,14 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  const syncSession = useCallback(async (nextSession) => {
+  const syncSession = useCallback((nextSession) => {
     setSession(nextSession)
     setUser(nextSession?.user ?? null)
 
     if (nextSession?.user?.id) {
-      try {
-        await ensureUserPreferences(nextSession.user.id)
-      } catch (error) {
+      ensureUserPreferences(nextSession.user.id).catch((error) => {
         console.warn('Unable to ensure user preferences:', error)
-      }
+      })
     }
   }, [])
 
@@ -48,18 +46,28 @@ export function AuthProvider({ children }) {
         return
       }
 
-      const { data, error } = await supabase.auth.getSession()
-      if (!mounted) return
+      try {
+        const { data, error } = await supabase.auth.getSession()
+        if (!mounted) return
 
-      if (error) {
-        console.warn('Unable to load auth session:', error)
-        setSession(null)
-        setUser(null)
-      } else {
-        await syncSession(data.session)
+        if (error) {
+          console.warn('Unable to load auth session:', error)
+          setSession(null)
+          setUser(null)
+        } else {
+          syncSession(data.session)
+        }
+      } catch (err) {
+        console.error('Failed to load auth session:', err)
+        if (mounted) {
+          setSession(null)
+          setUser(null)
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false)
+        }
       }
-
-      setLoading(false)
     }
 
     loadSession()
@@ -71,7 +79,7 @@ export function AuthProvider({ children }) {
     }
 
     const { data: listener } = supabase.auth.onAuthStateChange(async (event, nextSession) => {
-      await syncSession(nextSession)
+      syncSession(nextSession)
 
       const path = getPath()
       if (event === 'SIGNED_OUT' && isProtectedPath(path)) {

@@ -1703,6 +1703,13 @@ mark {
   background: var(--bg-surface);
   border-right: 1px solid var(--border-subtle);
   padding: clamp(2rem, 5vw, 4rem);
+}
+
+.brand-content {
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  height: 100%;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -1732,8 +1739,6 @@ mark {
 }
 
 .brand-middle {
-  max-width: 480px;
-  margin: 0 auto;
   width: 100%;
 }
 

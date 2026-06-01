@@ -10,6 +10,7 @@ export const DEFAULT_CHART_PREFERENCES = {
   showResistance: false,
   showPivots: false,
   showStandardPivots: false,
+  pivotType: 'traditional',
 }
 
 export function sanitizePreferences(payload) {
@@ -17,7 +18,13 @@ export function sanitizePreferences(payload) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return sanitized
 
   Object.keys(DEFAULT_CHART_PREFERENCES).forEach((key) => {
-    if (key in payload) sanitized[key] = Boolean(payload[key])
+    if (key in payload) {
+      if (key === 'pivotType') {
+        sanitized[key] = String(payload[key])
+      } else {
+        sanitized[key] = Boolean(payload[key])
+      }
+    }
   })
 
   return sanitized

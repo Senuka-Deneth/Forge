@@ -11,6 +11,7 @@ const DEFAULT_CHART_PREFERENCES = {
   showResistance: false,
   showPivots: false,
   showStandardPivots: false,
+  pivotType: "traditional",
 };
 
 const USER_KEY_REGEX = /^[a-zA-Z0-9_.@-]{3,128}$/;
@@ -57,11 +58,17 @@ function resolveRequestedUserId(raw: unknown, authenticatedUserId: string):
 }
 
 function sanitizePreferences(payload: unknown) {
-  const sanitized = { ...DEFAULT_CHART_PREFERENCES };
+  const sanitized = { ...DEFAULT_CHART_PREFERENCES } as Record<string, unknown>;
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return sanitized;
   const source = payload as Record<string, unknown>;
-  for (const key of Object.keys(DEFAULT_CHART_PREFERENCES) as Array<keyof typeof DEFAULT_CHART_PREFERENCES>) {
-    if (key in source) sanitized[key] = Boolean(source[key]);
+  for (const key of Object.keys(DEFAULT_CHART_PREFERENCES)) {
+    if (key in source) {
+      if (key === "pivotType") {
+        sanitized[key] = String(source[key]);
+      } else {
+        sanitized[key] = Boolean(source[key]);
+      }
+    }
   }
   return sanitized;
 }

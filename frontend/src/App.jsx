@@ -684,6 +684,7 @@ export default function App() {
   };
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true)
+  const [isChartMaximized, setIsChartMaximized] = useState(false)
 
   const [analysis, setAnalysis] = useState(null)
   const [theme, setTheme] = useState(() => localStorage.getItem('forge_theme') || 'dark')
@@ -1095,7 +1096,8 @@ export default function App() {
 
   return (
     <>
-      <aside className={`sidebar ${isSidebarCollapsed ? 'collapsed' : ''}`}>
+      {!isChartMaximized && (
+        <aside className={`sidebar ${isSidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-header">
           <a href="welcome.html" className="sidebar-brand">
             <div className="brand-icon-wrap">
@@ -1142,19 +1144,13 @@ export default function App() {
           </button>
         </div>
       </aside>
+      )}
 
       <div className="main-content" style={{ padding: activeTab === 'learning' ? 0 : undefined }}>
-        {activeTab !== 'learning' && (
+        {activeTab !== 'learning' && !isChartMaximized && (
           <>
             <HeaderControls
-              symbolInput={symbolInput}
-              setSymbolInput={setSymbolInput}
-              interval={interval}
-              setInterval={setInterval}
-              onLoad={() => loadChart(symbolInput, interval)}
               isLive={isLive}
-              toggleTheme={toggleTheme}
-              theme={theme}
               preferencesWarning={preferencesSyncError}
             />
 
@@ -1181,6 +1177,12 @@ export default function App() {
                 pivotData={pivotData}
                 chartPreferences={chartPreferences}
                 onChartPreferencesChange={setChartPreferences}
+                symbolInput={symbolInput}
+                setSymbolInput={setSymbolInput}
+                setInterval={setInterval}
+                onLoadChart={loadChart}
+                isMaximized={isChartMaximized}
+                setIsMaximized={setIsChartMaximized}
               />
             </div>
 

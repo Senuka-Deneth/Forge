@@ -47,6 +47,10 @@ function round6(value) {
   return value == null ? null : Number(value.toFixed(6))
 }
 
+function round2(value) {
+  return value == null ? null : Number(value.toFixed(2))
+}
+
 function calculateEMA(values, period) {
   if (!values.length) return []
   if (period <= 0) return values.map(() => null)
@@ -340,18 +344,6 @@ function calculatePivotsGeneric(prevHigh, prevLow, prevClose, prevOpen = null, c
   }
 
   return levels
-}
-
-function calculateClassicPivots(high, low, close) {
-  return calculatePivotsGeneric(high, low, close, null, null, 'classic')
-}
-
-function calculateFibonacciPivots(high, low, close) {
-  return calculatePivotsGeneric(high, low, close, null, null, 'fibonacci')
-}
-
-function calculateTraditionalPivots(high, low, close) {
-  return calculatePivotsGeneric(high, low, close, null, null, 'traditional')
 }
 
 function getPivotPeriod(timeframe) {
@@ -691,7 +683,6 @@ export default function App() {
   const [aiAnalysis, setAIAnalysis] = useState(null)
   const [aiLoading, setAILoading] = useState(false)
   const [aiError, setAIError] = useState('')
-  const lastAICallRef = useRef(0)
 
   const [pivotData, setPivotData] = useState(null)
   const [chartPreferences, setChartPreferences] = useState(DEFAULT_CHART_PREFERENCES)
@@ -1024,7 +1015,6 @@ export default function App() {
       const data = await invokeFunction('ai-analysis', payload)
       if (data?.success) {
         setAIAnalysis(data.analysis)
-        lastAICallRef.current = Date.now()
       } else {
         setAIError(data?.error || data?.fallback || 'AI analysis failed.')
       }

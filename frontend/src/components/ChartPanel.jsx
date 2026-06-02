@@ -958,7 +958,7 @@ export default function ChartPanel({
 
       Object.keys(standardPivotConfig).forEach((level) => {
         const value = periodItem.pivots?.[level]
-        if (value === undefined || value === null) return
+        if (value === undefined || value === null || !Number.isFinite(value)) return
 
         // Push segment start and end points
         levelDataMap[level].push({ time: periodItem.startTime, value })
@@ -976,7 +976,7 @@ export default function ChartPanel({
 
         // Insert whitespace point (gap) if there is a next period item
         const nextItem = sortedItems[idx + 1]
-        if (nextItem && nextItem.startTime > periodItem.endTime) {
+        if (nextItem && nextItem.startTime > periodItem.endTime + 1) {
           // Add gap at periodItem.endTime + 1 (1 second after segment ends)
           levelDataMap[level].push({ time: periodItem.endTime + 1 })
         }
@@ -1007,12 +1007,6 @@ export default function ChartPanel({
       standardPivotSeriesRef.current.push(lineSeries)
     })
   }, [chartPreferences.showStandardPivots, pivotData, chartPreferences.pivotType, hiddenIndicators])
-
-  useEffect(() => {
-    return () => {
-      clearStandardPivotSegments()
-    }
-  }, [])
 
   useEffect(() => {
     window.dispatchEvent(new Event('resize'))

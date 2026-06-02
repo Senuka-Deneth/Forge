@@ -125,7 +125,7 @@ export default function AnalysisPanel({
               color: pivotAnalysis?.zone ? '#fff' : 'inherit',
               border: pivotAnalysis?.zone ? 'none' : '1px solid var(--border-default)'
             }}>
-              {pivotAnalysis ? pivotAnalysis.zone.replace(/_/g, ' ') : '—'}
+              {pivotAnalysis?.zone ? pivotAnalysis.zone.replace(/_/g, ' ') : '—'}
             </span>
           </div>
           <div className="pivot-meta-item">
@@ -167,13 +167,7 @@ export default function AnalysisPanel({
         {pivotAnalysis?.atInflectionPoint && pivotAnalysis?.inflectionLevel && (
           <div id="pivot-inflection" className="inflection-alert" style={{ display: 'flex' }}>
             <span>⚡</span>
-            <span>Inflection: <strong id="pivot-inflection-level">{pivotAnalysis.inflectionLevel.label} @ {pivotAnalysis.inflectionLevel.value}</strong></span>
-          </div>
-        )}
-        {(!pivotAnalysis?.atInflectionPoint || !pivotAnalysis?.inflectionLevel) && (
-          <div id="pivot-inflection" className="inflection-alert" style={{ display: 'none' }}>
-            <span>⚡</span>
-            <span>Inflection: <strong id="pivot-inflection-level"></strong></span>
+            <span>Inflection: <strong id="pivot-inflection-level">{pivotAnalysis?.inflectionLevel?.label} @ {pivotAnalysis?.inflectionLevel?.value}</strong></span>
           </div>
         )}
 

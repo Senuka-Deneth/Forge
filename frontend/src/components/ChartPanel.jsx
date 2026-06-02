@@ -8,18 +8,7 @@ import {
   CrosshairMode,
 } from 'lightweight-charts'
 
-const FIBONACCI_PIVOT_COLOR = 'rgba(160, 160, 170, 0.8)'
 const STANDARD_PIVOT_COLOR = 'rgba(255, 159, 67, 0.92)'
-
-const fibonacciPivotConfig = {
-  PP: { color: FIBONACCI_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'PP' },
-  R1: { color: FIBONACCI_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'R1' },
-  R2: { color: FIBONACCI_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'R2' },
-  R3: { color: FIBONACCI_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'R3' },
-  S1: { color: FIBONACCI_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'S1' },
-  S2: { color: FIBONACCI_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'S2' },
-  S3: { color: FIBONACCI_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'S3' },
-}
 
 const standardPivotConfig = {
   PP: { color: STANDARD_PIVOT_COLOR, width: 2, style: LineStyle.Solid, label: 'P' },
@@ -194,7 +183,6 @@ export default function ChartPanel({
   const supportLineRef = useRef(null)
   const resistanceLineRef = useRef(null)
 
-  const fibPivotLinesRef = useRef([])
   const standardPivotSeriesRef = useRef([])
 
   const hasAppliedInitialZoomRef = useRef(false)
@@ -225,19 +213,6 @@ export default function ChartPanel({
     }))
   }
 
-  const clearFibPivotLines = () => {
-    const series = candleSeriesRef.current
-    if (!series) return
-
-    fibPivotLinesRef.current.forEach((line) => {
-      try {
-        series.removePriceLine(line)
-      } catch {
-        // Ignore stale lines
-      }
-    })
-    fibPivotLinesRef.current = []
-  }
 
   const clearStandardPivotSegments = () => {
     const chart = priceChartRef.current
@@ -337,7 +312,7 @@ export default function ChartPanel({
     const isDark = initialTheme === 'dark'
 
     const sharedLayout = {
-      background: { color: isDark ? '#070c14' : '#ffffff' },
+      background: { color: isDark ? '#161a1e' : '#ffffff' },
       textColor: isDark ? '#8b8b9e' : '#6b6b7e',
       fontFamily: 'ui-sans-serif, system-ui, sans-serif',
     }
@@ -362,13 +337,16 @@ export default function ChartPanel({
         timeVisible: true,
         secondsVisible: false,
         shiftVisibleRangeOnNewBar: true,
+        borderVisible: true,
+        borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
       },
       rightPriceScale: {
         minimumWidth: 80,
         autoScale: true,
         scaleMargins: marginStateRef.current,
-        axisLineVisible: false,
-        borderVisible: false,
+        axisLineVisible: true,
+        borderVisible: true,
+        borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
       },
       handleScale: {
         mouseWheel: true,
@@ -396,8 +374,16 @@ export default function ChartPanel({
       layout: sharedLayout,
       grid: sharedGrid,
       crosshair: { ...sharedCrosshair, mode: CrosshairMode.Normal },
-      timeScale: { visible: false },
-      rightPriceScale: { minimumWidth: 80 },
+      timeScale: { 
+        visible: false,
+        borderVisible: true,
+        borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
+      },
+      rightPriceScale: { 
+        minimumWidth: 80,
+        borderVisible: true,
+        borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
+      },
     })
 
     const macdChart = createChart(macdContainerRef.current, {
@@ -406,8 +392,17 @@ export default function ChartPanel({
       layout: sharedLayout,
       grid: sharedGrid,
       crosshair: { ...sharedCrosshair, mode: CrosshairMode.Normal },
-      timeScale: { timeVisible: true, secondsVisible: false },
-      rightPriceScale: { minimumWidth: 80 },
+      timeScale: { 
+        timeVisible: true, 
+        secondsVisible: false,
+        borderVisible: true,
+        borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
+      },
+      rightPriceScale: { 
+        minimumWidth: 80,
+        borderVisible: true,
+        borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
+      },
     })
 
     const candleSeries = priceChart.addSeries(CandlestickSeries, {
@@ -582,7 +577,7 @@ export default function ChartPanel({
       const darkMode = theme === 'dark'
       const chartOptions = {
         layout: {
-          background: { color: darkMode ? '#070c14' : '#ffffff' },
+          background: { color: darkMode ? '#161a1e' : '#ffffff' },
           textColor: darkMode ? '#8b8b9e' : '#6b6b7e',
         },
         grid: {
@@ -929,29 +924,7 @@ export default function ChartPanel({
     if (resistanceLineRef.current) resistanceLineRef.current.applyOptions({ visible: chartPreferences.showResistance && !hiddenIndicators.includes('resistance') })
   }, [chartPreferences.showResistance, hiddenIndicators])
 
-  useEffect(() => {
-    clearFibPivotLines()
 
-    if (!chartPreferences.showPivots || !pivotData?.fibonacci?.pivots || !candleSeriesRef.current || hiddenIndicators.includes('fibonacci-pivots')) {
-      return
-    }
-
-    Object.entries(fibonacciPivotConfig).forEach(([key, cfg]) => {
-      const value = pivotData.fibonacci.pivots[key]
-      if (value === undefined || value === null) return
-
-      const line = candleSeriesRef.current.createPriceLine({
-        price: value,
-        color: cfg.color,
-        lineWidth: cfg.width,
-        lineStyle: cfg.style,
-        axisLabelVisible: true,
-        title: cfg.label,
-      })
-
-      fibPivotLinesRef.current.push(line)
-    })
-  }, [chartPreferences.showPivots, pivotData, hiddenIndicators])
 
   useEffect(() => {
     clearStandardPivotSegments()
@@ -960,45 +933,83 @@ export default function ChartPanel({
       return
     }
 
-    pivotData.standardPeriods.items.forEach((periodItem) => {
-      Object.entries(standardPivotConfig).forEach(([level, cfg]) => {
+    const items = pivotData.standardPeriods.items
+    if (!items.length) return
+
+    // Group segments by level
+    const levelDataMap = {}
+    const levelMarkersMap = {}
+
+    // Initialize levelDataMap and levelMarkersMap for each active level
+    Object.keys(standardPivotConfig).forEach((level) => {
+      levelDataMap[level] = []
+      levelMarkersMap[level] = []
+    })
+
+    // Sort items by startTime to ensure chronological order for lightweight-charts
+    const sortedItems = [...items].sort((a, b) => a.startTime - b.startTime)
+
+    sortedItems.forEach((periodItem, idx) => {
+      // Validate time bounds to prevent identical time points which cause crash
+      if (periodItem.startTime >= periodItem.endTime) {
+        // Skip invalid/zero-length segments to prevent lightweight-charts errors
+        return
+      }
+
+      Object.keys(standardPivotConfig).forEach((level) => {
         const value = periodItem.pivots?.[level]
         if (value === undefined || value === null) return
 
-        const lineSeries = priceChartRef.current.addSeries(LineSeries, {
-          color: cfg.color,
-          lineWidth: cfg.width,
-          lineStyle: cfg.style,
-          priceLineVisible: false,
-          lastValueVisible: false,
-          crosshairMarkerVisible: false,
+        // Push segment start and end points
+        levelDataMap[level].push({ time: periodItem.startTime, value })
+        levelDataMap[level].push({ time: periodItem.endTime, value })
+
+        // Push text marker at the start of the segment
+        levelMarkersMap[level].push({
+          time: periodItem.startTime,
+          position: 'inBar',
+          color: 'rgba(255, 159, 67, 0.85)',
+          shape: 'circle',
+          text: standardPivotConfig[level].label,
+          size: 0
         })
 
-        lineSeries.setData([
-          { time: periodItem.startTime, value },
-          { time: periodItem.endTime, value },
-        ])
-
-        // Add text marker right on the line segment
-        lineSeries.setMarkers([
-          {
-            time: periodItem.startTime,
-            position: 'inBar',
-            color: 'rgba(255, 159, 67, 0.85)',
-            shape: 'circle',
-            text: cfg.label,
-            size: 0
-          }
-        ])
-
-        standardPivotSeriesRef.current.push(lineSeries)
+        // Insert whitespace point (gap) if there is a next period item
+        const nextItem = sortedItems[idx + 1]
+        if (nextItem && nextItem.startTime > periodItem.endTime) {
+          // Add gap at periodItem.endTime + 1 (1 second after segment ends)
+          levelDataMap[level].push({ time: periodItem.endTime + 1 })
+        }
       })
+    })
+
+    // Now, create exactly one LineSeries for each level that has data, set data and markers
+    Object.entries(standardPivotConfig).forEach(([level, cfg]) => {
+      const dataPoints = levelDataMap[level]
+      if (!dataPoints || dataPoints.length === 0) return
+
+      const lineSeries = priceChartRef.current.addSeries(LineSeries, {
+        color: cfg.color,
+        lineWidth: cfg.width,
+        lineStyle: cfg.style,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      })
+
+      lineSeries.setData(dataPoints)
+
+      const markers = levelMarkersMap[level]
+      if (markers && markers.length > 0) {
+        lineSeries.setMarkers(markers)
+      }
+
+      standardPivotSeriesRef.current.push(lineSeries)
     })
   }, [chartPreferences.showStandardPivots, pivotData, chartPreferences.pivotType, hiddenIndicators])
 
   useEffect(() => {
     return () => {
-      clearFibPivotLines()
       clearStandardPivotSegments()
     }
   }, [])
@@ -1056,14 +1067,7 @@ export default function ChartPanel({
       href: '?tab=learning#pivot-levels',
       onToggle: () => updatePreference('showResistance'),
     },
-    {
-      id: 'fibonacci-pivots',
-      label: 'Fibonacci Pivots',
-      description: 'PP, R1-R3, S1-S3',
-      applied: chartPreferences.showPivots,
-      href: '?tab=learning#pivot-levels',
-      onToggle: () => updatePreference('showPivots'),
-    },
+
     {
       id: 'standard-pivots',
       label: 'Standard Pivots',
@@ -1076,7 +1080,7 @@ export default function ChartPanel({
 
   return (
     <div className={`chart-card ${isMaximized ? 'chart-card-maximized' : ''}`}>
-      <div className="chart-card-header" style={{ position: 'relative', padding: '8px 24px' }}>
+      <div className="chart-card-header" style={{ position: 'relative', padding: '4px 16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', flexWrap: 'wrap', gap: '16px' }}>
           
           {/* Pair & Timeframe Controls (TradingView / Binance layout style) */}
@@ -1115,22 +1119,22 @@ export default function ChartPanel({
               {showPairDropdown && (
                 <div className="glass-panel" style={{
                   position: 'absolute',
-                  top: '36px',
+                  top: '38px',
                   left: '0',
                   zIndex: 200,
                   background: 'rgba(7, 12, 20, 0.98)',
                   border: '1px solid var(--border-medium)',
                   borderRadius: '16px',
-                  padding: '16px',
-                  width: '420px',
-                  boxShadow: '0 24px 60px rgba(0,0,0,0.6)',
+                  padding: '18px',
+                  width: '440px',
+                  boxShadow: '0 24px 60px rgba(0,0,0,0.7)',
                   animation: 'fadeIn 0.15s ease-out',
                   backdropFilter: 'blur(20px)',
                   fontFamily: 'var(--font-ui), sans-serif'
                 }}>
                   {/* Search Input Box */}
-                  <div style={{ position: 'relative', marginBottom: '12px' }}>
-                    <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '12px' }}>🔍</span>
+                  <div style={{ position: 'relative', marginBottom: '14px' }}>
+                    <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '14px' }}>🔍</span>
                     <input
                       type="text"
                       placeholder="Search pair..."
@@ -1138,11 +1142,11 @@ export default function ChartPanel({
                       onChange={(e) => setPairSearchQuery(e.target.value.toUpperCase())}
                       style={{
                         width: '100%',
-                        padding: '8px 12px 8px 28px',
+                        padding: '10px 14px 10px 34px',
                         background: 'var(--bg-raised)',
                         border: '1px solid var(--border-medium)',
-                        borderRadius: '8px',
-                        fontSize: '12px',
+                        borderRadius: '10px',
+                        fontSize: '14px',
                         color: 'var(--text-primary)',
                         outline: 'none',
                         fontFamily: 'var(--font-mono)'
@@ -1152,14 +1156,14 @@ export default function ChartPanel({
                   </div>
 
                   {/* Tabs Row */}
-                  <div style={{ display: 'flex', gap: '12px', marginBottom: '12px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '8px' }}>
+                  <div style={{ display: 'flex', gap: '16px', marginBottom: '14px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '10px' }}>
                     {['USDⓈ-M', 'COIN-M', 'Favorites'].map(tab => (
                       <span key={tab} style={{
-                        fontSize: '11px',
+                        fontSize: '13px',
                         fontWeight: 600,
                         color: tab === 'USDⓈ-M' ? 'var(--accent-primary)' : 'var(--text-secondary)',
                         borderBottom: tab === 'USDⓈ-M' ? '2px solid var(--accent-primary)' : 'none',
-                        paddingBottom: '6px',
+                        paddingBottom: '8px',
                         cursor: 'pointer'
                       }}>{tab}</span>
                     ))}
@@ -1169,10 +1173,10 @@ export default function ChartPanel({
                   <div style={{
                     display: 'grid',
                     gridTemplateColumns: '1.4fr 1.1fr 1fr',
-                    fontSize: '10px',
+                    fontSize: '11px',
                     fontWeight: 600,
                     color: 'var(--text-muted)',
-                    padding: '0 8px 6px',
+                    padding: '0 10px 8px',
                     borderBottom: '1px solid var(--border-subtle)'
                   }}>
                     <span>Symbol / Vol</span>
@@ -1181,7 +1185,7 @@ export default function ChartPanel({
                   </div>
 
                   {/* Tickers Scroll Area */}
-                  <div style={{ maxHeight: '240px', overflowY: 'auto', marginTop: '6px', paddingRight: '4px' }}>
+                  <div style={{ maxHeight: '250px', overflowY: 'auto', marginTop: '8px', paddingRight: '4px' }}>
                     {pairsData
                       .filter(p => p.symbol.includes(pairSearchQuery))
                       .map(p => {
@@ -1198,7 +1202,7 @@ export default function ChartPanel({
                               display: 'grid',
                               gridTemplateColumns: '1.4fr 1.1fr 1fr',
                               alignItems: 'center',
-                              padding: '8px 8px',
+                              padding: '10px 10px',
                               borderRadius: '8px',
                               cursor: 'pointer',
                               transition: 'background 0.12s ease'
@@ -1207,20 +1211,20 @@ export default function ChartPanel({
                             onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)'}
                             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                           >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              {getCryptoIcon(p.symbol, 16)}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              {getCryptoIcon(p.symbol, 18)}
                               <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{p.symbol}</span>
-                                  <span style={{ fontSize: '9px', color: 'var(--accent-primary)', background: 'var(--accent-subtle)', padding: '0px 3px', borderRadius: '3px', fontWeight: 600 }}>Perp</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{p.symbol}</span>
+                                  <span style={{ fontSize: '9.5px', color: 'var(--accent-primary)', background: 'var(--accent-subtle)', padding: '1px 4px', borderRadius: '3px', fontWeight: 600 }}>Perp</span>
                                 </div>
-                                <span style={{ fontSize: '9px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{p.volume}</span>
+                                <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{p.volume}</span>
                               </div>
                             </div>
-                            <span style={{ textAlign: 'right', fontSize: '11px', fontWeight: 500, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{p.price}</span>
+                            <span style={{ textAlign: 'right', fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{p.price}</span>
                             <span style={{
                               textAlign: 'right',
-                              fontSize: '11px',
+                              fontSize: '13px',
                               fontWeight: 600,
                               color: isBear ? 'var(--color-bear)' : 'var(--color-bull)',
                               fontFamily: 'var(--font-mono)'
@@ -1311,8 +1315,39 @@ export default function ChartPanel({
             <button
               className={`toggle-btn ${isMaximized ? 'active' : ''}`}
               onClick={() => setIsMaximized((prev) => !prev)}
+              title={isMaximized ? 'Exit Fullscreen' : 'Fullscreen'}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '6px',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                transition: 'all 0.16s ease',
+                border: 'none',
+                background: 'transparent',
+                color: isMaximized ? 'var(--text-primary)' : 'var(--text-muted)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'
+                e.currentTarget.style.color = 'var(--text-primary)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent'
+                e.currentTarget.style.color = isMaximized ? 'var(--text-primary)' : 'var(--text-muted)'
+              }}
             >
-              {isMaximized ? 'Restore' : 'Maximize'}
+              {isMaximized ? (
+                /* Restore / Exit Fullscreen (pointing inwards) */
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
+                  <path d="M4 14h3v3m0-3l-4 4m16-4h-3v3m0-3l4 4M4 10h3V7m0 3L3 6m16 4h-3V7m0 3l4-4" />
+                </svg>
+              ) : (
+                /* Maximize / Fullscreen (pointing outwards) */
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
+                  <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+                </svg>
+              )}
             </button>
           </div>
 
@@ -1491,12 +1526,7 @@ export default function ChartPanel({
                   active: chartPreferences.showResistance,
                   onRemove: () => updatePreference('showResistance')
                 },
-                {
-                  id: 'fibonacci-pivots',
-                  label: 'Fib Pivots',
-                  active: chartPreferences.showPivots,
-                  onRemove: () => updatePreference('showPivots')
-                },
+
                 {
                   id: 'volume',
                   label: 'Volume',

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   createChart,
+  createSeriesMarkers,
   CandlestickSeries,
   HistogramSeries,
   LineSeries,
@@ -184,6 +185,7 @@ export default function ChartPanel({
   const resistanceLineRef = useRef(null)
 
   const standardPivotSeriesRef = useRef([])
+  const standardPivotMarkerPluginsRef = useRef([])
 
   const hasAppliedInitialZoomRef = useRef(false)
   const isInitializedRef = useRef(false)
@@ -217,6 +219,15 @@ export default function ChartPanel({
   const clearStandardPivotSegments = () => {
     const chart = priceChartRef.current
     if (!chart) return
+
+    standardPivotMarkerPluginsRef.current.forEach((markerPlugin) => {
+      try {
+        markerPlugin.detach()
+      } catch {
+        // Ignore stale marker plugins
+      }
+    })
+    standardPivotMarkerPluginsRef.current = []
 
     standardPivotSeriesRef.current.forEach((series) => {
       try {
@@ -936,77 +947,48 @@ export default function ChartPanel({
     const items = pivotData.standardPeriods.items
     if (!items.length) return
 
-    // Group segments by level
-    const levelDataMap = {}
-    const levelMarkersMap = {}
-
-    // Initialize levelDataMap and levelMarkersMap for each active level
-    Object.keys(standardPivotConfig).forEach((level) => {
-      levelDataMap[level] = []
-      levelMarkersMap[level] = []
-    })
-
-    // Sort items by startTime to ensure chronological order for lightweight-charts
+    // Sort items by startTime to ensure stable drawing order.
     const sortedItems = [...items].sort((a, b) => a.startTime - b.startTime)
 
-    sortedItems.forEach((periodItem, idx) => {
-      // Validate time bounds to prevent identical time points which cause crash
+    sortedItems.forEach((periodItem) => {
+      // Validate time bounds to prevent identical time points which cause chart errors.
       if (periodItem.startTime >= periodItem.endTime) {
-        // Skip invalid/zero-length segments to prevent lightweight-charts errors
+        // Skip invalid/zero-length segments.
         return
       }
 
-      Object.keys(standardPivotConfig).forEach((level) => {
+      Object.entries(standardPivotConfig).forEach(([level, cfg]) => {
         const value = periodItem.pivots?.[level]
         if (value === undefined || value === null || !Number.isFinite(value)) return
 
-        // Push segment start and end points
-        levelDataMap[level].push({ time: periodItem.startTime, value })
-        levelDataMap[level].push({ time: periodItem.endTime, value })
+        // Render each period+level as its own series so historical pivot blocks never merge.
+        const lineSeries = priceChartRef.current.addSeries(LineSeries, {
+          color: cfg.color,
+          lineWidth: cfg.width,
+          lineStyle: cfg.style,
+          priceLineVisible: false,
+          lastValueVisible: Boolean(periodItem.isCurrent),
+          crosshairMarkerVisible: false,
+        })
+        lineSeries.setData([
+          { time: periodItem.startTime, value },
+          { time: periodItem.endTime, value },
+        ])
 
-        // Push text marker at the start of the segment
-        levelMarkersMap[level].push({
+        const markerPlugin = createSeriesMarkers(lineSeries, [{
           time: periodItem.startTime,
           position: 'inBar',
           color: 'rgba(255, 159, 67, 0.85)',
           shape: 'circle',
-          text: standardPivotConfig[level].label,
+          text: cfg.label,
           size: 0
-        })
+        }], { autoScale: false })
 
-        // Insert whitespace point (gap) if there is a next period item
-        const nextItem = sortedItems[idx + 1]
-        if (nextItem && nextItem.startTime > periodItem.endTime + 1) {
-          // Add gap at periodItem.endTime + 1 (1 second after segment ends)
-          levelDataMap[level].push({ time: periodItem.endTime + 1 })
-        }
+        standardPivotMarkerPluginsRef.current.push(markerPlugin)
+        standardPivotSeriesRef.current.push(lineSeries)
       })
     })
-
-    // Now, create exactly one LineSeries for each level that has data, set data and markers
-    Object.entries(standardPivotConfig).forEach(([level, cfg]) => {
-      const dataPoints = levelDataMap[level]
-      if (!dataPoints || dataPoints.length === 0) return
-
-      const lineSeries = priceChartRef.current.addSeries(LineSeries, {
-        color: cfg.color,
-        lineWidth: cfg.width,
-        lineStyle: cfg.style,
-        priceLineVisible: false,
-        lastValueVisible: false,
-        crosshairMarkerVisible: false,
-      })
-
-      lineSeries.setData(dataPoints)
-
-      const markers = levelMarkersMap[level]
-      if (markers && markers.length > 0) {
-        lineSeries.setMarkers(markers)
-      }
-
-      standardPivotSeriesRef.current.push(lineSeries)
-    })
-  }, [chartPreferences.showStandardPivots, pivotData, chartPreferences.pivotType, hiddenIndicators])
+  }, [chartPreferences.showStandardPivots, chartPreferences.showHistoricalPivots, pivotData, chartPreferences.pivotType, hiddenIndicators])
 
   useEffect(() => {
     window.dispatchEvent(new Event('resize'))
@@ -1675,6 +1657,36 @@ export default function ChartPanel({
                   <option value="classic">Classic</option>
                   <option value="dm">DM (DeMark)</option>
                   <option value="camarilla">Camarilla</option>
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                <label style={{ fontSize: '12px', color: 'var(--text-primary)' }}>Show historical pivots</label>
+                <input
+                  type="checkbox"
+                  checked={chartPreferences.showHistoricalPivots !== false}
+                  onChange={(e) => onChartPreferencesChange((prev) => ({ ...prev, showHistoricalPivots: e.target.checked }))}
+                  style={{ width: '14px', height: '14px', cursor: 'pointer' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Pivots Timeframe</label>
+                <select
+                  value="auto"
+                  disabled
+                  style={{
+                    background: 'var(--bg-raised)',
+                    border: '1px solid var(--border-medium)',
+                    borderRadius: '8px',
+                    padding: '6px 10px',
+                    fontSize: '12px',
+                    color: 'var(--text-secondary)',
+                    outline: 'none',
+                    cursor: 'not-allowed'
+                  }}
+                >
+                  <option value="auto">Auto</option>
                 </select>
               </div>
 

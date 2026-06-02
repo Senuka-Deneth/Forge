@@ -9,6 +9,7 @@ export const DEFAULT_CHART_PREFERENCES = {
   showSupport: false,
   showResistance: false,
   showStandardPivots: false,
+  showHistoricalPivots: true,
   pivotType: 'traditional',
   pivotsBack: 15,
 }

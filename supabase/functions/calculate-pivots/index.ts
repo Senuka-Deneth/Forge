@@ -165,7 +165,7 @@ function bucketStart(timestampSeconds: number, period: string): string {
   return new Date(Date.UTC(year, month, day)).toISOString();
 }
 
-function groupCompletedCandles(candles: Candle[], period: string, count = 1) {
+function groupPeriodCandles(candles: Candle[], period: string) {
   const groups = new Map<string, Candle[]>();
   for (const candle of candles) {
     const key = bucketStart(candle.time, period);
@@ -173,8 +173,7 @@ function groupCompletedCandles(candles: Candle[], period: string, count = 1) {
   }
 
   const keys = [...groups.keys()].sort();
-  if (keys.length < 2) return [];
-  return keys.slice(0, -1).slice(-count).map((key) => {
+  return keys.map((key, idx) => {
     const periodCandles = [...(groups.get(key) ?? [])].sort((a, b) => a.time - b.time);
     return {
       high: Math.max(...periodCandles.map((c) => c.high)),
@@ -184,21 +183,15 @@ function groupCompletedCandles(candles: Candle[], period: string, count = 1) {
       period: key,
       startTime: periodCandles[0].time,
       endTime: periodCandles[periodCandles.length - 1].time,
+      isCurrent: idx === keys.length - 1,
     };
   });
 }
 
 function getCurrentPeriodOpen(candles: Candle[], period: string): number | null {
-  if (!candles.length) return null;
-  const groups = new Map<string, Candle[]>();
-  for (const candle of candles) {
-    const key = bucketStart(candle.time, period);
-    groups.set(key, [...(groups.get(key) ?? []), candle]);
-  }
-  const keys = [...groups.keys()].sort();
-  const currentKey = keys[keys.length - 1];
-  const currentCandles = [...(groups.get(currentKey) ?? [])].sort((a, b) => a.time - b.time);
-  return currentCandles.length ? currentCandles[0].open : null;
+  const grouped = groupPeriodCandles(candles, period);
+  if (!grouped.length) return null;
+  return grouped[grouped.length - 1].open;
 }
 
 function withMeta(levels: PivotLevels, type: string, period: string, basedOn: unknown) {
@@ -273,6 +266,7 @@ Deno.serve(async (req) => {
     const timeframe = String(body.timeframe ?? body.interval ?? "4h").trim();
     const pivotType = String(body.pivotType ?? "traditional").trim().toLowerCase();
     const pivotsBack = Math.max(1, Math.min(50, Number(body.pivotsBack ?? body.pivots_back) || 15));
+    const showHistoricalPivots = body.showHistoricalPivots !== false;
 
     if (!Array.isArray(candles) || candles.length < 2) {
       return jsonResponse({ success: false, error: "candles array is required." }, 400);
@@ -290,7 +284,8 @@ Deno.serve(async (req) => {
     })).filter((c) => Number.isFinite(c.time) && Number.isFinite(c.open) && Number.isFinite(c.high) && Number.isFinite(c.low) && Number.isFinite(c.close));
 
     const period = getPivotPeriod(timeframe);
-    const completed = groupCompletedCandles(normalizedCandles, period, 1)[0];
+    const groupedPeriods = groupPeriodCandles(normalizedCandles, period);
+    const completed = groupedPeriods.length >= 2 ? groupedPeriods[groupedPeriods.length - 2] : null;
     if (!completed) {
       return jsonResponse({ success: false, error: "Not enough data to compute pivots for this timeframe." }, 400);
     }
@@ -305,18 +300,23 @@ Deno.serve(async (req) => {
     const dmPivots = withMeta(calculatePivotsGeneric(completed.high, completed.low, completed.close, completed.open, currOpen, "dm"), "dm", period, completed);
     const camarillaPivots = withMeta(calculatePivotsGeneric(completed.high, completed.low, completed.close, completed.open, currOpen, "camarilla"), "camarilla", period, completed);
 
-    const completedPeriods = groupCompletedCandles(normalizedCandles, period, pivotsBack + 1);
+    const displayPeriods = groupedPeriods.slice(-(pivotsBack + 1));
     const standardPeriods = [];
-    for (let i = 1; i < completedPeriods.length; i++) {
-      const prevCandle = completedPeriods[i - 1];
-      const currCandle = completedPeriods[i];
+    for (let i = 1; i < displayPeriods.length; i++) {
+      const prevCandle = displayPeriods[i - 1];
+      const currCandle = displayPeriods[i];
       standardPeriods.push({
         period: currCandle.period,
         startTime: currCandle.startTime,
         endTime: currCandle.endTime,
+        isCurrent: Boolean(currCandle.isCurrent),
+        sourcePeriod: prevCandle.period,
         pivots: calculatePivotsGeneric(prevCandle.high, prevCandle.low, prevCandle.close, prevCandle.open, currCandle.open, pivotType),
       });
     }
+    const visibleStandardPeriods = showHistoricalPivots
+      ? standardPeriods
+      : (standardPeriods.length ? [standardPeriods[standardPeriods.length - 1]] : []);
 
     return jsonResponse({
       success: true,
@@ -329,7 +329,12 @@ Deno.serve(async (req) => {
       dm: { pivots: dmPivots, analysis: analyzePriceVsPivots(currentPrice, dmPivots) },
       camarilla: { pivots: camarillaPivots, analysis: analyzePriceVsPivots(currentPrice, camarillaPivots) },
       binance: { pivots: traditionalPivots, analysis: analyzePriceVsPivots(currentPrice, traditionalPivots) },
-      standardPeriods: { periodType: period, items: standardPeriods },
+      standardPeriods: {
+        periodType: period,
+        requestedCount: pivotsBack,
+        availableCount: visibleStandardPeriods.length,
+        items: visibleStandardPeriods,
+      },
     });
   } catch (error) {
     return jsonResponse({

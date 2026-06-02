@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Component, useEffect, useMemo, useRef, useState } from 'react'
 import HeaderControls from './components/HeaderControls'
 import StatusBar from './components/StatusBar'
 import ChartPanel from './components/ChartPanel'
@@ -24,8 +24,41 @@ const DEFAULT_CHART_PREFERENCES = {
   showSupport: false,
   showResistance: false,
   showStandardPivots: false,
+  showHistoricalPivots: true,
   pivotType: 'traditional',
   pivotsBack: 15,
+}
+
+class ChartPanelErrorBoundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+
+  componentDidCatch(error) {
+    console.error('Chart panel rendering error:', error)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="chart-card">
+          <div className="chart-state-overlay error">
+            <div className="chart-state-title">Chart temporarily unavailable</div>
+            <div className="chart-state-copy">
+              We hit a chart rendering issue. Please reload or toggle indicators to retry.
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    return this.props.children
+  }
 }
 
 function applyTheme(theme) {
@@ -373,7 +406,7 @@ function bucketStart(timestampSeconds, period) {
   return new Date(Date.UTC(year, month, day)).toISOString()
 }
 
-function groupCompletedCandles(candles, period, count = 1) {
+function groupPeriodCandles(candles, period) {
   const groups = new Map()
   candles.forEach((candle) => {
     const key = bucketStart(candle.time, period)
@@ -381,9 +414,7 @@ function groupCompletedCandles(candles, period, count = 1) {
   })
 
   const keys = [...groups.keys()].sort()
-  if (keys.length < 2) return []
-
-  return keys.slice(0, -1).slice(-count).map((key) => {
+  return keys.map((key, idx) => {
     const periodCandles = [...groups.get(key)].sort((a, b) => a.time - b.time)
     return {
       high: Math.max(...periodCandles.map((c) => c.high)),
@@ -393,21 +424,15 @@ function groupCompletedCandles(candles, period, count = 1) {
       period: key,
       startTime: periodCandles[0].time,
       endTime: periodCandles[periodCandles.length - 1].time,
+      isCurrent: idx === keys.length - 1,
     }
   })
 }
 
 function getCurrentPeriodOpen(candles, period) {
-  if (!candles.length) return null
-  const groups = new Map()
-  candles.forEach((candle) => {
-    const key = bucketStart(candle.time, period)
-    groups.set(key, [...(groups.get(key) ?? []), candle])
-  })
-  const keys = [...groups.keys()].sort()
-  const currentKey = keys[keys.length - 1]
-  const currentCandles = [...groups.get(currentKey)].sort((a, b) => a.time - b.time)
-  return currentCandles.length ? currentCandles[0].open : null
+  const grouped = groupPeriodCandles(candles, period)
+  if (!grouped.length) return null
+  return grouped[grouped.length - 1].open
 }
 
 function withPivotMeta(levels, type, period, basedOn) {
@@ -466,12 +491,16 @@ function buildPivotData(candles, timeframe, selectedSymbol, chartPrefs = DEFAULT
   if (!Array.isArray(candles) || candles.length < 2) return null
 
   const period = getPivotPeriod(timeframe)
-  const completed = groupCompletedCandles(candles, period, 1)[0]
+  const groupedPeriods = groupPeriodCandles(candles, period)
+  if (groupedPeriods.length < 2) return null
+  const completed = groupedPeriods[groupedPeriods.length - 2]
   if (!completed) return null
 
   const currentPrice = candles[candles.length - 1].close
   const currOpen = getCurrentPeriodOpen(candles, period)
   const pivotType = chartPrefs.pivotType || 'traditional'
+  const pivotsBack = Math.max(1, Math.min(50, Number(chartPrefs.pivotsBack) || 15))
+  const showHistoricalPivots = chartPrefs.showHistoricalPivots !== false
 
   const classicPivots = withPivotMeta(calculatePivotsGeneric(completed.high, completed.low, completed.close, completed.open, currOpen, 'classic'), 'classic', period, completed)
   const fibonacciPivots = withPivotMeta(calculatePivotsGeneric(completed.high, completed.low, completed.close, completed.open, currOpen, 'fibonacci'), 'fibonacci', period, completed)
@@ -480,18 +509,21 @@ function buildPivotData(candles, timeframe, selectedSymbol, chartPrefs = DEFAULT
   const dmPivots = withPivotMeta(calculatePivotsGeneric(completed.high, completed.low, completed.close, completed.open, currOpen, 'dm'), 'dm', period, completed)
   const camarillaPivots = withPivotMeta(calculatePivotsGeneric(completed.high, completed.low, completed.close, completed.open, currOpen, 'camarilla'), 'camarilla', period, completed)
 
-  const completedPeriods = groupCompletedCandles(candles, period, (chartPrefs.pivotsBack || 15) + 1)
+  const displayPeriods = groupedPeriods.slice(-(pivotsBack + 1))
   const standardPeriods = []
-  for (let i = 1; i < completedPeriods.length; i++) {
-    const prevCandle = completedPeriods[i - 1]
-    const currCandle = completedPeriods[i]
+  for (let i = 1; i < displayPeriods.length; i++) {
+    const prevCandle = displayPeriods[i - 1]
+    const currCandle = displayPeriods[i]
     standardPeriods.push({
       period: currCandle.period,
       startTime: currCandle.startTime,
       endTime: currCandle.endTime,
+      isCurrent: Boolean(currCandle.isCurrent),
+      sourcePeriod: prevCandle.period,
       pivots: calculatePivotsGeneric(prevCandle.high, prevCandle.low, prevCandle.close, prevCandle.open, currCandle.open, pivotType),
     })
   }
+  const visibleStandardPeriods = showHistoricalPivots ? standardPeriods : (standardPeriods.length ? [standardPeriods[standardPeriods.length - 1]] : [])
 
   return {
     success: true,
@@ -505,13 +537,25 @@ function buildPivotData(candles, timeframe, selectedSymbol, chartPrefs = DEFAULT
     dm: { pivots: dmPivots, analysis: analyzePriceVsPivots(currentPrice, dmPivots) },
     camarilla: { pivots: camarillaPivots, analysis: analyzePriceVsPivots(currentPrice, camarillaPivots) },
     binance: { pivots: traditionalPivots, analysis: analyzePriceVsPivots(currentPrice, traditionalPivots) },
-    standardPeriods: { periodType: period, items: standardPeriods },
+    standardPeriods: {
+      periodType: period,
+      requestedCount: pivotsBack,
+      availableCount: visibleStandardPeriods.length,
+      items: visibleStandardPeriods,
+    },
   }
 }
 
 async function fetchPivotData(symbol, timeframe, candles, pivotType = 'traditional', chartPrefs = DEFAULT_CHART_PREFERENCES) {
   try {
-    const data = await invokeFunction('calculate-pivots', { symbol, timeframe, candles, pivotType, pivotsBack: chartPrefs.pivotsBack || 15 })
+    const data = await invokeFunction('calculate-pivots', {
+      symbol,
+      timeframe,
+      candles,
+      pivotType,
+      pivotsBack: chartPrefs.pivotsBack || 15,
+      showHistoricalPivots: chartPrefs.showHistoricalPivots !== false,
+    })
     if (data?.success) return { ...data, symbol }
     throw new Error(data?.error || 'Pivot function returned no pivot data.')
   } catch (edgeError) {
@@ -912,7 +956,7 @@ export default function App() {
     }).catch((err) => {
       console.error('Failed to fetch pivots on preference change:', err)
     })
-  }, [chartPreferences.pivotType, chartPreferences.pivotsBack, symbol, interval])
+  }, [chartPreferences.pivotType, chartPreferences.pivotsBack, chartPreferences.showHistoricalPivots, symbol, interval])
 
   const runAIAnalysis = async (currentCandles = null) => {
     const candleData = currentCandles
@@ -1050,7 +1094,7 @@ export default function App() {
       setStatus('Historical candles loaded')
       startWebSocket(cleaned, selectedInterval)
       setAnalysis(buildTechnicalAnalysis(data, cleaned, selectedInterval))
-      fetchPivotData(cleaned, selectedInterval, data).then((pivotResponse) => {
+      fetchPivotData(cleaned, selectedInterval, data, chartPreferences.pivotType || 'traditional', chartPreferences).then((pivotResponse) => {
         if (pivotResponse?.success) setPivotData({ ...pivotResponse, symbol: cleaned })
       }).catch((err) => {
         console.error('Failed to fetch pivots:', err)
@@ -1155,24 +1199,26 @@ export default function App() {
         {activeTab === 'dashboard' && (
           <div className="dashboard-grid">
             <div className="charts-column">
-              <ChartPanel
-                symbol={symbol}
-                interval={interval}
-                candles={candles}
-                loading={loading}
-                error={error}
-                status={status}
-                analysis={analysis}
-                pivotData={pivotData}
-                chartPreferences={chartPreferences}
-                onChartPreferencesChange={setChartPreferences}
-                symbolInput={symbolInput}
-                setSymbolInput={setSymbolInput}
-                setInterval={setInterval}
-                onLoadChart={loadChart}
-                isMaximized={isChartMaximized}
-                setIsMaximized={setIsChartMaximized}
-              />
+              <ChartPanelErrorBoundary>
+                <ChartPanel
+                  symbol={symbol}
+                  interval={interval}
+                  candles={candles}
+                  loading={loading}
+                  error={error}
+                  status={status}
+                  analysis={analysis}
+                  pivotData={pivotData}
+                  chartPreferences={chartPreferences}
+                  onChartPreferencesChange={setChartPreferences}
+                  symbolInput={symbolInput}
+                  setSymbolInput={setSymbolInput}
+                  setInterval={setInterval}
+                  onLoadChart={loadChart}
+                  isMaximized={isChartMaximized}
+                  setIsMaximized={setIsChartMaximized}
+                />
+              </ChartPanelErrorBoundary>
             </div>
 
             <div className="analysis-column-fullwidth">

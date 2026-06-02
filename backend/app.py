@@ -4,15 +4,16 @@ import requests
 import re
 import os
 import json
+from datetime import datetime, timezone
 from pathlib import Path
-from services.openrouter_service import analyze_market, check_openrouter_health
+from services.openrouter_service import analyze_market
 from utils.pivotPoints import (
     compute_pivots,
     analyze_price_vs_pivots,
     get_pivot_period,
-    get_recent_completed_period_candles,
     calculate_traditional_pivots,
     calculate_pivots_generic,
+    period_bucket_start,
 )
 
 app = Flask(__name__)
@@ -20,9 +21,6 @@ CORS(app)
 
 BACKEND_HOST = os.getenv("BACKEND_HOST", "127.0.0.1")
 BACKEND_PORT = int(os.getenv("BACKEND_PORT", "5050"))
-
-# Check OpenRouter availability at startup
-check_openrouter_health()
 
 BINANCE_KLINES_URL = "https://api.binance.com/api/v3/klines"
 
@@ -46,9 +44,20 @@ DEFAULT_CHART_PREFERENCES = {
     "showResistance": False,
     "showPivots": False,
     "showStandardPivots": False,
+    "showHistoricalPivots": True,
     "pivotType": "traditional",
     "pivotsBack": 15,
 }
+
+OPENROUTER_REQUIRED_ENV_VARS = (
+    "OPENROUTER_API_KEY",
+    "OPENROUTER_MODEL",
+    "OPENROUTER_BASE_URL",
+)
+
+
+def get_missing_openrouter_env_vars():
+    return [name for name in OPENROUTER_REQUIRED_ENV_VARS if not os.getenv(name)]
 
 
 def normalize_user_key(user_key_raw: str) -> str:
@@ -251,6 +260,32 @@ def fetch_binance_klines(symbol, interval, limit):
         return []
 
     return enrich_candles(candles)
+
+
+def group_period_candles(candles, period):
+    groups = {}
+    for candle in candles:
+        dt = datetime.fromtimestamp(candle["time"], tz=timezone.utc)
+        key = period_bucket_start(dt, period).isoformat()
+        if key not in groups:
+            groups[key] = []
+        groups[key].append(candle)
+
+    keys = sorted(groups.keys())
+    result = []
+    for idx, key in enumerate(keys):
+        period_candles = sorted(groups[key], key=lambda x: x["time"])
+        result.append({
+            "high": max(c["high"] for c in period_candles),
+            "low": min(c["low"] for c in period_candles),
+            "close": period_candles[-1]["close"],
+            "open": period_candles[0]["open"],
+            "period": key,
+            "startTime": period_candles[0]["time"],
+            "endTime": period_candles[-1]["time"],
+            "isCurrent": idx == len(keys) - 1,
+        })
+    return result
 
 
 def find_swings(candles, lookback=2):
@@ -547,6 +582,8 @@ def get_pivots():
                 pivots_back = max(1, min(50, int(pivots_back_raw)))
             except Exception:
                 pass
+        show_historical_pivots_raw = str(request.args.get("showHistoricalPivots", "true")).strip().lower()
+        show_historical_pivots = show_historical_pivots_raw not in {"false", "0", "no", "off"}
 
         if not validate_symbol(symbol):
             return jsonify({"error": "Invalid symbol format."}), 400
@@ -584,11 +621,12 @@ def get_pivots():
         camarilla_analysis = analyze_price_vs_pivots(current_price, camarilla_pivots)
 
         standard_period = get_pivot_period(timeframe)
-        completed_periods = get_recent_completed_period_candles(candles, standard_period, count=pivots_back + 1)
+        grouped_periods = group_period_candles(candles, standard_period)
+        display_periods = grouped_periods[-(pivots_back + 1):]
         standard_periods = []
-        for i in range(1, len(completed_periods)):
-            prev_candle = completed_periods[i - 1]
-            curr_candle = completed_periods[i]
+        for i in range(1, len(display_periods)):
+            prev_candle = display_periods[i - 1]
+            curr_candle = display_periods[i]
 
             pivots = calculate_pivots_generic(
                 prev_high=prev_candle["high"],
@@ -602,8 +640,13 @@ def get_pivots():
                 "period": curr_candle["period"],
                 "startTime": curr_candle["startTime"],
                 "endTime": curr_candle["endTime"],
+                "isCurrent": bool(curr_candle.get("isCurrent")),
+                "sourcePeriod": prev_candle["period"],
                 "pivots": pivots,
             })
+        visible_standard_periods = standard_periods
+        if not show_historical_pivots and standard_periods:
+            visible_standard_periods = [standard_periods[-1]]
 
         return jsonify({
             "success": True,
@@ -619,7 +662,9 @@ def get_pivots():
             "binance": {"pivots": traditional_pivots, "analysis": traditional_analysis},
             "standardPeriods": {
                 "periodType": standard_period,
-                "items": standard_periods,
+                "requestedCount": pivots_back,
+                "availableCount": len(visible_standard_periods),
+                "items": visible_standard_periods,
             },
         })
 
@@ -666,6 +711,14 @@ def save_user_preferences():
 @app.route("/api/ai-analyze", methods=["POST"])
 def ai_analyze():
     try:
+        missing_env = get_missing_openrouter_env_vars()
+        if missing_env:
+            return jsonify({
+                "success": False,
+                "error": "OpenRouter is not configured. Set OPENROUTER_API_KEY, OPENROUTER_MODEL, and OPENROUTER_BASE_URL.",
+                "missing": missing_env,
+            }), 503
+
         market_data = request.get_json()
 
         if not market_data or market_data.get("price") is None:
@@ -700,25 +753,6 @@ def ai_analyze():
             "success": False,
             "error": str(exc),
         }), 500
-
-
-def validate_env():
-    import os
-    required = [
-        "OPENROUTER_API_KEY",
-        "OPENROUTER_MODEL",
-        "OPENROUTER_BASE_URL"
-    ]
-    missing = [key for key in required if not os.getenv(key)]
-    if missing:
-        print("❌ Missing required environment variables:")
-        for k in missing:
-            print(f"   - {k}")
-        print("Add them to your .env file and restart.")
-        exit(1)
-    print("✅ Environment validated")
-
-validate_env()
 
 if __name__ == "__main__":
     app.run(host=BACKEND_HOST, port=BACKEND_PORT, debug=True)

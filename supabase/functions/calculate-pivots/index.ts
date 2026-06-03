@@ -23,7 +23,7 @@ type PivotLevels = Record<string, number | null> & {
 };
 
 const ALLOWED_INTERVALS = new Set([
-  "1m", "5m", "15m", "30m",
+  "1m", "3m", "5m", "15m", "30m",
   "1h", "2h", "4h", "6h", "8h", "12h",
   "1d", "3d", "1w", "1M",
 ]);
@@ -194,6 +194,28 @@ function getCurrentPeriodOpen(candles: Candle[], period: string): number | null 
   return grouped[grouped.length - 1].open;
 }
 
+function getBarIntervalSeconds(candles: Candle[]): number {
+  if (candles.length < 2) return 24 * 60 * 60;
+  return Math.max(60, candles[candles.length - 1].time - candles[candles.length - 2].time);
+}
+
+type GroupedPeriod = ReturnType<typeof groupPeriodCandles>[number];
+
+function resolvePeriodEndTime(
+  currCandle: GroupedPeriod,
+  nextCandle: GroupedPeriod | null,
+  latestCandleTime: number,
+  barInterval: number,
+): number {
+  if (currCandle.isCurrent) {
+    return latestCandleTime;
+  }
+  if (nextCandle) {
+    return nextCandle.startTime - barInterval;
+  }
+  return currCandle.endTime;
+}
+
 function withMeta(levels: PivotLevels, type: string, period: string, basedOn: unknown) {
   return {
     ...levels,
@@ -291,6 +313,8 @@ Deno.serve(async (req) => {
     }
 
     const currentPrice = normalizedCandles[normalizedCandles.length - 1].close;
+    const latestCandleTime = normalizedCandles[normalizedCandles.length - 1].time;
+    const barInterval = getBarIntervalSeconds(normalizedCandles);
     const currOpen = getCurrentPeriodOpen(normalizedCandles, period);
 
     const classicPivots = withMeta(calculatePivotsGeneric(completed.high, completed.low, completed.close, completed.open, currOpen, "classic"), "classic", period, completed);
@@ -305,10 +329,12 @@ Deno.serve(async (req) => {
     for (let i = 1; i < displayPeriods.length; i++) {
       const prevCandle = displayPeriods[i - 1];
       const currCandle = displayPeriods[i];
+      const nextCandle = displayPeriods[i + 1] ?? null;
+      const endTime = resolvePeriodEndTime(currCandle, nextCandle, latestCandleTime, barInterval);
       standardPeriods.push({
         period: currCandle.period,
         startTime: currCandle.startTime,
-        endTime: currCandle.endTime,
+        endTime,
         isCurrent: Boolean(currCandle.isCurrent),
         sourcePeriod: prevCandle.period,
         pivots: calculatePivotsGeneric(prevCandle.high, prevCandle.low, prevCandle.close, prevCandle.open, currCandle.open, pivotType),

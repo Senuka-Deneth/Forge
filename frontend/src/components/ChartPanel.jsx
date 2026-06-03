@@ -8,6 +8,15 @@ import {
   LineStyle,
   CrosshairMode,
 } from 'lightweight-charts'
+import {
+  applyManualPriceRange,
+  clearManualPriceRange,
+  getVisiblePriceBounds,
+  isManualPriceRangeActive,
+  isOverPriceScale,
+  shouldHandleVerticalWheel,
+} from '../utils/manualPriceScale'
+import { getPivotPeriodLabel } from '../utils/pivotPoints'
 
 const STANDARD_PIVOT_COLOR = 'rgba(255, 159, 67, 0.92)'
 
@@ -191,7 +200,17 @@ export default function ChartPanel({
   const isInitializedRef = useRef(false)
   const marginStateRef = useRef({ top: 0.1, bottom: 0.1 })
   const priceZoomRef = useRef({ min: null, max: null })
-  const dragStartRef = useRef({ isDragging: false, startY: 0, startMin: null, startMax: null })
+  const dragStartRef = useRef({
+    isDragging: false,
+    pending: false,
+    startX: 0,
+    startY: 0,
+    startMin: null,
+    startMax: null,
+  })
+  const savedHandleScrollRef = useRef(null)
+  const timeRangeAtPanStartRef = useRef(null)
+  const VERTICAL_PAN_THRESHOLD_PX = 5
 
   const [showIndicatorPanel, setShowIndicatorPanel] = useState(false)
   const [hiddenIndicators, setHiddenIndicators] = useState([])
@@ -247,17 +266,23 @@ export default function ChartPanel({
   }, [loading])
 
   useEffect(() => {
-    priceZoomRef.current = { min: null, max: null }
-    if (candleSeriesRef.current) {
-      try {
-        candleSeriesRef.current.applyOptions({
-          autoscaleInfoProvider: undefined,
-        })
-      } catch {
-        // Ignore
-      }
+    if (priceChartRef.current && candleSeriesRef.current) {
+      clearManualPriceRange(priceChartRef.current, candleSeriesRef.current, priceZoomRef, marginStateRef)
+    } else {
+      priceZoomRef.current = { min: null, max: null }
     }
   }, [symbol, interval])
+
+  useEffect(() => {
+    if (!isManualPriceRangeActive(priceZoomRef)) return
+    if (!priceChartRef.current) return
+    applyManualPriceRange(
+      priceChartRef.current,
+      priceZoomRef,
+      priceZoomRef.current.min,
+      priceZoomRef.current.max,
+    )
+  }, [candles])
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -605,187 +630,165 @@ export default function ChartPanel({
     const handlePriceWheel = (e) => {
       const container = priceContainerRef.current
       const candlesList = candlesRef.current
-      if (!container || !priceChartRef.current || !candleSeriesRef.current || !candlesList.length) return
+      const chart = priceChartRef.current
+      if (!container || !chart || !candlesList.length) return
 
-      const rect = container.getBoundingClientRect()
-      const x = e.clientX - rect.left
-      const isOverPriceScale = x > rect.width - 80
-      const isAltKey = e.altKey
+      // Shift/Ctrl/Meta or horizontal-dominant wheel: time-axis zoom (library default)
+      if (!shouldHandleVerticalWheel(e, container)) return
 
-      if (isOverPriceScale || isAltKey) {
-        e.preventDefault()
-        e.stopPropagation()
+      e.preventDefault()
+      e.stopPropagation()
 
-        // Smooth out zoom sensitivity by dynamically scaling the zoom factor relative to e.deltaY intensity
-        const zoomFactor = Math.max(0.7, Math.min(1.4, 1 + e.deltaY * 0.0012))
+      const zoomFactor = Math.max(0.7, Math.min(1.4, 1 + e.deltaY * 0.0012))
 
-        // Initialize manual price bounds from currently visible candles if not already zooming
-        if (priceZoomRef.current.min === null || priceZoomRef.current.max === null) {
-          const visibleRange = priceChartRef.current.timeScale().getVisibleRange()
-          let minPrice = Infinity
-          let maxPrice = -Infinity
-
-          if (visibleRange) {
-            candlesList.forEach((c) => {
-              if (c.time >= visibleRange.from && c.time <= visibleRange.to) {
-                if (c.low < minPrice) minPrice = c.low
-                if (c.high > maxPrice) maxPrice = c.high
-              }
-            })
-          }
-
-          if (minPrice === Infinity || maxPrice === -Infinity) {
-            const lastCandle = candlesList[candlesList.length - 1]
-            minPrice = lastCandle.low
-            maxPrice = lastCandle.high
-          }
-
-          // Add standard 10% vertical margins to start with
-          const padding = (maxPrice - minPrice) * 0.1
-          priceZoomRef.current.min = minPrice - padding
-          priceZoomRef.current.max = maxPrice + padding
-        }
-
-        // Apply zoom factor around the center of the current manual price range
-        const currentMin = priceZoomRef.current.min
-        const currentMax = priceZoomRef.current.max
-        const mid = (currentMax + currentMin) / 2
-        const range = currentMax - currentMin
-        const newRange = range * zoomFactor
-
-        const nextMin = mid - newRange / 2
-        const nextMax = mid + newRange / 2
-
-        priceZoomRef.current.min = nextMin
-        priceZoomRef.current.max = nextMax
-
-        // Dynamically override autoscaleInfoProvider to stretch scale vertically infinitely
-        candleSeriesRef.current.applyOptions({
-          autoscaleInfoProvider: () => ({
-            priceRange: {
-              minValue: nextMin,
-              maxValue: nextMax,
-            },
-          }),
-        })
+      if (!isManualPriceRangeActive(priceZoomRef)) {
+        const bounds = getVisiblePriceBounds(chart, candlesList)
+        if (!bounds) return
+        applyManualPriceRange(chart, priceZoomRef, bounds.min, bounds.max)
       }
+
+      const currentMin = priceZoomRef.current.min
+      const currentMax = priceZoomRef.current.max
+      const mid = (currentMax + currentMin) / 2
+      const range = currentMax - currentMin
+      if (range <= 0) return
+
+      const newRange = range * zoomFactor
+      const nextMin = mid - newRange / 2
+      const nextMax = mid + newRange / 2
+
+      applyManualPriceRange(chart, priceZoomRef, nextMin, nextMax)
     }
 
     const handleDblClick = (e) => {
       const container = priceContainerRef.current
       if (!container || !priceChartRef.current || !candleSeriesRef.current) return
 
-      const rect = container.getBoundingClientRect()
-      const x = e.clientX - rect.left
-      const isOverPriceScale = x > rect.width - 80
-
-      if (isOverPriceScale) {
+      if (isOverPriceScale(container, e.clientX)) {
         e.preventDefault()
         e.stopPropagation()
-
-        // Reset manual price bounds
-        priceZoomRef.current = { min: null, max: null }
-
-        // Clear custom autoscaleInfoProvider to restore automatic scaling
-        candleSeriesRef.current.applyOptions({
-          autoscaleInfoProvider: undefined,
-        })
-
-        // Also reset margins to default standard
-        const defaultMargins = { top: 0.1, bottom: 0.1 }
-        marginStateRef.current = defaultMargins
-        priceChartRef.current.priceScale('right').applyOptions({
-          autoScale: true,
-          scaleMargins: defaultMargins,
-        })
+        clearManualPriceRange(priceChartRef.current, candleSeriesRef.current, priceZoomRef, marginStateRef)
       }
     }
 
+    const defaultHandleScroll = {
+      mouseWheel: false,
+      pressedMouseMove: true,
+      horzTouchDrag: true,
+      vertTouchDrag: true,
+    }
+
+    const restoreChartScroll = () => {
+      if (savedHandleScrollRef.current && priceChartRef.current) {
+        priceChartRef.current.applyOptions({ handleScroll: savedHandleScrollRef.current })
+        savedHandleScrollRef.current = null
+      }
+    }
+
+    const beginVerticalPan = (chart, candlesList) => {
+      if (!isManualPriceRangeActive(priceZoomRef)) {
+        const bounds = getVisiblePriceBounds(chart, candlesList)
+        if (!bounds || !applyManualPriceRange(chart, priceZoomRef, bounds.min, bounds.max)) {
+          return false
+        }
+      }
+
+      if (timeRangeAtPanStartRef.current) {
+        chart.timeScale().setVisibleLogicalRange(timeRangeAtPanStartRef.current)
+      }
+
+      savedHandleScrollRef.current = defaultHandleScroll
+      chart.applyOptions({
+        handleScroll: { ...defaultHandleScroll, pressedMouseMove: false },
+      })
+      return true
+    }
+
     const handlePriceMouseDown = (e) => {
+      if (e.button !== 0) return
+
       const container = priceContainerRef.current
       const candlesList = candlesRef.current
-      if (!container || !priceChartRef.current || !candleSeriesRef.current || !candlesList.length) return
+      const chart = priceChartRef.current
+      if (!container || !chart || !candlesList.length) return
 
-      const rect = container.getBoundingClientRect()
-      const x = e.clientX - rect.left
-      const isOverPriceScale = x > rect.width - 80
+      if (isOverPriceScale(container, e.clientX)) return
 
-      // Only drag if not clicking on the price scale itself
-      if (!isOverPriceScale) {
-        // Initialize price bounds if not already set (e.g. if auto-scaling was active)
-        if (priceZoomRef.current.min === null || priceZoomRef.current.max === null) {
-          const visibleRange = priceChartRef.current.timeScale().getVisibleRange()
-          let minPrice = Infinity
-          let maxPrice = -Infinity
+      timeRangeAtPanStartRef.current = chart.timeScale().getVisibleLogicalRange()
 
-          if (visibleRange) {
-            candlesList.forEach((c) => {
-              if (c.time >= visibleRange.from && c.time <= visibleRange.to) {
-                if (c.low < minPrice) minPrice = c.low
-                if (c.high > maxPrice) maxPrice = c.high
-              }
-            })
-          }
-
-          if (minPrice === Infinity || maxPrice === -Infinity) {
-            const lastCandle = candlesList[candlesList.length - 1]
-            minPrice = lastCandle.low
-            maxPrice = lastCandle.high
-          }
-
-          const padding = (maxPrice - minPrice) * 0.1
-          priceZoomRef.current.min = minPrice - padding
-          priceZoomRef.current.max = maxPrice + padding
-        }
-
-        dragStartRef.current = {
-          isDragging: true,
-          startY: e.clientY,
-          startMin: priceZoomRef.current.min,
-          startMax: priceZoomRef.current.max,
-        }
+      dragStartRef.current = {
+        isDragging: false,
+        pending: true,
+        startX: e.clientX,
+        startY: e.clientY,
+        startMin: priceZoomRef.current.min,
+        startMax: priceZoomRef.current.max,
       }
     }
 
     const handlePriceMouseMove = (e) => {
-      if (!dragStartRef.current.isDragging) return
+      const drag = dragStartRef.current
+      if (!drag.pending && !drag.isDragging) return
 
       const container = priceContainerRef.current
-      if (!container || !candleSeriesRef.current) return
+      const chart = priceChartRef.current
+      const candlesList = candlesRef.current
+      if (!container || !chart || !candlesList.length) return
 
-      const dy = e.clientY - dragStartRef.current.startY
-      // We drag down to shift the price scale up
+      const dx = e.clientX - drag.startX
+      const dy = e.clientY - drag.startY
+
+      if (drag.pending && !drag.isDragging) {
+        if (Math.abs(dx) < VERTICAL_PAN_THRESHOLD_PX && Math.abs(dy) < VERTICAL_PAN_THRESHOLD_PX) {
+          return
+        }
+
+        if (Math.abs(dy) <= Math.abs(dx)) {
+          dragStartRef.current.pending = false
+          return
+        }
+
+        if (!beginVerticalPan(chart, candlesList)) {
+          dragStartRef.current.pending = false
+          return
+        }
+
+        dragStartRef.current = {
+          ...dragStartRef.current,
+          pending: false,
+          isDragging: true,
+          startMin: priceZoomRef.current.min,
+          startMax: priceZoomRef.current.max,
+        }
+      }
+
+      if (!dragStartRef.current.isDragging) return
+
       const range = dragStartRef.current.startMax - dragStartRef.current.startMin
-      const height = container.clientHeight
-      const priceDelta = (dy / height) * range
+      if (!Number.isFinite(range) || range <= 0) return
 
-      // Shift the bounds
+      const height = container.clientHeight || 1
+      const priceDelta = (dy / height) * range
       const nextMin = dragStartRef.current.startMin + priceDelta
       const nextMax = dragStartRef.current.startMax + priceDelta
 
-      priceZoomRef.current.min = nextMin
-      priceZoomRef.current.max = nextMax
-
-      // Apply the manual price range to autoscaleInfoProvider
-      candleSeriesRef.current.applyOptions({
-        autoscaleInfoProvider: () => ({
-          priceRange: {
-            minValue: nextMin,
-            maxValue: nextMax,
-          },
-        }),
-      })
+      applyManualPriceRange(chart, priceZoomRef, nextMin, nextMax)
     }
 
     const handlePriceMouseUp = () => {
-      dragStartRef.current.isDragging = false
+      dragStartRef.current.pending = false
+      timeRangeAtPanStartRef.current = null
+      if (dragStartRef.current.isDragging) {
+        dragStartRef.current.isDragging = false
+        restoreChartScroll()
+      }
     }
 
     const priceContainer = priceContainerRef.current
     if (priceContainer) {
       priceContainer.addEventListener('wheel', handlePriceWheel, { capture: true, passive: false })
       priceContainer.addEventListener('dblclick', handleDblClick, { capture: true })
-      priceContainer.addEventListener('mousedown', handlePriceMouseDown)
+      priceContainer.addEventListener('mousedown', handlePriceMouseDown, { capture: true })
       window.addEventListener('mousemove', handlePriceMouseMove)
       window.addEventListener('mouseup', handlePriceMouseUp)
     }
@@ -797,7 +800,7 @@ export default function ChartPanel({
       if (priceContainer) {
         priceContainer.removeEventListener('wheel', handlePriceWheel, { capture: true })
         priceContainer.removeEventListener('dblclick', handleDblClick, { capture: true })
-        priceContainer.removeEventListener('mousedown', handlePriceMouseDown)
+        priceContainer.removeEventListener('mousedown', handlePriceMouseDown, { capture: true })
       }
       window.removeEventListener('mousemove', handlePriceMouseMove)
       window.removeEventListener('mouseup', handlePriceMouseUp)
@@ -988,7 +991,14 @@ export default function ChartPanel({
         standardPivotSeriesRef.current.push(lineSeries)
       })
     })
-  }, [chartPreferences.showStandardPivots, chartPreferences.showHistoricalPivots, pivotData, chartPreferences.pivotType, hiddenIndicators])
+  }, [
+    chartPreferences.showStandardPivots,
+    chartPreferences.showHistoricalPivots,
+    chartPreferences.pivotsBack,
+    pivotData,
+    chartPreferences.pivotType,
+    hiddenIndicators,
+  ])
 
   useEffect(() => {
     window.dispatchEvent(new Event('resize'))
@@ -1511,7 +1521,7 @@ export default function ChartPanel({
                 },
                 {
                   id: 'standard-pivots',
-                  label: `Pivots ${getPivotTypeName(chartPreferences.pivotType)} Auto ${chartPreferences.pivotsBack || 15}`,
+                  label: `Pivots ${getPivotTypeName(chartPreferences.pivotType)} ${pivotData?.standardPeriods?.periodType ? getPivotPeriodLabel(pivotData.standardPeriods.periodType) : 'Auto'} ${chartPreferences.pivotsBack || 15}`,
                   active: chartPreferences.showStandardPivots,
                   hasSettings: true,
                   onRemove: () => updatePreference('showStandardPivots')
@@ -1672,22 +1682,20 @@ export default function ChartPanel({
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Pivots Timeframe</label>
-                <select
-                  value="auto"
-                  disabled
+                <div
                   style={{
                     background: 'var(--bg-raised)',
                     border: '1px solid var(--border-medium)',
                     borderRadius: '8px',
                     padding: '6px 10px',
                     fontSize: '12px',
-                    color: 'var(--text-secondary)',
-                    outline: 'none',
-                    cursor: 'not-allowed'
+                    color: 'var(--text-primary)',
                   }}
                 >
-                  <option value="auto">Auto</option>
-                </select>
+                  Auto → {pivotData?.standardPeriods?.periodType
+                    ? getPivotPeriodLabel(pivotData.standardPeriods.periodType)
+                    : '—'}
+                </div>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -1714,7 +1722,9 @@ export default function ChartPanel({
               </div>
             </div>
             <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end' }}>
-              <button onClick={() => setShowPivotSettings(false)} style={{
+              <button onClick={() => {
+                setShowPivotSettings(false)
+              }} style={{
                 background: 'var(--accent-primary)',
                 color: '#fff',
                 border: 'none',

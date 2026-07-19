@@ -10,6 +10,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@forge/pivot': path.resolve(__dirname, '../supabase/functions/_shared/pivotPoints.ts'),
+      '@forge/market-structure': path.resolve(__dirname, '../supabase/functions/_shared/marketStructure.ts'),
     },
   },
   server: {

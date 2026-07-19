@@ -13,6 +13,11 @@ import {
 } from './supabaseClient'
 import { buildPivotData, sanitizePivotTimeframe } from '@forge/pivot'
 import {
+  buildMarketStructure,
+  computeSignalAgreement,
+  derivePrimaryTrend,
+} from '@forge/market-structure'
+import {
   DEFAULT_CHART_PREFERENCES,
   sanitizePreferences,
 } from './utils/userPreferences'
@@ -278,45 +283,13 @@ async function fetchPivotData(symbol, timeframe, candles, pivotType = 'tradition
   }
 }
 
-function findSwings(candles, lookback = 2) {
-  const swingHighs = []
-  const swingLows = []
-
-  if (candles.length < lookback * 2 + 1) return { swingHighs, swingLows }
-
-  for (let i = lookback; i < candles.length - lookback; i++) {
-    const currentHigh = candles[i].high
-    const currentLow = candles[i].low
-    const leftHighs = candles.slice(i - lookback, i).map((c) => c.high)
-    const rightHighs = candles.slice(i + 1, i + lookback + 1).map((c) => c.high)
-    const leftLows = candles.slice(i - lookback, i).map((c) => c.low)
-    const rightLows = candles.slice(i + 1, i + lookback + 1).map((c) => c.low)
-
-    if (currentHigh > Math.max(...leftHighs) && currentHigh > Math.max(...rightHighs)) {
-      swingHighs.push({ time: candles[i].time, price: currentHigh })
-    }
-    if (currentLow < Math.min(...leftLows) && currentLow < Math.min(...rightLows)) {
-      swingLows.push({ time: candles[i].time, price: currentLow })
-    }
-  }
-
-  return { swingHighs, swingLows }
-}
-
-function nearestSupportResistance(currentPrice, swingHighs, swingLows) {
-  const supports = swingLows.filter((s) => s.price < currentPrice)
-  const resistances = swingHighs.filter((r) => r.price > currentPrice)
-  const nearestSupport = supports.length ? supports.reduce((best, item) => (item.price > best.price ? item : best), supports[0]) : null
-  const nearestResistance = resistances.length ? resistances.reduce((best, item) => (item.price < best.price ? item : best), resistances[0]) : null
-  return { nearestSupport, nearestResistance }
-}
-
 function buildTechnicalAnalysis(candles, selectedSymbol, selectedInterval) {
   if (candles.length < 60) throw new Error('Not enough candles for analysis.')
 
   const latest = candles[candles.length - 1]
-  const { swingHighs, swingLows } = findSwings(candles, 2)
-  const { nearestSupport, nearestResistance } = nearestSupportResistance(latest.close, swingHighs, swingLows)
+  const rsiSeries = candles.map((c) => c.rsi14 ?? null)
+  const structure = buildMarketStructure(candles, rsiSeries)
+  const { nearestSupport, nearestResistance, swingHighs, swingLows } = structure
 
   const trend = latest.ema20 == null || latest.ema50 == null
     ? 'unknown'
@@ -396,8 +369,8 @@ function buildTechnicalAnalysis(candles, selectedSymbol, selectedInterval) {
     ema50: latest.ema50,
     nearestSupport,
     nearestResistance,
-    swingHighs: swingHighs.slice(-5),
-    swingLows: swingLows.slice(-5),
+    swingHighs: swingHighs.slice(-5).map((s) => ({ time: s.time, price: s.price })),
+    swingLows: swingLows.slice(-5).map((s) => ({ time: s.time, price: s.price })),
     bullishScenario,
     bearishScenario,
     invalidation,
@@ -720,28 +693,18 @@ export default function App() {
         ? (((latest.close - prev.close) / prev.close) * 100).toFixed(4)
         : 0
 
-    // Compute swing highs / lows (simplified: local peaks over last 50 candles)
-    const slice = candleData.slice(-50)
-    const swingHighs = []
-    const swingLows = []
-    for (let i = 2; i < slice.length - 2; i++) {
-      if (
-        slice[i].high > slice[i - 1].high &&
-        slice[i].high > slice[i - 2].high &&
-        slice[i].high > slice[i + 1].high &&
-        slice[i].high > slice[i + 2].high
-      ) {
-        swingHighs.push(slice[i].high)
-      }
-      if (
-        slice[i].low < slice[i - 1].low &&
-        slice[i].low < slice[i - 2].low &&
-        slice[i].low < slice[i + 1].low &&
-        slice[i].low < slice[i + 2].low
-      ) {
-        swingLows.push(slice[i].low)
-      }
-    }
+    const analysisSlice = candleData.slice(-100)
+    const rsiSeries = analysisSlice.map((c) => c.rsi14 ?? null)
+    const marketStructure = buildMarketStructure(analysisSlice, rsiSeries)
+    const {
+      atr,
+      divergence,
+      srZones,
+      swingHighs,
+      swingLows,
+      nearestSupport,
+      nearestResistance,
+    } = marketStructure
 
     const last5 = candleData.slice(-5)
 
@@ -750,6 +713,23 @@ export default function App() {
     const fibPivots = currentPivotData?.fibonacci?.pivots ?? null
     const traditionalPivots = currentPivotData?.traditional?.pivots ?? currentPivotData?.binance?.pivots ?? null
     const traditionalAnalysis = currentPivotData?.traditional?.analysis ?? currentPivotData?.binance?.analysis ?? null
+
+    const primaryTrend = derivePrimaryTrend(latest.close, latest.ema20, latest.ema50)
+    const pivotSessionBias = pivotAnalysis?.bias ?? 'neutral'
+    const signalAgreement = computeSignalAgreement({
+      price: latest.close,
+      ema20: latest.ema20,
+      ema50: latest.ema50,
+      rsi: latest.rsi14,
+      macdLine: latest.macd,
+      signalLine: latest.macdSignal,
+      primaryTrend,
+      pivotSessionBias,
+      hasSupportZone: Boolean(nearestSupport),
+      hasResistanceZone: Boolean(nearestResistance),
+      divergence,
+      atInflectionPoint: Boolean(pivotAnalysis?.atInflectionPoint),
+    })
 
     const payload = {
       symbol,
@@ -765,10 +745,14 @@ export default function App() {
         histogram: latest.macdHist ?? null,
       },
       volume: latest.volume ?? null,
-      swingHighs: swingHighs.slice(-5),
-      swingLows: swingLows.slice(-5),
-      support: swingLows.length ? swingLows[swingLows.length - 1] : null,
-      resistance: swingHighs.length ? swingHighs[swingHighs.length - 1] : null,
+      atr,
+      divergence,
+      srZones,
+      signalAgreement,
+      swingHighs: swingHighs.slice(-5).map((s) => s.price),
+      swingLows: swingLows.slice(-5).map((s) => s.price),
+      support: nearestSupport?.price ?? null,
+      resistance: nearestResistance?.price ?? null,
       recentCloses: last5.map((c) => c.close),
       recentVolumes: last5.map((c) => c.volume),
       obi: null,

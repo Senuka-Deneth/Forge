@@ -11,6 +11,11 @@ import {
   htfCandlesToGroupedPeriods,
   isMondayUtc,
   sanitizePivotTimeframe,
+  projectPivotPeriodEnd,
+  resolvePeriodEndTime,
+  countPivotLevelsForType,
+  maxPivotsBackForType,
+  PIVOT_SEGMENT_CAP,
 } from '@forge/pivot'
 
 const OHLC = { high: 110, low: 90, close: 100, open: 95 }
@@ -158,6 +163,62 @@ describe('analyzePriceVsPivots — sparse levels (DM)', () => {
   })
 })
 
+describe('projectPivotPeriodEnd / resolvePeriodEndTime', () => {
+  const dailyStart = 1704067200 // 2024-01-01 UTC
+
+  it('projects daily period end +1 day', () => {
+    const end = projectPivotPeriodEnd(dailyStart, 'daily')
+    expect(end).toBe(dailyStart + 86400)
+  })
+
+  it('projects weekly period end +7 days', () => {
+    const end = projectPivotPeriodEnd(dailyStart, 'weekly')
+    expect(end).toBe(dailyStart + 7 * 86400)
+  })
+
+  it('historical segment ends at next period start', () => {
+    const curr = {
+      startTime: 1704067200,
+      endTime: 1704067200,
+      isCurrent: false,
+      high: 1, low: 1, close: 1, open: 1, period: 'a',
+    }
+    const next = {
+      startTime: 1706745600,
+      endTime: 1706745600,
+      isCurrent: false,
+      high: 1, low: 1, close: 1, open: 1, period: 'b',
+    }
+    expect(resolvePeriodEndTime(curr, next, 'monthly')).toBe(1706745600)
+    expect(resolvePeriodEndTime(curr, next, 'monthly')).toBeGreaterThan(curr.startTime)
+  })
+
+  it('current period ends at projected calendar boundary', () => {
+    const curr = {
+      startTime: dailyStart,
+      endTime: dailyStart,
+      isCurrent: true,
+      high: 1, low: 1, close: 1, open: 1, period: 'current',
+    }
+    expect(resolvePeriodEndTime(curr, null, 'daily')).toBe(dailyStart + 86400)
+  })
+})
+
+describe('500-segment cap helpers', () => {
+  it('counts levels per pivot type', () => {
+    expect(countPivotLevelsForType('traditional')).toBe(11)
+    expect(countPivotLevelsForType('fibonacci')).toBe(7)
+    expect(countPivotLevelsForType('dm')).toBe(3)
+    expect(countPivotLevelsForType('classic')).toBe(9)
+  })
+
+  it('maxPivotsBack respects 500 segment cap', () => {
+    expect(maxPivotsBackForType('traditional')).toBe(Math.floor(PIVOT_SEGMENT_CAP / 11))
+    expect(maxPivotsBackForType('dm')).toBe(Math.floor(PIVOT_SEGMENT_CAP / 3))
+    expect(maxPivotsBackForType('traditional', 5)).toBe(Math.floor(PIVOT_SEGMENT_CAP / 5))
+  })
+})
+
 describe('buildPivotDataFromHtf — standardPeriods count', () => {
   function makeHtfCandles(count) {
     const base = 1704067200
@@ -216,5 +277,40 @@ describe('buildPivotDataFromHtf — standardPeriods count', () => {
     expect(result.standardPeriods.items[0]).toHaveProperty('endTime')
     expect(result.standardPeriods.items[0]).toHaveProperty('isCurrent')
     expect(result.standardPeriods.items[0]).toHaveProperty('pivots')
+  })
+
+  it('current period endTime extends beyond last chart candle', () => {
+    const htf = makeHtfCandles(17)
+    const lastHtf = htf[htf.length - 1]
+    const chartCandles = [
+      { time: lastHtf.time + 86400, open: 100, high: 110, low: 90, close: 105 },
+    ]
+    const result = buildPivotDataFromHtf({
+      htfCandles: htf,
+      chartCandles,
+      chartInterval: '1d',
+      symbol: 'BTCUSDT',
+      chartPrefs: { pivotsBack: 15 },
+    })
+    const current = result.standardPeriods.items.find((i) => i.isCurrent)
+    expect(current).toBeDefined()
+    expect(current.endTime).toBeGreaterThan(chartCandles[0].time)
+    expect(current.endTime).toBe(projectPivotPeriodEnd(lastHtf.time, 'monthly'))
+  })
+
+  it('historical periods span start to next period start', () => {
+    const htf = makeHtfCandles(17)
+    const result = buildPivotDataFromHtf({
+      htfCandles: htf,
+      chartCandles,
+      chartInterval: '1d',
+      symbol: 'BTCUSDT',
+      chartPrefs: { pivotsBack: 15, showHistoricalPivots: true },
+    })
+    const historical = result.standardPeriods.items.filter((i) => !i.isCurrent)
+    expect(historical.length).toBeGreaterThan(0)
+    historical.forEach((item) => {
+      expect(item.endTime).toBeGreaterThan(item.startTime)
+    })
   })
 })

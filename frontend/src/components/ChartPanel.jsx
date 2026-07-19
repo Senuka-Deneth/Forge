@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   createChart,
-  createSeriesMarkers,
   CandlestickSeries,
   HistogramSeries,
   LineSeries,
@@ -16,22 +15,49 @@ import {
   isOverPriceScale,
   shouldHandleVerticalWheel,
 } from '../utils/manualPriceScale'
-import { getPivotPeriodLabel, resolvePivotPeriod } from '@forge/pivot'
+import {
+  getPivotPeriodLabel,
+  resolvePivotPeriod,
+  getChartIntervalSeconds,
+  PIVOT_LEVEL_KEYS,
+  PIVOT_SEGMENT_CAP,
+} from '@forge/pivot'
+import {
+  PIVOT_LEVEL_LABELS,
+  STANDARD_PIVOT_COLOR,
+  clampPivotsBack,
+  createDefaultPivotLevelOptions,
+  getEnabledPivotLevels,
+} from '../utils/pivotChartPrefs'
+import { PivotSegmentsPrimitive } from '../utils/pivotSegmentsPrimitive'
 
-const STANDARD_PIVOT_COLOR = 'rgba(255, 159, 67, 0.92)'
+function buildCandleDataWithWhitespace(candles, periodEndTime, interval) {
+  const data = candles.map((c) => ({
+    time: c.time,
+    open: c.open,
+    high: c.high,
+    low: c.low,
+    close: c.close,
+  }))
+  if (!candles.length || !periodEndTime) return data
 
-const standardPivotConfig = {
-  PP: { color: STANDARD_PIVOT_COLOR, width: 2, style: LineStyle.Solid, label: 'P' },
-  R1: { color: STANDARD_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'R1' },
-  R2: { color: STANDARD_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'R2' },
-  R3: { color: STANDARD_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'R3' },
-  R4: { color: STANDARD_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'R4' },
-  R5: { color: STANDARD_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'R5' },
-  S1: { color: STANDARD_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'S1' },
-  S2: { color: STANDARD_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'S2' },
-  S3: { color: STANDARD_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'S3' },
-  S4: { color: STANDARD_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'S4' },
-  S5: { color: STANDARD_PIVOT_COLOR, width: 1, style: LineStyle.Solid, label: 'S5' },
+  const lastTime = candles[candles.length - 1].time
+  if (periodEndTime <= lastTime) return data
+
+  const step = getChartIntervalSeconds(interval, candles)
+  let t = lastTime + step
+  while (t <= periodEndTime) {
+    data.push({ time: t })
+    t += step
+  }
+  return data
+}
+
+function getCurrentPivotPeriodEnd(pivotData) {
+  const items = pivotData?.standardPeriods?.items
+  if (!items?.length) return null
+  const current = items.find((item) => item.isCurrent) ?? items[items.length - 1]
+  return current?.endTime ?? null
 }
 
 function subtractFiveMonths(unixTime) {
@@ -194,7 +220,8 @@ export default function ChartPanel({
   const resistanceLineRef = useRef(null)
 
   const standardPivotSeriesRef = useRef([])
-  const standardPivotMarkerPluginsRef = useRef([])
+  const pivotPrimitiveRef = useRef(null)
+  const pivotPeriodEndRef = useRef(null)
 
   const hasAppliedInitialZoomRef = useRef(false)
   const isInitializedRef = useRef(false)
@@ -239,14 +266,7 @@ export default function ChartPanel({
     const chart = priceChartRef.current
     if (!chart) return
 
-    standardPivotMarkerPluginsRef.current.forEach((markerPlugin) => {
-      try {
-        markerPlugin.detach()
-      } catch {
-        // Ignore stale marker plugins
-      }
-    })
-    standardPivotMarkerPluginsRef.current = []
+    pivotPrimitiveRef.current?.clear()
 
     standardPivotSeriesRef.current.forEach((series) => {
       try {
@@ -514,6 +534,10 @@ export default function ChartPanel({
 
     candleSeriesRef.current = candleSeries
     volumeSeriesRef.current = volumeSeries
+
+    const pivotPrimitive = new PivotSegmentsPrimitive()
+    candleSeries.attachPrimitive(pivotPrimitive)
+    pivotPrimitiveRef.current = pivotPrimitive
     ema20SeriesRef.current = ema20Series
     ema50SeriesRef.current = ema50Series
 
@@ -806,6 +830,7 @@ export default function ChartPanel({
       window.removeEventListener('mouseup', handlePriceMouseUp)
       window.removeEventListener('resize', handleResize)
       window.removeEventListener('themeChanged', handleThemeChange)
+      pivotPrimitiveRef.current = null
       priceChart.remove()
       rsiChart.remove()
       macdChart.remove()
@@ -829,8 +854,16 @@ export default function ChartPanel({
       return
     }
 
+    const showPivots = chartPreferences.showStandardPivots && !hiddenIndicators.includes('standard-pivots')
+    const periodEnd = showPivots ? getCurrentPivotPeriodEnd(pivotData) : null
+    pivotPeriodEndRef.current = periodEnd
+    const candleData = showPivots && periodEnd
+      ? buildCandleDataWithWhitespace(candles, periodEnd, interval)
+      : candles.map((c) => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close }))
+    const needsFullCandleSet = showPivots && periodEnd && periodEnd > candles[candles.length - 1].time
+
     if (!isInitializedRef.current) {
-      candleSeriesRef.current.setData(candles.map((c) => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close })))
+      candleSeriesRef.current.setData(candleData)
       volumeSeriesRef.current.setData(candles.map((c) => ({
         time: c.time,
         value: c.volume,
@@ -847,6 +880,8 @@ export default function ChartPanel({
         color: c.macdHist >= 0 ? 'rgba(34, 197, 94, 0.55)' : 'rgba(239, 68, 68, 0.55)',
       })))
       isInitializedRef.current = true
+    } else if (needsFullCandleSet) {
+      candleSeriesRef.current.setData(candleData)
     } else {
       const c = candles[candles.length - 1]
       candleSeriesRef.current.update({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close })
@@ -897,7 +932,7 @@ export default function ChartPanel({
       priceChartRef.current.timeScale().setVisibleRange({ from, to })
       hasAppliedInitialZoomRef.current = true
     }
-  }, [candles, analysis])
+  }, [candles, analysis, pivotData, chartPreferences.showStandardPivots, hiddenIndicators, interval])
 
   useEffect(() => {
     if (candleSeriesRef.current) {
@@ -941,6 +976,7 @@ export default function ChartPanel({
 
 
   useEffect(() => {
+    const rebuildStart = performance.now()
     clearStandardPivotSegments()
 
     if (!chartPreferences.showStandardPivots || !pivotData?.standardPeriods?.items || !priceChartRef.current || hiddenIndicators.includes('standard-pivots')) {
@@ -950,53 +986,88 @@ export default function ChartPanel({
     const items = pivotData.standardPeriods.items
     if (!items.length) return
 
-    // Sort items by startTime to ensure stable drawing order.
+    const pivotType = chartPreferences.pivotType || 'traditional'
+    const levelOptions = chartPreferences.pivotLevelOptions || createDefaultPivotLevelOptions()
+    const enabledLevels = getEnabledPivotLevels(levelOptions)
+    const baseLineWidth = chartPreferences.pivotLineWidth || 1
+    const maxPeriods = Math.max(1, Math.floor(PIVOT_SEGMENT_CAP / Math.max(1, enabledLevels.length)))
+
     const sortedItems = [...items].sort((a, b) => a.startTime - b.startTime)
+    const visibleItems = chartPreferences.showHistoricalPivots !== false
+      ? sortedItems.slice(-maxPeriods)
+      : [sortedItems[sortedItems.length - 1]].filter(Boolean)
 
-    sortedItems.forEach((periodItem) => {
-      // Validate time bounds to prevent identical time points which cause chart errors.
-      if (periodItem.startTime >= periodItem.endTime) {
-        // Skip invalid/zero-length segments.
-        return
-      }
+    const labelStyle = {
+      showLabels: chartPreferences.showPivotLabels !== false,
+      showPrices: chartPreferences.showPivotPrices !== false,
+      labelsPosition: chartPreferences.pivotLabelsPosition === 'right' ? 'right' : 'left',
+    }
 
-      Object.entries(standardPivotConfig).forEach(([level, cfg]) => {
+    const primitiveSegments = []
+    let segmentCount = 0
+
+    visibleItems.forEach((periodItem) => {
+      if (periodItem.startTime >= periodItem.endTime) return
+
+      enabledLevels.forEach((level) => {
+        if (segmentCount >= PIVOT_SEGMENT_CAP) return
         const value = periodItem.pivots?.[level]
         if (value === undefined || value === null || !Number.isFinite(value)) return
 
-        // Render each period+level as its own series so historical pivot blocks never merge.
-        const lineSeries = priceChartRef.current.addSeries(LineSeries, {
-          color: cfg.color,
-          lineWidth: cfg.width,
-          lineStyle: cfg.style,
-          priceLineVisible: false,
-          lastValueVisible: Boolean(periodItem.isCurrent),
-          crosshairMarkerVisible: false,
+        const levelCfg = levelOptions[level] || {}
+        const color = levelCfg.color || STANDARD_PIVOT_COLOR
+        const lineWidth = level === 'PP' ? Math.max(baseLineWidth, 2) : baseLineWidth
+        const isCurrent = Boolean(periodItem.isCurrent)
+
+        primitiveSegments.push({
+          startTime: periodItem.startTime,
+          endTime: periodItem.endTime,
+          price: value,
+          level,
+          label: PIVOT_LEVEL_LABELS[level],
+          color,
+          lineWidth,
+          drawLine: !isCurrent,
         })
-        lineSeries.setData([
-          { time: periodItem.startTime, value },
-          { time: periodItem.endTime, value },
-        ])
+        segmentCount += 1
 
-        const markerPlugin = createSeriesMarkers(lineSeries, [{
-          time: periodItem.startTime,
-          position: 'inBar',
-          color: 'rgba(255, 159, 67, 0.85)',
-          shape: 'circle',
-          text: cfg.label,
-          size: 0
-        }], { autoScale: false })
-
-        standardPivotMarkerPluginsRef.current.push(markerPlugin)
-        standardPivotSeriesRef.current.push(lineSeries)
+        if (isCurrent) {
+          const lineSeries = priceChartRef.current.addSeries(LineSeries, {
+            color,
+            lineWidth,
+            lineStyle: LineStyle.Solid,
+            priceLineVisible: false,
+            lastValueVisible: true,
+            crosshairMarkerVisible: false,
+          })
+          lineSeries.setData([
+            { time: periodItem.startTime, value },
+            { time: periodItem.endTime, value },
+          ])
+          standardPivotSeriesRef.current.push(lineSeries)
+        }
       })
     })
+
+    pivotPrimitiveRef.current?.setSegments(primitiveSegments, labelStyle)
+
+    if (import.meta.env.DEV) {
+      const elapsed = performance.now() - rebuildStart
+      console.debug(
+        `[pivots] rebuild ${elapsed.toFixed(1)}ms | periods=${visibleItems.length} segments=${segmentCount} series=${standardPivotSeriesRef.current.length}`,
+      )
+    }
   }, [
     chartPreferences.showStandardPivots,
     chartPreferences.showHistoricalPivots,
     chartPreferences.pivotsBack,
-    pivotData,
     chartPreferences.pivotType,
+    chartPreferences.showPivotLabels,
+    chartPreferences.showPivotPrices,
+    chartPreferences.pivotLabelsPosition,
+    chartPreferences.pivotLineWidth,
+    chartPreferences.pivotLevelOptions,
+    pivotData,
     hiddenIndicators,
   ])
 
@@ -1621,7 +1692,25 @@ export default function ChartPanel({
         </div>
 
         {/* Dynamic Glassmorphic settings popover overlay */}
-        {showPivotSettings && chartPreferences.showStandardPivots && !hiddenIndicators.includes('standard-pivots') && (
+        {showPivotSettings && chartPreferences.showStandardPivots && !hiddenIndicators.includes('standard-pivots') && (() => {
+          const levelOptions = chartPreferences.pivotLevelOptions || createDefaultPivotLevelOptions()
+          const enabledCount = getEnabledPivotLevels(levelOptions).length
+          const pivotsBackMax = clampPivotsBack(
+            50,
+            chartPreferences.pivotType || 'traditional',
+            levelOptions,
+          )
+          const inputStyle = {
+            background: 'var(--bg-raised)',
+            border: '1px solid var(--border-medium)',
+            borderRadius: '8px',
+            padding: '6px 10px',
+            fontSize: '12px',
+            color: 'var(--text-primary)',
+            outline: 'none',
+          }
+
+          return (
           <div className="pivot-settings-popover glass-panel" style={{
             position: 'absolute',
             top: '40px',
@@ -1631,7 +1720,9 @@ export default function ChartPanel({
             border: '1px solid var(--border-medium)',
             borderRadius: '16px',
             padding: '20px',
-            width: '320px',
+            width: '340px',
+            maxHeight: 'min(80vh, 640px)',
+            overflowY: 'auto',
             boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
             animation: 'fadeIn 0.2s ease-in-out',
             color: 'var(--text-primary)',
@@ -1648,17 +1739,16 @@ export default function ChartPanel({
                 <select
                   value={chartPreferences.pivotType || 'traditional'}
                   onChange={(e) => {
-                    onChartPreferencesChange((prev) => ({ ...prev, pivotType: e.target.value }))
+                    const pivotType = e.target.value
+                    onChartPreferencesChange((prev) => ({
+                      ...prev,
+                      pivotType,
+                      pivotsBack: clampPivotsBack(prev.pivotsBack, pivotType, prev.pivotLevelOptions),
+                    }))
                   }}
                   style={{
-                    background: 'var(--bg-raised)',
-                    border: '1px solid var(--border-medium)',
-                    borderRadius: '8px',
-                    padding: '6px 10px',
-                    fontSize: '12px',
-                    color: 'var(--text-primary)',
-                    outline: 'none',
-                    cursor: 'pointer'
+                    ...inputStyle,
+                    cursor: 'pointer',
                   }}
                 >
                   <option value="traditional">Traditional</option>
@@ -1719,22 +1809,120 @@ export default function ChartPanel({
                 <input
                   type="number"
                   min="1"
-                  max="50"
+                  max={pivotsBackMax}
                   value={chartPreferences.pivotsBack || 15}
                   onChange={(e) => {
-                    const val = Math.max(1, Math.min(50, parseInt(e.target.value) || 15))
+                    const val = clampPivotsBack(
+                      parseInt(e.target.value, 10) || 15,
+                      chartPreferences.pivotType || 'traditional',
+                      levelOptions,
+                    )
                     onChartPreferencesChange((prev) => ({ ...prev, pivotsBack: val }))
                   }}
-                  style={{
-                    background: 'var(--bg-raised)',
-                    border: '1px solid var(--border-medium)',
-                    borderRadius: '8px',
-                    padding: '6px 10px',
-                    fontSize: '12px',
-                    color: 'var(--text-primary)',
-                    outline: 'none',
-                  }}
+                  style={inputStyle}
                 />
+                <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                  Max {pivotsBackMax} ({enabledCount} levels, {PIVOT_SEGMENT_CAP} segment cap)
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                <label style={{ fontSize: '12px', color: 'var(--text-primary)' }}>Show labels</label>
+                <input
+                  type="checkbox"
+                  checked={chartPreferences.showPivotLabels !== false}
+                  onChange={(e) => onChartPreferencesChange((prev) => ({ ...prev, showPivotLabels: e.target.checked }))}
+                  style={{ width: '14px', height: '14px', cursor: 'pointer' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                <label style={{ fontSize: '12px', color: 'var(--text-primary)' }}>Show prices</label>
+                <input
+                  type="checkbox"
+                  checked={chartPreferences.showPivotPrices !== false}
+                  onChange={(e) => onChartPreferencesChange((prev) => ({ ...prev, showPivotPrices: e.target.checked }))}
+                  style={{ width: '14px', height: '14px', cursor: 'pointer' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Labels position</label>
+                <select
+                  value={chartPreferences.pivotLabelsPosition === 'right' ? 'right' : 'left'}
+                  onChange={(e) => onChartPreferencesChange((prev) => ({ ...prev, pivotLabelsPosition: e.target.value }))}
+                  style={{ ...inputStyle, cursor: 'pointer' }}
+                >
+                  <option value="left">Left</option>
+                  <option value="right">Right</option>
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Line width</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="4"
+                  value={chartPreferences.pivotLineWidth || 1}
+                  onChange={(e) => {
+                    const val = Math.max(1, Math.min(4, parseInt(e.target.value, 10) || 1))
+                    onChartPreferencesChange((prev) => ({ ...prev, pivotLineWidth: val }))
+                  }}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
+                <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Levels</label>
+                {PIVOT_LEVEL_KEYS.map((level) => {
+                  const cfg = levelOptions[level] || { enabled: true, color: STANDARD_PIVOT_COLOR }
+                  return (
+                    <div key={level} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="checkbox"
+                        checked={cfg.enabled !== false}
+                        onChange={(e) => {
+                          onChartPreferencesChange((prev) => {
+                            const nextLevelOptions = {
+                              ...(prev.pivotLevelOptions || createDefaultPivotLevelOptions()),
+                              [level]: {
+                                ...((prev.pivotLevelOptions || createDefaultPivotLevelOptions())[level]),
+                                enabled: e.target.checked,
+                              },
+                            }
+                            return {
+                              ...prev,
+                              pivotLevelOptions: nextLevelOptions,
+                              pivotsBack: clampPivotsBack(prev.pivotsBack, prev.pivotType, nextLevelOptions),
+                            }
+                          })
+                        }}
+                        style={{ width: '14px', height: '14px', cursor: 'pointer', flexShrink: 0 }}
+                      />
+                      <span style={{ fontSize: '11px', width: '28px', color: 'var(--text-secondary)' }}>
+                        {PIVOT_LEVEL_LABELS[level]}
+                      </span>
+                      <input
+                        type="color"
+                        value={cfg.color?.startsWith('#') ? cfg.color : '#ff9f43'}
+                        onChange={(e) => {
+                          onChartPreferencesChange((prev) => ({
+                            ...prev,
+                            pivotLevelOptions: {
+                              ...(prev.pivotLevelOptions || createDefaultPivotLevelOptions()),
+                              [level]: {
+                                ...((prev.pivotLevelOptions || createDefaultPivotLevelOptions())[level]),
+                                color: e.target.value,
+                              },
+                            },
+                          }))
+                        }}
+                        style={{ width: '28px', height: '22px', padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }}
+                      />
+                    </div>
+                  )
+                })}
               </div>
             </div>
             <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end' }}>
@@ -1752,7 +1940,8 @@ export default function ChartPanel({
               }}>Apply</button>
             </div>
           </div>
-        )}
+          )
+        })()}
         <div id="chart-container" className="chart-container" ref={priceContainerRef}></div>
         {(loading || error || (!candles.length && !loading)) && (
           <div className={`chart-state-overlay ${error ? 'error' : ''}`}>

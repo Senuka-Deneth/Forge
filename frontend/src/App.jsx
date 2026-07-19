@@ -11,7 +11,7 @@ import {
   invokeFunction,
   isEdgeFunctionUnavailableError,
 } from './supabaseClient'
-import { buildPivotData } from './utils/pivotPoints'
+import { buildPivotData, sanitizePivotTimeframe } from '@forge/pivot'
 
 const COMMON_QUOTES = ['USDT', 'BUSD', 'BTC', 'ETH', 'FDUSD']
 const BINANCE_KLINES_URL = 'https://api.binance.com/api/v3/klines'
@@ -27,6 +27,7 @@ const DEFAULT_CHART_PREFERENCES = {
   showStandardPivots: false,
   showHistoricalPivots: true,
   pivotType: 'traditional',
+  pivotTimeframe: 'auto',
   pivotsBack: 15,
 }
 
@@ -253,6 +254,8 @@ function sanitizePreferences(payload) {
     if (key in payload) {
       if (key === 'pivotType') {
         sanitized[key] = String(payload[key])
+      } else if (key === 'pivotTimeframe') {
+        sanitized[key] = sanitizePivotTimeframe(payload[key])
       } else if (key === 'pivotsBack') {
         sanitized[key] = Math.max(1, Math.min(50, Number(payload[key]) || 15))
       } else {
@@ -285,12 +288,14 @@ function saveLocalPreferences(userKey, preferences) {
 }
 
 async function fetchPivotData(symbol, timeframe, candles, pivotType = 'traditional', chartPrefs = DEFAULT_CHART_PREFERENCES) {
+  const prefs = { ...chartPrefs, pivotType }
   try {
     const data = await invokeFunction('calculate-pivots', {
       symbol,
       timeframe,
       candles,
       pivotType,
+      pivotTimeframe: sanitizePivotTimeframe(chartPrefs.pivotTimeframe),
       pivotsBack: chartPrefs.pivotsBack || 15,
       showHistoricalPivots: chartPrefs.showHistoricalPivots !== false,
     })
@@ -298,7 +303,7 @@ async function fetchPivotData(symbol, timeframe, candles, pivotType = 'tradition
     throw new Error(data?.error || 'Pivot function returned no pivot data.')
   } catch (edgeError) {
     console.warn('Supabase pivot calculation failed; using local fallback:', edgeError)
-    return buildPivotData(candles, timeframe, symbol, { ...chartPrefs, pivotType })
+    return buildPivotData(candles, timeframe, symbol, prefs)
   }
 }
 
@@ -690,25 +695,34 @@ export default function App() {
   useEffect(() => {
     if (!candles.length) return
 
-    const localPivotData = buildPivotData(candles, interval, symbol, chartPreferences)
-    if (localPivotData?.success) {
-      setPivotData(localPivotData)
+    let cancelled = false
+
+    const refreshPivots = async () => {
+      try {
+        const pivotResponse = await fetchPivotData(
+          symbol,
+          interval,
+          candles,
+          chartPreferences.pivotType || 'traditional',
+          chartPreferences,
+        )
+        if (!cancelled && pivotResponse?.success) {
+          setPivotData({ ...pivotResponse, symbol })
+        }
+      } catch (err) {
+        if (!cancelled) console.error('Failed to refresh pivots:', err)
+      }
     }
 
-    const edgeRefreshTimer = setTimeout(() => {
-      fetchPivotData(symbol, interval, candles, chartPreferences.pivotType || 'traditional', chartPreferences)
-        .then((pivotResponse) => {
-          if (pivotResponse?.success) setPivotData({ ...pivotResponse, symbol })
-        })
-        .catch((err) => {
-          console.error('Failed to refresh pivots from edge:', err)
-        })
-    }, 400)
+    refreshPivots()
 
-    return () => clearTimeout(edgeRefreshTimer)
+    return () => {
+      cancelled = true
+    }
   }, [
     candles,
     chartPreferences.pivotType,
+    chartPreferences.pivotTimeframe,
     chartPreferences.pivotsBack,
     chartPreferences.showHistoricalPivots,
     symbol,

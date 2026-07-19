@@ -6,88 +6,70 @@ Forge is a high-performance, real-time market visualization and AI-powered analy
 
 - **Real-time Visualization**: High-performance candlestick charts powered by `Lightweight Charts`.
 - **Advanced Technical Indicators**: Built-in EMA (20/50), RSI (14), and MACD with customizable timeframes.
-- **Pivot Point Analysis**: Automatic calculation of Classic and Fibonacci Pivot Points to identify key support and resistance levels.
-- **AI Market Intelligence**: Deep analysis using OpenRouter integration (Nvidia Nemotron model) for:
-    - Market Structure analysis
-    - Trend & Momentum evaluation
-    - Trade Logic & Risk assessment
-    - Anomaly detection
+- **Pivot Point Analysis**: TradingView-standard pivot levels (Traditional, Fibonacci, Woodie, Classic, DM, Camarilla) from native Binance HTF klines.
+- **AI Market Intelligence**: Deep analysis using OpenRouter integration for market structure, trend, and risk assessment.
 - **Responsive Design**: A stunning "Liquid Glass" UI that adapts to all screen sizes with full Dark/Light mode support.
 - **Live Data Streaming**: Seamless real-time price updates via Binance WebSockets.
 
 ## 🛠️ Tech Stack
 
-### Backend
-- **Framework**: Python 3.10+ (Flask)
-- **APIs**: Binance Public API, OpenRouter API
-- **Key Libraries**: `flask-cors`, `requests`, `python-dotenv`
+### Production (live serving path)
+- **Frontend**: React 18 + Vite (`frontend/`)
+- **Backend**: Supabase Edge Functions (`supabase/functions/`)
+  - `get-market-data` — chart candles
+  - `calculate-pivots` — pivot levels (see [docs/pivots.md](docs/pivots.md))
+  - `user-preferences`, `ai-analysis`
+- **Pivot source of truth**: `supabase/functions/_shared/pivotPoints.ts`
 
-### Frontend
-- **Framework**: React 18+ (Vite)
-- **Charting**: `lightweight-charts`
-- **Styling**: Modern CSS with "Liquid Glass" aesthetics
+### Legacy (not used by frontend)
+- **Flask backend** (`backend/`) — deprecated for serving; kept for local experiments only. Do not use `/api/pivots` (removed).
 
 ---
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Python 3.10 or higher
 - Node.js (v18+) and npm
-- [OpenRouter API Key](https://openrouter.ai/)
+- [Supabase CLI](https://supabase.com/docs/guides/cli) (for edge functions)
+- OpenRouter API key (for AI analysis)
 
-### 1. Backend Setup
-Navigate to the backend directory:
-```bash
-cd backend
-```
+### 1. Frontend
 
-Create and activate a virtual environment:
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows use `venv\Scripts\activate`
-```
-
-Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-Configure environment variables:
-Copy `backend/.env.example` to `backend/.env` and set your key, or create a `.env` file in the `backend/` directory with the following:
-```env
-OPENROUTER_API_KEY=your_api_key_here
-OPENROUTER_MODEL=nvidia/nemotron-3-super-120b-a12b:free
-OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-```
-
-Run the server:
-```bash
-python app.py
-```
-The backend will run on `http://127.0.0.1:5000`.
-
-### 2. Frontend Setup
-Navigate to the frontend directory:
 ```bash
 cd frontend
-```
-
-Install dependencies:
-```bash
 npm install
-```
-
-Start the development server:
-```bash
 npm run dev
 ```
-The application will be available at `http://localhost:5173`.
+
+App: `http://localhost:5173`
+
+Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in `frontend/.env` (see `.env.example`).
+
+### 2. Supabase Edge Functions (local)
+
+```bash
+supabase functions serve
+```
+
+Deploy: `supabase functions deploy calculate-pivots` (and other functions as needed).
+
+### 3. Legacy Flask (optional, not required)
+
+```bash
+cd backend
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+python app.py
+```
+
+Runs on `http://127.0.0.1:5050` — **not connected to the React app**.
 
 ---
 
-## 📸 Dashboard Overview
-The dashboard features an integrated sidebar for navigation, header controls for symbol and timeframe selection, and real-time status monitoring. Use the **AI Analysis** tab to trigger a deep-dive market evaluation based on current live data.
+## Pivot documentation
+
+See [docs/pivots.md](docs/pivots.md) for timeframe rules, Binance HTF behavior, and API response contract.
 
 ## 📄 License
+
 This project is for educational and personal use only. Use at your own risk in live trading.

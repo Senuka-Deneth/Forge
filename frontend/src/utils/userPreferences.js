@@ -1,4 +1,5 @@
 import { supabase } from '../supabaseClient'
+import { sanitizePivotTimeframe } from '@forge/pivot'
 
 export const DEFAULT_CHART_PREFERENCES = {
   showCandles: true,
@@ -11,6 +12,7 @@ export const DEFAULT_CHART_PREFERENCES = {
   showStandardPivots: false,
   showHistoricalPivots: true,
   pivotType: 'traditional',
+  pivotTimeframe: 'auto',
   pivotsBack: 15,
 }
 
@@ -22,6 +24,8 @@ export function sanitizePreferences(payload) {
     if (key in payload) {
       if (key === 'pivotType') {
         sanitized[key] = String(payload[key])
+      } else if (key === 'pivotTimeframe') {
+        sanitized[key] = sanitizePivotTimeframe(payload[key])
       } else if (key === 'pivotsBack') {
         sanitized[key] = Math.max(1, Math.min(50, Number(payload[key]) || 15))
       } else {

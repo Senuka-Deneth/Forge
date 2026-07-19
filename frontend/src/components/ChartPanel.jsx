@@ -16,7 +16,7 @@ import {
   isOverPriceScale,
   shouldHandleVerticalWheel,
 } from '../utils/manualPriceScale'
-import { getPivotPeriodLabel } from '../utils/pivotPoints'
+import { getPivotPeriodLabel, resolvePivotPeriod } from '@forge/pivot'
 
 const STANDARD_PIVOT_COLOR = 'rgba(255, 159, 67, 0.92)'
 
@@ -1682,7 +1682,11 @@ export default function ChartPanel({
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Pivots Timeframe</label>
-                <div
+                <select
+                  value={chartPreferences.pivotTimeframe || 'auto'}
+                  onChange={(e) => {
+                    onChartPreferencesChange((prev) => ({ ...prev, pivotTimeframe: e.target.value }))
+                  }}
                   style={{
                     background: 'var(--bg-raised)',
                     border: '1px solid var(--border-medium)',
@@ -1690,12 +1694,24 @@ export default function ChartPanel({
                     padding: '6px 10px',
                     fontSize: '12px',
                     color: 'var(--text-primary)',
+                    outline: 'none',
+                    cursor: 'pointer',
                   }}
                 >
-                  Auto → {pivotData?.standardPeriods?.periodType
-                    ? getPivotPeriodLabel(pivotData.standardPeriods.periodType)
-                    : '—'}
-                </div>
+                  <option value="auto">Auto</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="yearly">Yearly</option>
+                </select>
+                {chartPreferences.pivotTimeframe === 'auto' && (
+                  <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                    Resolves to {getPivotPeriodLabel(
+                      pivotData?.standardPeriods?.periodType
+                        ?? resolvePivotPeriod(interval, 'auto'),
+                    )}
+                  </span>
+                )}
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>

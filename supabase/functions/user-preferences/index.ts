@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { sanitizePivotTimeframe } from "../_shared/pivotPoints.ts";
 
 const DEFAULT_CHART_PREFERENCES = {
   showCandles: true,
@@ -11,7 +12,9 @@ const DEFAULT_CHART_PREFERENCES = {
   showResistance: false,
   showPivots: false,
   showStandardPivots: false,
+  showHistoricalPivots: true,
   pivotType: "traditional",
+  pivotTimeframe: "auto",
   pivotsBack: 15,
 };
 
@@ -66,6 +69,8 @@ function sanitizePreferences(payload: unknown) {
     if (key in source) {
       if (key === "pivotType") {
         sanitized[key] = String(source[key]);
+      } else if (key === "pivotTimeframe") {
+        sanitized[key] = sanitizePivotTimeframe(source[key]);
       } else if (key === "pivotsBack") {
         sanitized[key] = Math.max(1, Math.min(50, Number(source[key]) || 15));
       } else {

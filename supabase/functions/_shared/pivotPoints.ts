@@ -71,6 +71,53 @@ const INTERVAL_SECONDS: Record<string, number> = {
   "1d": 86400, "3d": 259200, "1w": 604800,
 };
 
+export const PIVOT_LEVEL_KEYS = [
+  "S5", "S4", "S3", "S2", "S1", "PP", "R1", "R2", "R3", "R4", "R5",
+] as const;
+
+export const PIVOT_SEGMENT_CAP = 500;
+
+/** Chart bar step in seconds for whitespace extension (matches chart interval). */
+export function getChartIntervalSeconds(chartInterval: string, candles: Candle[] = []): number {
+  if (INTERVAL_SECONDS[chartInterval]) return INTERVAL_SECONDS[chartInterval];
+  if (candles.length >= 2) {
+    const diff = candles[candles.length - 1].time - candles[candles.length - 2].time;
+    if (diff > 0) return diff;
+  }
+  return INTERVAL_SECONDS["1d"];
+}
+
+/** Projected UTC calendar end of a pivot period (TradingView extends current period here). */
+export function projectPivotPeriodEnd(startTime: number, periodType: PivotPeriodType): number {
+  const d = new Date(startTime * 1000);
+  if (periodType === "daily") {
+    d.setUTCDate(d.getUTCDate() + 1);
+  } else if (periodType === "weekly") {
+    d.setUTCDate(d.getUTCDate() + 7);
+  } else if (periodType === "monthly") {
+    d.setUTCMonth(d.getUTCMonth() + 1);
+  } else if (periodType === "yearly") {
+    d.setUTCFullYear(d.getUTCFullYear() + 1);
+  }
+  return Math.floor(d.getTime() / 1000);
+}
+
+/** Number of drawable levels for a pivot type (used for 500-segment cap). */
+export function countPivotLevelsForType(pivotType: string): number {
+  const t = String(pivotType ?? "traditional").toLowerCase();
+  if (t === "fibonacci") return 7;
+  if (t === "dm") return 3;
+  if (t === "classic" || t === "woodie") return 9;
+  return 11;
+}
+
+/** Max pivots-back count so periods × enabledLevels never exceeds 500 segments. */
+export function maxPivotsBackForType(pivotType: string, enabledLevelCount?: number): number {
+  const levels = enabledLevelCount ?? countPivotLevelsForType(pivotType);
+  if (levels <= 0) return 0;
+  return Math.floor(PIVOT_SEGMENT_CAP / levels);
+}
+
 export function round2(value: number): number {
   return Number(value.toFixed(2));
 }
@@ -338,12 +385,10 @@ export function getHtfBarIntervalSeconds(
 export function resolvePeriodEndTime(
   currCandle: GroupedPeriod,
   nextCandle: GroupedPeriod | null,
-  latestCandleTime: number,
-  barInterval: number,
+  periodType: PivotPeriodType,
 ): number {
-  if (currCandle.isCurrent) return latestCandleTime;
-  if (nextCandle) return nextCandle.startTime - barInterval;
-  return currCandle.endTime;
+  if (nextCandle && !currCandle.isCurrent) return nextCandle.startTime;
+  return projectPivotPeriodEnd(currCandle.startTime, periodType);
 }
 
 function withMeta(levels: PivotLevels, type: string, period: string, basedOn: unknown) {
@@ -483,7 +528,8 @@ export function buildPivotDataFromHtf(input: BuildPivotDataInput): PivotDataResp
   const pivotTimeframe = sanitizePivotTimeframe(chartPrefs.pivotTimeframe);
   const period = resolvePivotPeriod(chartInterval, pivotTimeframe);
   const pivotType = String(chartPrefs.pivotType ?? "traditional").toLowerCase();
-  const pivotsBack = Math.max(1, Math.min(50, Number(chartPrefs.pivotsBack) || 15));
+  const pivotsBackCap = maxPivotsBackForType(pivotType);
+  const pivotsBack = Math.max(1, Math.min(50, pivotsBackCap, Number(chartPrefs.pivotsBack) || 15));
   const showHistoricalPivots = chartPrefs.showHistoricalPivots !== false;
 
   const groupedPeriods = period === "yearly"
@@ -494,8 +540,6 @@ export function buildPivotDataFromHtf(input: BuildPivotDataInput): PivotDataResp
 
   const completed = groupedPeriods[groupedPeriods.length - 2];
   const currentPrice = chartCandles[chartCandles.length - 1].close;
-  const latestCandleTime = chartCandles[chartCandles.length - 1].time;
-  const barInterval = getHtfBarIntervalSeconds(groupedPeriods, period);
   const currOpen = groupedPeriods[groupedPeriods.length - 1].open;
 
   const classicPivots = withMeta(
@@ -530,7 +574,7 @@ export function buildPivotDataFromHtf(input: BuildPivotDataInput): PivotDataResp
     const prevCandle = displayPeriods[i - 1];
     const currCandle = displayPeriods[i];
     const nextCandle = displayPeriods[i + 1] ?? null;
-    const endTime = resolvePeriodEndTime(currCandle, nextCandle, latestCandleTime, barInterval);
+    const endTime = resolvePeriodEndTime(currCandle, nextCandle, period);
 
     standardPeriods.push({
       period: currCandle.period,

@@ -88,4 +88,26 @@ Note: `binance` is a historical alias for **traditional** pivot levels, not Bina
 
 ## Preferences
 
-`pivotTimeframe` is persisted in chart preferences alongside `pivotType` and `pivotsBack` (localStorage + Supabase `user_preferences`).
+Chart preferences (localStorage + Supabase `user_preferences`):
+
+| Key | Description |
+|-----|-------------|
+| `pivotType` | traditional, fibonacci, woodie, classic, dm, camarilla |
+| `pivotTimeframe` | auto, daily, weekly, monthly, yearly |
+| `pivotsBack` | Number of historical pivot periods (clamped by 500-segment cap) |
+| `showHistoricalPivots` | Show prior periods or current only |
+| `showPivotLabels` | Show P / R1 / S1 labels on segments |
+| `showPivotPrices` | Append price to segment labels |
+| `pivotLabelsPosition` | `left` or `right` end of each segment |
+| `pivotLineWidth` | Line width 1–4 (PP defaults to max(width, 2)) |
+| `pivotLevelOptions` | Per-level `{ enabled, color }` for P, S1–S5, R1–R5 |
+
+## Chart rendering (TradingView-equivalent)
+
+`ChartPanel.jsx` renders standard pivots as follows:
+
+1. **Period spans** — Historical segments run from period start to the next period start. The current period runs to the projected calendar end (`projectPivotPeriodEnd`).
+2. **Whitespace** — Candlestick data appends `{ time }` whitespace bars through the current period end so lines can extend into future chart space.
+3. **Historical lines + labels** — One `PivotSegmentsPrimitive` (canvas) draws all historical segments and all level labels/prices.
+4. **Current period** — One `LineSeries` per enabled level with `lastValueVisible` for orange axis price tags; lines extend to projected period end.
+5. **500-segment cap** — Never more than 500 period×level segments; `pivotsBack` is clamped via `maxPivotsBackForType`.

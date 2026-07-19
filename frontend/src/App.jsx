@@ -12,24 +12,14 @@ import {
   isEdgeFunctionUnavailableError,
 } from './supabaseClient'
 import { buildPivotData, sanitizePivotTimeframe } from '@forge/pivot'
+import {
+  DEFAULT_CHART_PREFERENCES,
+  sanitizePreferences,
+} from './utils/userPreferences'
 
 const COMMON_QUOTES = ['USDT', 'BUSD', 'BTC', 'ETH', 'FDUSD']
 const BINANCE_KLINES_URL = 'https://api.binance.com/api/v3/klines'
 const LOCAL_PREFERENCES_PREFIX = 'forge_chart_preferences'
-const DEFAULT_CHART_PREFERENCES = {
-  showCandles: true,
-  showEma20: false,
-  showEma50: false,
-  showRsi: false,
-  showMacd: false,
-  showSupport: false,
-  showResistance: false,
-  showStandardPivots: false,
-  showHistoricalPivots: true,
-  pivotType: 'traditional',
-  pivotTimeframe: 'auto',
-  pivotsBack: 15,
-}
 
 class ChartPanelErrorBoundary extends Component {
   constructor(props) {
@@ -245,25 +235,6 @@ async function fetchMarketCandles(symbol, interval, limit) {
     console.warn('Supabase market data failed; using Binance fallback:', edgeError)
     return fetchBinanceCandles(symbol, interval, limit)
   }
-}
-
-function sanitizePreferences(payload) {
-  const sanitized = { ...DEFAULT_CHART_PREFERENCES }
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return sanitized
-  Object.keys(DEFAULT_CHART_PREFERENCES).forEach((key) => {
-    if (key in payload) {
-      if (key === 'pivotType') {
-        sanitized[key] = String(payload[key])
-      } else if (key === 'pivotTimeframe') {
-        sanitized[key] = sanitizePivotTimeframe(payload[key])
-      } else if (key === 'pivotsBack') {
-        sanitized[key] = Math.max(1, Math.min(50, Number(payload[key]) || 15))
-      } else {
-        sanitized[key] = Boolean(payload[key])
-      }
-    }
-  })
-  return sanitized
 }
 
 function localPreferencesKey(userKey) {

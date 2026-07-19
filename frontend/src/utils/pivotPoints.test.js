@@ -161,6 +161,14 @@ describe('analyzePriceVsPivots — sparse levels (DM)', () => {
     expect(analysis.zone).not.toBe('below_S3')
     expect(analysis.zone).not.toContain('NaN')
   })
+
+  it('uses adaptive ATR threshold when atr option provided', () => {
+    const pivots = calculatePivotsGeneric(110, 90, 100, 95, null, 'traditional')
+    const atr = 4
+    const priceNearR1 = (pivots.R1 ?? 0) + atr * 0.3
+    const analysis = analyzePriceVsPivots(priceNearR1, pivots, { atr, k: 0.5 })
+    expect(analysis.atInflectionPoint).toBe(true)
+  })
 })
 
 describe('projectPivotPeriodEnd / resolvePeriodEndTime', () => {

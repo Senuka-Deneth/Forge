@@ -1,4 +1,8 @@
 import { handleOptions, jsonResponse } from "../_shared/cors.ts";
+import {
+  computeSignalAgreement,
+  type DivergenceResult,
+} from "../_shared/marketStructure.ts";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const MODEL = "nvidia/nemotron-super-49b-v1:free";
@@ -77,6 +81,41 @@ function extractJson(rawText: string): Record<string, unknown> {
   throw new Error(`Model did not return parseable JSON. Raw: ${rawText.slice(0, 300)}`);
 }
 
+function resolveDivergence(data: Record<string, unknown>): DivergenceResult {
+  const raw = String(data.divergence ?? "none").toLowerCase();
+  if (raw === "bullish" || raw === "bearish") return raw;
+  return "none";
+}
+
+function resolveSignalAgreement(data: Record<string, unknown>, primaryTrend: "bullish" | "bearish" | "sideways", pivotAnalysisRaw: Record<string, unknown>, divergence: DivergenceResult): number {
+  const precomputed = safeFloat(data.signalAgreement);
+  if (precomputed != null) return clamp(Math.round(precomputed), 0, 100);
+
+  const price = safeFloat(data.price);
+  const ema20 = safeFloat(data.ema20);
+  const ema50 = safeFloat(data.ema50);
+  const rsi = safeFloat(data.rsi);
+  const macdObj = (data.macd && typeof data.macd === "object") ? data.macd as Record<string, unknown> : {};
+  const macdLine = safeFloat(macdObj.macd);
+  const signalLine = safeFloat(macdObj.signal);
+  const pivotBias = asEnum(pivotAnalysisRaw.bias, new Set(["bullish", "bearish", "neutral"]), "neutral");
+
+  return computeSignalAgreement({
+    price,
+    ema20,
+    ema50,
+    rsi,
+    macdLine,
+    signalLine,
+    primaryTrend,
+    pivotSessionBias: pivotBias,
+    hasSupportZone: safeFloat(data.support) != null,
+    hasResistanceZone: safeFloat(data.resistance) != null,
+    divergence,
+    atInflectionPoint: Boolean(pivotAnalysisRaw.atInflectionPoint),
+  });
+}
+
 function deterministicFallback(data: Record<string, unknown>, source = "local-fallback") {
   const price = safeFloat(data.price, 0) as number;
   const rsi = safeFloat(data.rsi);
@@ -93,6 +132,7 @@ function deterministicFallback(data: Record<string, unknown>, source = "local-fa
   const alignment = deriveAlignment(price, ema20, ema50);
 
   const primaryTrend = alignment.alignment === "bullish" ? "bullish" : alignment.alignment === "bearish" ? "bearish" : "sideways";
+  const divergence = resolveDivergence(data);
   let momentum = "neutral";
   if (macdLine != null && signalLine != null) {
     if (macdLine > signalLine && (rsi == null || rsi >= 50)) momentum = "bullish";
@@ -122,12 +162,7 @@ function deterministicFallback(data: Record<string, unknown>, source = "local-fa
     confluences.push({ level: "PP", price: Number(pp.toFixed(6)), confluent_with: "EMA50", significance: "medium" });
   }
 
-  let confidence = 55;
-  if (primaryTrend !== "sideways") confidence += 10;
-  if (momentum !== "neutral") confidence += 10;
-  if (nearestResistance) confidence += 5;
-  if (nearestSupport) confidence += 5;
-  confidence = clamp(confidence, 20, 95);
+  const confidence = resolveSignalAgreement(data, primaryTrend, pivotAnalysisRaw, divergence);
 
   const anomalies = [];
   if (rsi != null && rsi >= 70) anomalies.push({ type: "trend_exhaustion", description: "RSI is overbought.", severity: "medium" });
@@ -147,8 +182,10 @@ function deterministicFallback(data: Record<string, unknown>, source = "local-fa
       rsi: {
         value: rsi,
         state: deriveRsiState(rsi),
-        divergence: "none",
-        signal: "RSI interpreted with standard 70/30 thresholds.",
+        divergence,
+        signal: divergence === "none"
+          ? "RSI interpreted with standard 70/30 thresholds."
+          : `RSI ${divergence} divergence detected from price swing structure.`,
       },
       macd: {
         macd_line: macdLine,
@@ -210,6 +247,8 @@ function deterministicFallback(data: Record<string, unknown>, source = "local-fa
       is_trending: primaryTrend !== "sideways",
       regime: primaryTrend === "sideways" ? "ranging" : "trending",
     },
+    atr: safeFloat(data.atr),
+    srZones: data.srZones && typeof data.srZones === "object" ? data.srZones : null,
     _meta: {
       model: MODEL,
       source,
@@ -292,11 +331,18 @@ function normalizeModelOutput(parsed: Record<string, unknown>, marketData: Recor
       primary_trend: asEnum(summary.primary_trend, new Set(["bullish", "bearish", "sideways"]), base.summary.primary_trend),
       momentum: asEnum(summary.momentum, new Set(["strong_bullish", "bullish", "neutral", "bearish", "strong_bearish"]), base.summary.momentum),
       phase: asEnum(summary.phase, new Set(["accumulation", "markup", "distribution", "markdown", "consolidation"]), base.summary.phase),
-      confidence: clamp(safeInt(summary.confidence, base.summary.confidence), 0, 100),
+      confidence: base.summary.confidence,
       bias: asEnum(summary.bias, new Set(["long", "short", "neutral"]), base.summary.bias),
       reasoning: String(summary.reasoning ?? base.summary.reasoning),
     },
-    indicators: Object.keys(indicators).length ? { ...base.indicators, ...indicators } : base.indicators,
+    indicators: {
+      ...(Object.keys(indicators).length ? { ...base.indicators, ...indicators } : base.indicators),
+      rsi: {
+        ...(base.indicators as Record<string, unknown>).rsi as Record<string, unknown>,
+        ...((indicators.rsi && typeof indicators.rsi === "object") ? indicators.rsi as Record<string, unknown> : {}),
+        divergence: base.indicators.rsi.divergence,
+      },
+    },
     pivot_analysis: Object.keys(pivotAnalysis).length ? { ...base.pivot_analysis, ...pivotAnalysis } : base.pivot_analysis,
     trade_logic: Object.keys(tradeLogic).length ? { ...base.trade_logic, ...tradeLogic } : base.trade_logic,
     market_regime: Object.keys(marketRegime).length ? { ...base.market_regime, ...marketRegime } : base.market_regime,

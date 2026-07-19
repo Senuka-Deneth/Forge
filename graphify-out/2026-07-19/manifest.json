@@ -10,8 +10,8 @@
     "semantic_hash": ""
   },
   "backend/services/openrouter_service.py": {
-    "mtime": 1784428386.9037077,
-    "ast_hash": "026631407ebb783a38be903c8db8158a",
+    "mtime": 1779336926.0,
+    "ast_hash": "3c4e6177ea157748ad33c00b7adecd6a",
     "semantic_hash": ""
   },
   "backend/utils/__init__.py": {
@@ -40,13 +40,13 @@
     "semantic_hash": ""
   },
   "frontend/src/App.jsx": {
-    "mtime": 1784428363.3422961,
-    "ast_hash": "67bca9ace3dc277309eda813a7964387",
+    "mtime": 1784427964.9785237,
+    "ast_hash": "46a08f3aa6560c37533b033840073df2",
     "semantic_hash": ""
   },
   "frontend/src/components/AIAnalysisPanel.jsx": {
-    "mtime": 1784428486.6229126,
-    "ast_hash": "d8998c79a5f6dd97bd1560f12797a827",
+    "mtime": 1780414465.0,
+    "ast_hash": "6c7cebda805cef743283f37ad26f81bc",
     "semantic_hash": ""
   },
   "frontend/src/components/AnalysisPanel.jsx": {
@@ -90,8 +90,8 @@
     "semantic_hash": ""
   },
   "frontend/src/components/StatusBar.jsx": {
-    "mtime": 1784428482.3171093,
-    "ast_hash": "09e8dc2b4a3d5bc464bf013ce17e8f5e",
+    "mtime": 1779336836.0,
+    "ast_hash": "a6f8d1147c72bca692c3dc08cddfbc2d",
     "semantic_hash": ""
   },
   "frontend/src/context/AuthContext.jsx": {
@@ -150,8 +150,8 @@
     "semantic_hash": ""
   },
   "frontend/src/utils/pivotPoints.test.js": {
-    "mtime": 1784428498.7268455,
-    "ast_hash": "e5ae22b6831dd05c921c0a5665f1ccbf",
+    "mtime": 1784428012.7258253,
+    "ast_hash": "54de2eedd33e91f070124b55e3db4e96",
     "semantic_hash": ""
   },
   "frontend/src/utils/pivotSegmentsPrimitive.js": {
@@ -165,8 +165,8 @@
     "semantic_hash": ""
   },
   "frontend/vite.config.js": {
-    "mtime": 1784428335.6865077,
-    "ast_hash": "e1483344919273815fce6bffd40b6001",
+    "mtime": 1784427584.1551158,
+    "ast_hash": "fcb6a7e86b11424866bd3639ce1fb72b",
     "semantic_hash": ""
   },
   "supabase/.temp/linked-project.json": {
@@ -180,13 +180,13 @@
     "semantic_hash": ""
   },
   "supabase/functions/_shared/pivotPoints.ts": {
-    "mtime": 1784428350.7261808,
-    "ast_hash": "5fb0f725872fcaa44ea3c44e011b1a4a",
+    "mtime": 1784427941.013572,
+    "ast_hash": "6672a01b1ddc00fa62dfe7c42c482891",
     "semantic_hash": ""
   },
   "supabase/functions/ai-analysis/index.ts": {
-    "mtime": 1784428489.4093163,
-    "ast_hash": "31dca2963ffa8914dca182c0d46d2929",
+    "mtime": 1779336926.0,
+    "ast_hash": "3fbbc35fd73505e1bd5a783978a011fa",
     "semantic_hash": ""
   },
   "supabase/functions/calculate-pivots/index.ts": {
@@ -297,16 +297,6 @@
   "frontend/screenshot_current.png": {
     "mtime": 1780413885.0,
     "ast_hash": "8658d87a0309fb7d17611b8db0bb6d2f",
-    "semantic_hash": ""
-  },
-  "frontend/src/utils/marketStructure.test.js": {
-    "mtime": 1784428495.8338356,
-    "ast_hash": "5f0b17e2fabbb35b979cdaa0b299fc49",
-    "semantic_hash": ""
-  },
-  "supabase/functions/_shared/marketStructure.ts": {
-    "mtime": 1784428335.2640917,
-    "ast_hash": "74ea2a2bab39da41d33a812da833c007",
     "semantic_hash": ""
   }
 }

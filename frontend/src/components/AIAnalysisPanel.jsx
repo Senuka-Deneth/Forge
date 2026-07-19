@@ -1,5 +1,3 @@
-import { useState, useEffect } from 'react';
-
 const colorMap = {
   // Trends & Momentum
   bullish: 'var(--bull)',
@@ -79,38 +77,33 @@ function StatusPill({ value }) {
   )
 }
 
+function resolveSourceLabel(meta) {
+  const source = String(meta?.source ?? '').toLowerCase()
+  if (source === 'openrouter') return meta?.model ? String(meta.model) : 'LLM analysis'
+  if (!source || source === 'normalized' || source.includes('fallback') || source === 'local-fallback') {
+    return 'Deterministic analysis'
+  }
+  return 'Deterministic analysis'
+}
+
 export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefresh }) {
   const a = aiAnalysis
-
-  const [loadingMsg, setLoadingMsg] = useState('Running fast market analysis...');
-
-  useEffect(() => {
-    if (aiLoading) {
-      const messages = [
-        'Running fast market analysis...',
-        'Validating signal consistency...',
-        'Finalizing validated output...'
-      ];
-      let i = 0;
-      setLoadingMsg(messages[0]);
-      const interval = setInterval(() => {
-        i++;
-        if (i < messages.length) {
-          setLoadingMsg(messages[i]);
-        } else {
-          clearInterval(interval);
-        }
-      }, 4500);
-      return () => clearInterval(interval);
-    }
-  }, [aiLoading]);
+  const sourceLabel = a ? resolveSourceLabel(a._meta) : null
+  const isDeterministic = sourceLabel === 'Deterministic analysis'
 
   return (
     <div id="ai-analysis-section" className="ai-section">
       <div className="ai-section-header">
         <div className="ai-section-title">
           <span>AI Analysis</span>
-          <span className="model-tag" id="ai-model-tag">nemotron-120b · fast validated mode</span>
+          <span
+            className="model-tag"
+            id="ai-model-tag"
+            style={isDeterministic ? { color: 'var(--neutral)' } : undefined}
+            title={isDeterministic ? 'Computed locally from indicators — no LLM involved' : 'Generated with LLM interpretation'}
+          >
+            {sourceLabel ?? (aiLoading ? 'Running analysis…' : 'nemotron-120b · fast validated mode')}
+          </span>
         </div>
         <div className="ai-section-actions">
           <span 
@@ -147,24 +140,8 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
             <div className="ai-loading-dots">
               <span></span><span></span><span></span>
             </div>
-            <span className="ai-loading-text-label" id="ai-loading-msg">{loadingMsg}</span>
+            <span className="ai-loading-text-label" id="ai-loading-msg">Running analysis…</span>
           </div>
-          {/* Step progress */}
-          <div style={{ display: 'flex', gap: '6px', margin: '4px 0 8px' }}>
-            {['Fast inference', 'Validation', 'Output'].map((step, i) => {
-              const msgIdx = ['fast market analysis', 'signal consistency', 'Finalizing'].map(m => loadingMsg.toLowerCase().includes(m.toLowerCase()) ? true : false);
-              const active = i === 0 || msgIdx[i - 1];
-              return (
-                <div key={i} style={{
-                  flex: 1, height: '2px', borderRadius: '2px',
-                  background: active ? 'var(--accent-primary)' : 'var(--border-medium)',
-                  transition: 'background 0.4s ease',
-                  opacity: active ? 1 : 0.4
-                }} />
-              );
-            })}
-          </div>
-          {/* Skeleton preview of cards */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
             <div style={{ gridColumn: 'span 2', background: 'var(--bg-raised)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', padding: '32px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div className="ai-skeleton-line w-30" style={{ height: '10px', width: '30%' }}></div>
@@ -249,7 +226,7 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
                 <div id="ai-bias"><StatusPill value={a.summary?.bias} /></div>
               </div>
               <div className="ai-kpi wide-kpi">
-                <label>AI Confidence</label>
+                <label title="Indicator confluence score — not a probability">Signal agreement</label>
                 <div className="conf-track">
                   <div id="ai-confidence-bar" className="conf-fill" style={{
                     width: `${a.summary?.confidence ?? 0}%`,

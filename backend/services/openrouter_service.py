@@ -146,6 +146,59 @@ def _derive_alignment(price, ema20, ema50):
     return "mixed", p20, p50, "EMA structure is mixed; no clean directional stack."
 
 
+def _resolve_divergence(data):
+    raw = str(data.get("divergence", "none")).strip().lower()
+    if raw in {"bullish", "bearish"}:
+        return raw
+    return "none"
+
+
+def _resolve_signal_agreement(data, primary_trend, pivot_analysis_raw, divergence):
+    """Use precomputed signalAgreement from payload; fallback to legacy bonus formula."""
+    precomputed = _safe_float(data.get("signalAgreement"), None)
+    if precomputed is not None:
+        return _clamp(int(round(precomputed)), 0, 100)
+
+    score = 0
+    price = _safe_float(data.get("price"), None)
+    ema20 = _safe_float(data.get("ema20"), None)
+    ema50 = _safe_float(data.get("ema50"), None)
+    rsi = _safe_float(data.get("rsi"), None)
+    macd_obj = data.get("macd") or {}
+    macd_line = _safe_float(macd_obj.get("macd"), None)
+    signal_line = _safe_float(macd_obj.get("signal"), None)
+    pivot_bias = _as_enum(pivot_analysis_raw.get("bias"), {"bullish", "bearish", "neutral"}, "neutral")
+
+    if price is not None and ema20 is not None and ema50 is not None:
+        if primary_trend == "bullish" and price > ema20 > ema50:
+            score += 20
+        if primary_trend == "bearish" and price < ema20 < ema50:
+            score += 20
+    if rsi is not None and primary_trend != "sideways":
+        if primary_trend == "bullish" and rsi >= 50:
+            score += 15
+        if primary_trend == "bearish" and rsi <= 50:
+            score += 15
+    if macd_line is not None and signal_line is not None and primary_trend != "sideways":
+        if primary_trend == "bullish" and macd_line > signal_line:
+            score += 15
+        if primary_trend == "bearish" and macd_line < signal_line:
+            score += 15
+    if primary_trend == "bullish" and pivot_bias == "bullish":
+        score += 15
+    if primary_trend == "bearish" and pivot_bias == "bearish":
+        score += 15
+    if _safe_float(data.get("support"), None) is not None and _safe_float(data.get("resistance"), None) is not None:
+        score += 10
+    if divergence == "bullish" and primary_trend in {"bullish"}:
+        score += 10
+    if divergence == "bearish" and primary_trend in {"bearish"}:
+        score += 10
+    if bool(pivot_analysis_raw.get("atInflectionPoint", False)):
+        score += 15
+    return _clamp(score, 0, 100)
+
+
 def _build_deterministic_fallback(data, reason="fallback"):
     price = _safe_float(data.get("price"), 0.0)
     rsi = _safe_float(data.get("rsi"), None)
@@ -163,6 +216,8 @@ def _build_deterministic_fallback(data, reason="fallback"):
     pp = _safe_float(pivots.get("PP"), None)
 
     alignment, p_vs_20, p_vs_50, ema_signal = _derive_alignment(price, ema20, ema50)
+
+    divergence = _resolve_divergence(data)
 
     if alignment == "bullish":
         primary_trend = "bullish"
@@ -242,16 +297,7 @@ def _build_deterministic_fallback(data, reason="fallback"):
                 "significance": "medium",
             })
 
-    confidence = 55
-    if primary_trend in {"bullish", "bearish"}:
-        confidence += 10
-    if momentum in {"bullish", "bearish", "strong_bullish", "strong_bearish"}:
-        confidence += 10
-    if nearest_res is not None:
-        confidence += 5
-    if nearest_sup is not None:
-        confidence += 5
-    confidence = _clamp(confidence, 20, 95)
+    confidence = _resolve_signal_agreement(data, primary_trend, pivot_analysis_raw, divergence)
 
     if primary_trend == "bullish":
         phase = "markup"
@@ -290,8 +336,8 @@ def _build_deterministic_fallback(data, reason="fallback"):
             "rsi": {
                 "value": rsi,
                 "state": _derive_rsi_state(rsi),
-                "divergence": "none",
-                "signal": "RSI interpreted with standard 70/30 thresholds.",
+                "divergence": divergence,
+                "signal": "RSI interpreted with standard 70/30 thresholds." if divergence == "none" else f"RSI {divergence} divergence detected from price swing structure.",
             },
             "macd": {
                 "macd_line": macd_line,
@@ -355,6 +401,8 @@ def _build_deterministic_fallback(data, reason="fallback"):
             "is_trending": regime == "trending",
             "regime": regime,
         },
+        "atr": _safe_float(data.get("atr"), None),
+        "srZones": data.get("srZones") if isinstance(data.get("srZones"), dict) else None,
         "_meta": {
             "model": MODEL,
             "source": reason,
@@ -378,7 +426,7 @@ def _normalize_and_validate_analysis(parsed, market_data):
         "primary_trend": _as_enum(summary.get("primary_trend"), {"bullish", "bearish", "sideways"}, out["summary"]["primary_trend"]),
         "momentum": _as_enum(summary.get("momentum"), {"strong_bullish", "bullish", "neutral", "bearish", "strong_bearish"}, out["summary"]["momentum"]),
         "phase": _as_enum(summary.get("phase"), {"accumulation", "markup", "distribution", "markdown", "consolidation"}, out["summary"]["phase"]),
-        "confidence": _clamp(_safe_int(summary.get("confidence"), out["summary"]["confidence"]), 0, 100),
+        "confidence": out["summary"]["confidence"],
         "bias": _as_enum(summary.get("bias"), {"long", "short", "neutral"}, out["summary"]["bias"]),
         "reasoning": str(summary.get("reasoning") or out["summary"]["reasoning"]),
     }
@@ -392,7 +440,7 @@ def _normalize_and_validate_analysis(parsed, market_data):
         "rsi": {
             "value": _safe_float(rsi_obj.get("value"), out["indicators"]["rsi"]["value"]),
             "state": _as_enum(rsi_obj.get("state"), {"overbought", "bullish_zone", "neutral", "bearish_zone", "oversold"}, out["indicators"]["rsi"]["state"]),
-            "divergence": _as_enum(rsi_obj.get("divergence"), {"bullish", "bearish", "none"}, out["indicators"]["rsi"]["divergence"]),
+            "divergence": out["indicators"]["rsi"]["divergence"],
             "signal": str(rsi_obj.get("signal") or out["indicators"]["rsi"]["signal"]),
         },
         "macd": {

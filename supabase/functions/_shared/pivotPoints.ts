@@ -4,6 +4,8 @@
  * Base data: native Binance higher-timeframe klines (1d / 1w / 1M), not chart-candle aggregation.
  */
 
+import { calculateATR, inflectionThreshold } from "./marketStructure.ts";
+
 export type Candle = {
   time: number;
   open: number;
@@ -407,8 +409,13 @@ function finiteLevel(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+export type AnalyzePivotsOptions = {
+  atr?: number | null;
+  k?: number;
+};
+
 /** Null-safe zone classification using only defined levels (fixes DM/Fibonacci NaN bug) */
-export function analyzePriceVsPivots(currentPrice: number, pivots: PivotLevels) {
+export function analyzePriceVsPivots(currentPrice: number, pivots: PivotLevels, options: AnalyzePivotsOptions = {}) {
   const excluded = new Set(["type", "period", "basedOn", "generatedAt"]);
   const allLevels = Object.entries(pivots)
     .filter(([label, value]) => !excluded.has(label) && typeof value === "number" && Number.isFinite(value))
@@ -450,11 +457,12 @@ export function analyzePriceVsPivots(currentPrice: number, pivots: PivotLevels) 
   const nearestResistance = aboveSorted[0] ?? null;
   const nearestSupport = belowSorted[0] ?? null;
 
+  const threshold = inflectionThreshold(currentPrice, options.atr ?? null, options.k ?? 0.5);
   const levelsWithDist = allLevels
     .map((l) => ({ ...l, dist: Math.abs(currentPrice - l.value) / currentPrice }))
     .sort((a, b) => a.dist - b.dist);
   const nearestLevel = levelsWithDist[0];
-  const atInflectionPoint = nearestLevel ? nearestLevel.dist < 0.003 : false;
+  const atInflectionPoint = nearestLevel ? nearestLevel.dist < threshold : false;
 
   return {
     zone,
@@ -510,6 +518,7 @@ export type PivotDataResponse = {
       pivots: PivotLevels;
     }>;
   };
+  atr?: number | null;
   error?: string;
 };
 
@@ -592,19 +601,23 @@ export function buildPivotDataFromHtf(input: BuildPivotDataInput): PivotDataResp
     ? standardPeriods
     : (standardPeriods.length ? [standardPeriods[standardPeriods.length - 1]] : []);
 
+  const { value: atr } = calculateATR(chartCandles, 14);
+  const pivotOpts: AnalyzePivotsOptions = { atr };
+
   return {
     success: true,
     symbol,
     timeframe: chartInterval,
     currentPrice,
     pivotTimeframe,
-    classic: { pivots: classicPivots, analysis: analyzePriceVsPivots(currentPrice, classicPivots) },
-    fibonacci: { pivots: fibonacciPivots, analysis: analyzePriceVsPivots(currentPrice, fibonacciPivots) },
-    traditional: { pivots: traditionalPivots, analysis: analyzePriceVsPivots(currentPrice, traditionalPivots) },
-    woodie: { pivots: woodiePivots, analysis: analyzePriceVsPivots(currentPrice, woodiePivots) },
-    dm: { pivots: dmPivots, analysis: analyzePriceVsPivots(currentPrice, dmPivots) },
-    camarilla: { pivots: camarillaPivots, analysis: analyzePriceVsPivots(currentPrice, camarillaPivots) },
-    binance: { pivots: traditionalPivots, analysis: analyzePriceVsPivots(currentPrice, traditionalPivots) },
+    atr,
+    classic: { pivots: classicPivots, analysis: analyzePriceVsPivots(currentPrice, classicPivots, pivotOpts) },
+    fibonacci: { pivots: fibonacciPivots, analysis: analyzePriceVsPivots(currentPrice, fibonacciPivots, pivotOpts) },
+    traditional: { pivots: traditionalPivots, analysis: analyzePriceVsPivots(currentPrice, traditionalPivots, pivotOpts) },
+    woodie: { pivots: woodiePivots, analysis: analyzePriceVsPivots(currentPrice, woodiePivots, pivotOpts) },
+    dm: { pivots: dmPivots, analysis: analyzePriceVsPivots(currentPrice, dmPivots, pivotOpts) },
+    camarilla: { pivots: camarillaPivots, analysis: analyzePriceVsPivots(currentPrice, camarillaPivots, pivotOpts) },
+    binance: { pivots: traditionalPivots, analysis: analyzePriceVsPivots(currentPrice, traditionalPivots, pivotOpts) },
     standardPeriods: {
       periodType: period,
       requestedCount: pivotsBack,

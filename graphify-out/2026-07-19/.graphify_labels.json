@@ -23,6 +23,5 @@
   "21": "20260518000000_chart_bot_schema.sql",
   "22": "__init__.py",
   "23": "__init__.py",
-  "24": "DEFAULT_PRICE_SCALE_MARGINS",
-  "25": "marketStructure.test.js"
+  "24": "DEFAULT_PRICE_SCALE_MARGINS"
 }

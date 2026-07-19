@@ -7,14 +7,10 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 from services.openrouter_service import analyze_market
-from utils.pivotPoints import (
-    compute_pivots,
-    analyze_price_vs_pivots,
-    get_pivot_period,
-    calculate_traditional_pivots,
-    calculate_pivots_generic,
-    period_bucket_start,
-)
+
+# DEPRECATED FOR SERVING: This Flask backend is not used by the React frontend.
+# Live pivot calculation is served by Supabase Edge Function calculate-pivots
+# using supabase/functions/_shared/pivotPoints.ts. See docs/pivots.md.
 
 app = Flask(__name__)
 CORS(app)
@@ -260,32 +256,6 @@ def fetch_binance_klines(symbol, interval, limit):
         return []
 
     return enrich_candles(candles)
-
-
-def group_period_candles(candles, period):
-    groups = {}
-    for candle in candles:
-        dt = datetime.fromtimestamp(candle["time"], tz=timezone.utc)
-        key = period_bucket_start(dt, period).isoformat()
-        if key not in groups:
-            groups[key] = []
-        groups[key].append(candle)
-
-    keys = sorted(groups.keys())
-    result = []
-    for idx, key in enumerate(keys):
-        period_candles = sorted(groups[key], key=lambda x: x["time"])
-        result.append({
-            "high": max(c["high"] for c in period_candles),
-            "low": min(c["low"] for c in period_candles),
-            "close": period_candles[-1]["close"],
-            "open": period_candles[0]["open"],
-            "period": key,
-            "startTime": period_candles[0]["time"],
-            "endTime": period_candles[-1]["time"],
-            "isCurrent": idx == len(keys) - 1,
-        })
-    return result
 
 
 def find_swings(candles, lookback=2):
@@ -566,111 +536,6 @@ def analyze():
             "error": "Unexpected backend error",
             "details": str(exc)
         }), 500
-
-
-@app.route("/api/pivots", methods=["GET"])
-def get_pivots():
-    try:
-        symbol = request.args.get("symbol", "BTCUSDT").upper().strip()
-        timeframe = request.args.get("timeframe", "4h").strip()
-        pivot_type = request.args.get("pivotType", "traditional").strip().lower()
-
-        pivots_back = 15
-        pivots_back_raw = request.args.get("pivotsBack")
-        if pivots_back_raw:
-            try:
-                pivots_back = max(1, min(50, int(pivots_back_raw)))
-            except Exception:
-                pass
-        show_historical_pivots_raw = str(request.args.get("showHistoricalPivots", "true")).strip().lower()
-        show_historical_pivots = show_historical_pivots_raw not in {"false", "0", "no", "off"}
-
-        if not validate_symbol(symbol):
-            return jsonify({"error": "Invalid symbol format."}), 400
-
-        if timeframe not in ALLOWED_INTERVALS:
-            return jsonify({"error": "Invalid interval."}), 400
-
-        # Fetch enough candles to cover all historical periods
-        candle_count = max(400, (pivots_back + 2) * 45)
-        candles = fetch_binance_klines(symbol, timeframe, candle_count)
-
-        if not candles:
-            return jsonify({"success": False, "error": "No candle data available."}), 400
-
-        current_price = candles[-1]["close"]
-
-        classic_pivots = compute_pivots(candles, timeframe, "classic")
-        fib_pivots = compute_pivots(candles, timeframe, "fibonacci")
-        traditional_pivots = compute_pivots(candles, timeframe, "traditional")
-        woodie_pivots = compute_pivots(candles, timeframe, "woodie")
-        dm_pivots = compute_pivots(candles, timeframe, "dm")
-        camarilla_pivots = compute_pivots(candles, timeframe, "camarilla")
-
-        if not classic_pivots or not fib_pivots:
-            return jsonify({
-                "success": False,
-                "error": "Not enough data to compute pivots for this timeframe."
-            }), 400
-
-        classic_analysis = analyze_price_vs_pivots(current_price, classic_pivots)
-        fib_analysis = analyze_price_vs_pivots(current_price, fib_pivots)
-        traditional_analysis = analyze_price_vs_pivots(current_price, traditional_pivots)
-        woodie_analysis = analyze_price_vs_pivots(current_price, woodie_pivots)
-        dm_analysis = analyze_price_vs_pivots(current_price, dm_pivots)
-        camarilla_analysis = analyze_price_vs_pivots(current_price, camarilla_pivots)
-
-        standard_period = get_pivot_period(timeframe)
-        grouped_periods = group_period_candles(candles, standard_period)
-        display_periods = grouped_periods[-(pivots_back + 1):]
-        standard_periods = []
-        for i in range(1, len(display_periods)):
-            prev_candle = display_periods[i - 1]
-            curr_candle = display_periods[i]
-
-            pivots = calculate_pivots_generic(
-                prev_high=prev_candle["high"],
-                prev_low=prev_candle["low"],
-                prev_close=prev_candle["close"],
-                prev_open=prev_candle["open"],
-                curr_open=curr_candle["open"],
-                pivot_type=pivot_type
-            )
-            standard_periods.append({
-                "period": curr_candle["period"],
-                "startTime": curr_candle["startTime"],
-                "endTime": curr_candle["endTime"],
-                "isCurrent": bool(curr_candle.get("isCurrent")),
-                "sourcePeriod": prev_candle["period"],
-                "pivots": pivots,
-            })
-        visible_standard_periods = standard_periods
-        if not show_historical_pivots and standard_periods:
-            visible_standard_periods = [standard_periods[-1]]
-
-        return jsonify({
-            "success": True,
-            "symbol": symbol,
-            "timeframe": timeframe,
-            "currentPrice": current_price,
-            "classic": {"pivots": classic_pivots, "analysis": classic_analysis},
-            "fibonacci": {"pivots": fib_pivots, "analysis": fib_analysis},
-            "traditional": {"pivots": traditional_pivots, "analysis": traditional_analysis},
-            "woodie": {"pivots": woodie_pivots, "analysis": woodie_analysis},
-            "dm": {"pivots": dm_pivots, "analysis": dm_analysis},
-            "camarilla": {"pivots": camarilla_pivots, "analysis": camarilla_analysis},
-            "binance": {"pivots": traditional_pivots, "analysis": traditional_analysis},
-            "standardPeriods": {
-                "periodType": standard_period,
-                "requestedCount": pivots_back,
-                "availableCount": len(visible_standard_periods),
-                "items": visible_standard_periods,
-            },
-        })
-
-    except Exception as exc:
-        print(f"Pivot error: {exc}")
-        return jsonify({"success": False, "error": str(exc)}), 500
 
 
 @app.route("/api/user-preferences", methods=["GET"])

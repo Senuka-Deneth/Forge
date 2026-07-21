@@ -47,7 +47,7 @@ export default function StatusBar({
         <div className="kpi-sub">Latest candle</div>
       </div>
       <div className="kpi-card">
-        <div className="kpi-label">AI Confidence</div>
+        <div className="kpi-label" title="Indicator confluence score — not a probability">Signal agreement</div>
         <div className="kpi-value format-tabular" id="kpi-confidence">{aiConfidence}</div>
         <div className="kpi-sub" id="kpi-bias" style={{ textTransform: 'capitalize' }}>{aiBias}</div>
       </div>

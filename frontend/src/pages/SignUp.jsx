@@ -74,11 +74,9 @@ export default function SignUp() {
     }
 
     if (data.session?.user?.id) {
-      try {
-        await ensureUserPreferences(data.session.user.id)
-      } catch (preferencesError) {
+      ensureUserPreferences(data.session.user.id).catch((preferencesError) => {
         console.warn('Unable to create preferences during sign up:', preferencesError)
-      }
+      })
       window.history.replaceState(null, '', '/dashboard')
       window.dispatchEvent(new PopStateEvent('popstate'))
       return

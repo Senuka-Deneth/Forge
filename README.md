@@ -7,11 +7,14 @@ Forge is a high-performance, real-time market visualization and AI-powered analy
 - **Real-time Visualization**: High-performance candlestick charts powered by `Lightweight Charts`.
 - **Advanced Technical Indicators**: Built-in EMA (20/50), RSI (14), and MACD with customizable timeframes.
 - **Pivot Point Analysis**: Automatic calculation of Classic, Fibonacci, and Traditional Pivot Points to identify key support and resistance levels.
-- **AI Market Intelligence**: Deep analysis using OpenRouter integration for:
-    - Market Structure analysis
-    - Trend & Momentum evaluation
-    - Trade Logic & Risk assessment
-    - Anomaly detection
+- **AI Market Intelligence**: Deep analysis via OpenRouter, fed by a full server-gathered feature
+  set — ATR/volatility regime, Bollinger Bands, VWAP, ADX trend strength, OBV/CVD order flow,
+  order-book imbalance, futures funding/open interest/long-short ratio, multi-timeframe confluence,
+  and swing-structure/divergence detection — producing:
+    - Market Structure and Trend & Momentum analysis
+    - An actionable Trade Plan (entry zone, stop-loss, targets with reward-to-risk, confidence)
+    - Order flow & futures positioning context
+    - Anomaly and divergence detection
 - **Responsive Design**: A stunning "Liquid Glass" UI that adapts to all screen sizes with full Dark/Light mode support.
 - **Live Data Streaming**: Seamless real-time price updates via Binance WebSockets, with automatic reconnection.
 
@@ -52,7 +55,10 @@ MARKET_CACHE_TTL_SECONDS=300
 ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 OPENROUTER_API_KEY=
 OPENROUTER_HTTP_REFERER=
+OPENROUTER_MODEL=
 ```
+`OPENROUTER_MODEL` is optional and defaults to a free Nemotron model; a stronger model materially
+improves the quality of the generated trade plan and reasoning.
 
 Run the database migrations and serve the edge functions locally:
 ```bash

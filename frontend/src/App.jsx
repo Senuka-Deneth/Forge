@@ -803,23 +803,6 @@ export default function App() {
     }
   }
 
-  const fetchPivots = async (selectedSymbol, selectedTimeframe) => {
-    try {
-      const sourceCandles = selectedSymbol === symbol && selectedTimeframe === timeframe ? candles : null
-      const marketCandles = sourceCandles?.length
-        ? sourceCandles
-        : await fetchMarketCandles(selectedSymbol, selectedTimeframe, 4000)
-      const nextPivotData = await fetchPivotData(selectedSymbol, selectedTimeframe, marketCandles)
-      if (nextPivotData?.success) {
-        setPivotData(nextPivotData)
-        return nextPivotData
-      }
-    } catch (err) {
-      console.error('Failed to fetch pivots:', err)
-    }
-    return null
-  }
-
   useEffect(() => {
     userKeyRef.current = currentUserId
     setChartPrefsReady(false)
@@ -917,98 +900,11 @@ export default function App() {
     setAILoading(true)
     setAIError('')
 
-    // Fetch fresh pivots if not already available
-    let currentPivotData = pivotData
-    if (!currentPivotData) {
-      currentPivotData = await fetchPivots(symbol, timeframe)
-    }
-
-    const latest = candleData[candleData.length - 1]
-    const prev = candleData[candleData.length - 2]
-    const priceChg =
-      prev && prev.close !== 0
-        ? (((latest.close - prev.close) / prev.close) * 100).toFixed(4)
-        : 0
-
-    // Compute swing highs / lows (simplified: local peaks over last 50 candles)
-    const slice = candleData.slice(-50)
-    const swingHighs = []
-    const swingLows = []
-    for (let i = 2; i < slice.length - 2; i++) {
-      if (
-        slice[i].high > slice[i - 1].high &&
-        slice[i].high > slice[i - 2].high &&
-        slice[i].high > slice[i + 1].high &&
-        slice[i].high > slice[i + 2].high
-      ) {
-        swingHighs.push(slice[i].high)
-      }
-      if (
-        slice[i].low < slice[i - 1].low &&
-        slice[i].low < slice[i - 2].low &&
-        slice[i].low < slice[i + 1].low &&
-        slice[i].low < slice[i + 2].low
-      ) {
-        swingLows.push(slice[i].low)
-      }
-    }
-
-    const last5 = candleData.slice(-5)
-
-    const pivots = currentPivotData?.classic?.pivots ?? null
-    const pivotAnalysis = currentPivotData?.classic?.analysis ?? null
-    const fibPivots = currentPivotData?.fibonacci?.pivots ?? null
-    const traditionalPivots = currentPivotData?.traditional?.pivots ?? currentPivotData?.binance?.pivots ?? null
-    const traditionalAnalysis = currentPivotData?.traditional?.analysis ?? currentPivotData?.binance?.analysis ?? null
-
-    const payload = {
-      symbol,
-      timeframe,
-      price: latest.close,
-      change: priceChg,
-      rsi: latest.rsi14 ?? null,
-      ema20: latest.ema20 ?? null,
-      ema50: latest.ema50 ?? null,
-      macd: {
-        macd: latest.macd ?? null,
-        signal: latest.macdSignal ?? null,
-        histogram: latest.macdHist ?? null,
-      },
-      volume: latest.volume ?? null,
-      swingHighs: swingHighs.slice(-5),
-      swingLows: swingLows.slice(-5),
-      support: swingLows.length ? swingLows[swingLows.length - 1] : null,
-      resistance: swingHighs.length ? swingHighs[swingHighs.length - 1] : null,
-      recentCloses: last5.map((c) => c.close),
-      recentVolumes: last5.map((c) => c.volume),
-      obi: null,
-      tfi: null,
-      fundingRate: null,
-      oiDelta: null,
-
-      // Pivot data for AI
-      pivots: pivots ? {
-        classic: pivots,
-        fibonacci: fibPivots,
-        traditional: traditionalPivots,
-        binance: traditionalPivots,
-        analysis: pivotAnalysis ? {
-          zone: pivotAnalysis.zone,
-          bias: pivotAnalysis.bias,
-          nearestPivotResistance: pivotAnalysis.nearestResistance,
-          nearestPivotSupport: pivotAnalysis.nearestSupport,
-          distToResistance: pivotAnalysis.distToResistance,
-          distToSupport: pivotAnalysis.distToSupport,
-          atInflectionPoint: pivotAnalysis.atInflectionPoint,
-          inflectionLevel: pivotAnalysis.inflectionLevel,
-          sessionBullish: pivotAnalysis.sessionBullish,
-        } : null,
-        binanceAnalysis: traditionalAnalysis,
-      } : null,
-    }
-
+    // The ai-analysis edge function gathers all market data (indicators, order book, futures,
+    // multi-timeframe reads, pivots) itself from just the symbol/timeframe — see
+    // supabase/functions/ai-analysis/index.ts.
     try {
-      const data = await invokeFunction('ai-analysis', payload)
+      const data = await invokeFunction('ai-analysis', { symbol, interval: timeframe })
       if (data?.success) {
         setAIAnalysis(data.analysis)
       } else {

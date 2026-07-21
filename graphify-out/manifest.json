@@ -5,8 +5,8 @@
     "semantic_hash": ""
   },
   "frontend/src/App.jsx": {
-    "mtime": 1784649679.8129294,
-    "ast_hash": "a2525850eaa57ece027d5f81da1209a7",
+    "mtime": 1784651100.83761,
+    "ast_hash": "1711883d331d533482f00b685dbc630a",
     "semantic_hash": ""
   },
   "frontend/src/components/AIAnalysisPanel.jsx": {
@@ -25,8 +25,8 @@
     "semantic_hash": ""
   },
   "frontend/src/components/ChartPanel.jsx": {
-    "mtime": 1784649682.5406547,
-    "ast_hash": "b69684b3fe2e1d2eb48558096c583554",
+    "mtime": 1784651168.583077,
+    "ast_hash": "2589a3b5058e020a75aea9443bed6aa3",
     "semantic_hash": ""
   },
   "frontend/src/components/EducationPanel.jsx": {
@@ -400,8 +400,8 @@
     "semantic_hash": ""
   },
   "supabase/functions/tests/outcome_test.ts": {
-    "mtime": 1784649786.93823,
-    "ast_hash": "c7c202ae773635b4b3ce42b816460b55",
+    "mtime": 1784649799.7148414,
+    "ast_hash": "4d5701b3f2180348b51de95e488339f6",
     "semantic_hash": ""
   },
   "supabase/functions/tests/regime_test.ts": {

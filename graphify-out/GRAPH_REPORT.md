@@ -1,16 +1,16 @@
 # Graph Report - Forge  (2026-07-21)
 
 ## Corpus Check
-- 92 files · ~83,469 words
+- 92 files · ~83,613 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 618 nodes · 1163 edges · 42 communities (32 shown, 10 thin omitted)
+- 619 nodes · 1164 edges · 36 communities (27 shown, 9 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 3 edges (avg confidence: 0.5)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `50ab47e0`
+- Built from commit: `a5688438`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -41,18 +41,12 @@
 - DEFAULT_PRICE_SCALE_MARGINS
 - marketStructure.test.js
 - education-app.js
-- education-data.js
 - aiContext.ts
 - index.ts
-- marketStructure.ts
 - main.jsx
-- SignUp.jsx
 - 20260722030000_user_preferences_db_validation.sql
 - 20260722050000_trade_journal.sql
 - 20260722040000_fill_aware_scoring.sql
-- supabaseClient.js
-- AnalysisPanel.jsx
-- StatusBar.jsx
 
 ## God Nodes (most connected - your core abstractions)
 1. `buildContextFromCandles()` - 28 edges
@@ -71,29 +65,29 @@
   frontend/src/utils/pivotChartPrefs.js → supabase/functions/_shared/pivotPoints.ts
 - `sanitizePivotLevelOptions()` --references--> `PIVOT_LEVEL_KEYS`  [EXTRACTED]
   frontend/src/utils/pivotChartPrefs.js → supabase/functions/_shared/pivotPoints.ts
-- `sanitizePreferences()` --calls--> `sanitizePivotTimeframe()`  [EXTRACTED]
-  supabase/functions/user-preferences/index.ts → supabase/functions/_shared/pivotPoints.ts
-- `fetchBinanceCandles()` --calls--> `computeSeriesIndicators()`  [EXTRACTED]
-  frontend/src/App.jsx → frontend/src/utils/incrementalIndicators.js
-- `fetchMarketCandles()` --calls--> `invokeFunction()`  [EXTRACTED]
-  frontend/src/App.jsx → frontend/src/supabaseClient.js
+- `App()` --calls--> `useAuth()`  [EXTRACTED]
+  frontend/src/App.jsx → frontend/src/hooks/useAuth.js
+- `sanitizePreferences()` --calls--> `sanitizePivotChartPrefs()`  [EXTRACTED]
+  frontend/src/utils/userPreferences.js → frontend/src/utils/pivotChartPrefs.js
+- `buildContextFromCandles()` --calls--> `sliceClosedCandles()`  [EXTRACTED]
+  supabase/functions/_shared/aiContext.ts → supabase/functions/_shared/candles.ts
 
 ## Import Cycles
 - None detected.
 
-## Communities (42 total, 10 thin omitted)
+## Communities (36 total, 9 thin omitted)
 
 ### Community 0 - "App.jsx"
-Cohesion: 0.26
-Nodes (12): calculateEMA(), calculateMACD(), calculateRSI(), computeMacdState(), computeRsiState(), computeSeriesIndicators(), extractClosedIndicatorState(), patchLastCandleIndicators() (+4 more)
+Cohesion: 0.16
+Nodes (17): AtrResult, buildMarketStructure(), clamp(), clusterIntoZones(), computeSignalAgreement(), detectMacdDivergence(), detectRsiDivergence(), DivergenceOptions (+9 more)
 
 ### Community 1 - "pivotPoints.ts"
 Cohesion: 0.08
-Nodes (34): inflectionThreshold(), fetchBinanceHtfKlines(), parseBinanceKlines(), aggregateMonthlyToYearly(), ALLOWED_CHART_INTERVALS, AnalyzePivotsOptions, analyzePriceVsPivots(), buildPivotData() (+26 more)
+Nodes (30): inflectionThreshold(), parseBinanceKlines(), aggregateMonthlyToYearly(), ALLOWED_CHART_INTERVALS, AnalyzePivotsOptions, analyzePriceVsPivots(), buildPivotDataFromHtf(), BuildPivotDataInput (+22 more)
 
 ### Community 2 - "main.jsx"
-Cohesion: 0.24
-Nodes (16): App(), applyTheme(), buildTechnicalAnalysis(), COMMON_QUOTES, fetchBinanceCandles(), fetchMarketCandles(), fetchPivotData(), hasCurrentPivotPeriod() (+8 more)
+Cohesion: 0.06
+Nodes (44): App(), applyTheme(), buildTechnicalAnalysis(), ChartPanelErrorBoundary, COMMON_QUOTES, fetchBinanceCandles(), fetchMarketCandles(), fetchPivotData() (+36 more)
 
 ### Community 3 - "package.json"
 Cohesion: 0.08
@@ -104,8 +98,8 @@ Cohesion: 0.07
 Nodes (42): args, Bucket, buckets, closed, interval, outPath, step, summary (+34 more)
 
 ### Community 5 - "ChartPanel.jsx"
-Cohesion: 0.14
-Nodes (27): buildCandleDataWithWhitespace(), ChartPanel(), getCryptoIcon(), getCurrentPivotPeriodEnd(), getPivotTypeName(), POPULAR_PAIRS, subtractFiveMonths(), DARK (+19 more)
+Cohesion: 0.13
+Nodes (27): buildCandleDataWithWhitespace(), ChartPanel(), getCryptoIcon(), getCurrentPivotPeriodEnd(), getPivotTypeName(), POPULAR_PAIRS, subtractOneMonth(), DARK (+19 more)
 
 ### Community 7 - "Pivot Points Architecture"
 Cohesion: 0.20
@@ -121,7 +115,7 @@ Nodes (4): formatPivotPrice(), PivotSegmentsPaneRenderer, PivotSegmentsPaneView,
 
 ### Community 10 - "index.ts"
 Cohesion: 0.07
-Nodes (46): attachEmpiricalConfidence(), fetchEmpiricalCalibration(), ScoredRow, ALLOWED_INTERVALS, isCandleArray(), readMarketCache(), AuthResult, getBearerToken() (+38 more)
+Nodes (45): attachEmpiricalConfidence(), fetchEmpiricalCalibration(), ScoredRow, ALLOWED_INTERVALS, isCandleArray(), readMarketCache(), AuthResult, getBearerToken() (+37 more)
 
 ### Community 11 - "Forge — Prediction Accuracy Audit & Roadmap"
 Cohesion: 0.15
@@ -136,8 +130,8 @@ Cohesion: 0.09
 Nodes (23): dompurify, framer-motion, dependencies, dompurify, framer-motion, lightweight-charts, react, react-dom (+15 more)
 
 ### Community 14 - "ChartPanelErrorBoundary"
-Cohesion: 0.09
-Nodes (30): AtrResult, calculateATR(), OHLC, trueRangeSeries(), wilderSmooth(), calculateADX(), calculateATR(), calculateBollingerBands() (+22 more)
+Cohesion: 0.10
+Nodes (29): AtrResult, calculateATR(), OHLC, trueRangeSeries(), wilderSmooth(), calculateADX(), calculateATR(), calculateBollingerBands() (+21 more)
 
 ### Community 15 - "education-app.js"
 Cohesion: 0.12
@@ -163,57 +157,37 @@ Nodes (3): buildHighVolSeries(), buildLowVolSeries(), makeCandle()
 Cohesion: 0.26
 Nodes (13): EMPTY_FORM, JournalPanel(), buildEntryFromAiPlan(), cancelJournalEntry(), closeJournalEntry(), computeJournalStats(), createJournalEntry(), deleteJournalEntry() (+5 more)
 
-### Community 27 - "education-data.js"
-Cohesion: 0.40
-Nodes (4): AIAnalysisPanel(), colorMap, loadPositionCalcDefaults(), PositionSizeCalculator()
-
 ### Community 30 - "aiContext.ts"
-Cohesion: 0.06
-Nodes (60): buildContextFromCandles(), BuildContextOptions, clamp(), DAILY_PLUS_INTERVALS, divergenceToLegacy(), EMPTY_FUTURES, EMPTY_LIQUIDATION, EMPTY_ORDER_FLOW (+52 more)
+Cohesion: 0.07
+Nodes (50): buildContextFromCandles(), BuildContextOptions, clamp(), DAILY_PLUS_INTERVALS, divergenceToLegacy(), EMPTY_FUTURES, EMPTY_LIQUIDATION, EMPTY_ORDER_FLOW (+42 more)
 
 ### Community 31 - "index.ts"
-Cohesion: 0.18
-Nodes (17): asTradePlan(), LogRow, scoreRow(), fetchBinanceKlines(), constantTimeEqual(), digestSecret(), isCronSecretConfigured(), readCronSecret() (+9 more)
+Cohesion: 0.19
+Nodes (16): asTradePlan(), LogRow, scoreRow(), constantTimeEqual(), digestSecret(), isCronSecretConfigured(), readCronSecret(), verifyCronSecret() (+8 more)
 
 ### Community 33 - "main.jsx"
-Cohesion: 0.26
-Nodes (10): ProtectedRoute(), PublicOnlyRoute(), AUTH_ROUTES, AuthContext, AuthProvider(), getPath(), isProtectedPath(), replacePath() (+2 more)
-
-### Community 34 - "SignUp.jsx"
-Cohesion: 0.35
-Nodes (7): AuthShell(), GoogleIcon(), AuthCallback(), SignIn(), SignUp(), getFriendlyAuthError(), isValidEmail()
-
-### Community 39 - "supabaseClient.js"
-Cohesion: 0.31
-Nodes (4): AccuracyPanel(), EdgeFunctionUnavailableError, invokeFunction(), isUnavailableFunctionError()
-
-### Community 40 - "AnalysisPanel.jsx"
-Cohesion: 0.70
-Nodes (4): AnalysisPanel(), formatLevel(), formatSwingTime(), formatValue()
-
-### Community 41 - "StatusBar.jsx"
-Cohesion: 0.83
-Nodes (3): formatPrice(), formatVolume(), StatusBar()
+Cohesion: 0.17
+Nodes (17): AuthShell(), GoogleIcon(), ProtectedRoute(), PublicOnlyRoute(), AUTH_ROUTES, AuthContext, AuthProvider(), getPath() (+9 more)
 
 ## Knowledge Gaps
 - **155 isolated node(s):** `name`, `private`, `version`, `type`, `dev` (+150 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **10 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **9 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `PIVOT_LEVEL_KEYS` connect `ChartPanel.jsx` to `pivotPoints.ts`?**
-  _High betweenness centrality (0.331) - this node is a cross-community bridge._
+  _High betweenness centrality (0.332) - this node is a cross-community bridge._
 - **Why does `ChartPanel()` connect `ChartPanel.jsx` to `main.jsx`?**
   _High betweenness centrality (0.128) - this node is a cross-community bridge._
 - **What connects `name`, `private`, `version` to the rest of the system?**
   _155 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `pivotPoints.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.08333333333333333 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.08095238095238096 - nodes in this community are weakly interconnected._
+- **Should `main.jsx` be split into smaller, more focused modules?**
+  _Cohesion score 0.06292966684294024 - nodes in this community are weakly interconnected._
 - **Should `package.json` be split into smaller, more focused modules?**
   _Cohesion score 0.07692307692307693 - nodes in this community are weakly interconnected._
 - **Should `app.py` be split into smaller, more focused modules?**
   _Cohesion score 0.06704260651629072 - nodes in this community are weakly interconnected._
-- **Should `ChartPanel.jsx` be split into smaller, more focused modules?**
-  _Cohesion score 0.13911290322580644 - nodes in this community are weakly interconnected._

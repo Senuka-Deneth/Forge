@@ -340,6 +340,7 @@ export default function App() {
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true)
   const [isChartMaximized, setIsChartMaximized] = useState(false)
+  const chartViewStateRef = useRef(null)
 
   const [analysis, setAnalysis] = useState(null)
   const [theme, setTheme] = useState(() => localStorage.getItem('forge_theme') || 'dark')
@@ -885,6 +886,7 @@ export default function App() {
                   onLoadChart={loadChart}
                   isMaximized={isChartMaximized}
                   setIsMaximized={setIsChartMaximized}
+                  viewStateRef={chartViewStateRef}
                 />
               </ChartPanelErrorBoundary>
             </div>

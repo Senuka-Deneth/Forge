@@ -56,6 +56,7 @@ function buildCandleDataWithWhitespace(candles, periodEndTime, interval) {
 }
 
 const SUBPANE_HEIGHT = 120
+const MACD_PANE_HEIGHT = 200
 const PANE_SEPARATOR_HEIGHT = 1
 
 function getCurrentPivotPeriodEnd(pivotData) {
@@ -68,6 +69,12 @@ function getCurrentPivotPeriodEnd(pivotData) {
 function subtractFiveMonths(unixTime) {
   const date = new Date(unixTime * 1000)
   date.setUTCMonth(date.getUTCMonth() - 5)
+  return Math.floor(date.getTime() / 1000)
+}
+
+function subtractOneMonth(unixTime) {
+  const date = new Date(unixTime * 1000)
+  date.setUTCMonth(date.getUTCMonth() - 1)
   return Math.floor(date.getTime() / 1000)
 }
 
@@ -202,6 +209,7 @@ export default function ChartPanel({
   onLoadChart,
   isMaximized,
   setIsMaximized,
+  viewStateRef,
 }) {
   const priceContainerRef = useRef(null)
 
@@ -251,6 +259,7 @@ export default function ChartPanel({
   const [pairSearchQuery, setPairSearchQuery] = useState('')
   const [pairsData, setPairsData] = useState(POPULAR_PAIRS)
   const candlesRef = useRef(candles)
+  const prevSymbolIntervalRef = useRef({ symbol, interval })
 
   useEffect(() => {
     candlesRef.current = candles
@@ -273,7 +282,11 @@ export default function ChartPanel({
     if (!chart) return
 
     chart.panes().forEach((pane) => {
-      if (pane.paneIndex() > 0) pane.setHeight(SUBPANE_HEIGHT)
+      if (pane.paneIndex() > 0) {
+        const isMacd = macdSeriesRef.current
+          && macdSeriesRef.current.getPane().paneIndex() === pane.paneIndex()
+        pane.setHeight(isMacd ? MACD_PANE_HEIGHT : SUBPANE_HEIGHT)
+      }
     })
 
     requestAnimationFrame(() => {
@@ -325,7 +338,14 @@ export default function ChartPanel({
     } else {
       priceZoomRef.current = { min: null, max: null }
     }
-  }, [symbol, interval])
+    const prev = prevSymbolIntervalRef.current
+    if (prev.symbol !== symbol || prev.interval !== interval) {
+      if (viewStateRef) {
+        viewStateRef.current = null
+      }
+      prevSymbolIntervalRef.current = { symbol, interval }
+    }
+  }, [symbol, interval, viewStateRef])
 
   useEffect(() => {
     if (!isManualPriceRangeActive(priceZoomRef)) return
@@ -594,6 +614,7 @@ export default function ChartPanel({
       const chart = priceChartRef.current
       if (!container || !chart || !candlesList.length) return
       if (!isWithinMainPane(e.clientY)) return
+      if (!isOverPriceScale(container, e.clientX)) return
 
       // Shift/Ctrl/Meta or horizontal-dominant wheel: time-axis zoom (library default)
       if (!shouldHandleVerticalWheel(e, container)) return
@@ -770,6 +791,16 @@ export default function ChartPanel({
       window.removeEventListener('mouseup', handlePriceMouseUp)
       window.removeEventListener('resize', handleResize)
       window.removeEventListener('themeChanged', handleThemeChange)
+      try {
+        if (viewStateRef && priceChart) {
+          viewStateRef.current = {
+            logicalRange: priceChart.timeScale().getVisibleLogicalRange(),
+            priceZoom: { ...priceZoomRef.current },
+          }
+        }
+      } catch {
+        // Chart may already be partially torn down
+      }
       pivotPrimitiveRef.current = null
       priceChartRef.current = null
       rsiSeriesRef.current = null
@@ -936,13 +967,27 @@ export default function ChartPanel({
     }
 
     if (!hasAppliedInitialZoomRef.current && priceChartRef.current && candles.length > 0) {
-      const latestTime = candles[candles.length - 1].time
-      const earliestTime = candles[0].time
-      const from = Math.max(earliestTime, subtractFiveMonths(latestTime))
-      const candleCount = candles.length
-      const candleDuration = candleCount > 1 ? (candles[candleCount - 1].time - candles[candleCount - 2].time) : 24 * 60 * 60
-      const to = latestTime + 15 * candleDuration
-      priceChartRef.current.timeScale().setVisibleRange({ from, to })
+      const saved = viewStateRef?.current
+      if (saved?.logicalRange) {
+        priceChartRef.current.timeScale().setVisibleLogicalRange(saved.logicalRange)
+        if (saved.priceZoom?.min != null && saved.priceZoom?.max != null) {
+          priceZoomRef.current = { ...saved.priceZoom }
+          applyManualPriceRange(
+            priceChartRef.current,
+            priceZoomRef,
+            saved.priceZoom.min,
+            saved.priceZoom.max,
+          )
+        }
+      } else {
+        const latestTime = candles[candles.length - 1].time
+        const earliestTime = candles[0].time
+        const from = Math.max(earliestTime, subtractOneMonth(latestTime))
+        const candleCount = candles.length
+        const candleDuration = candleCount > 1 ? (candles[candleCount - 1].time - candles[candleCount - 2].time) : 24 * 60 * 60
+        const to = latestTime + 15 * candleDuration
+        priceChartRef.current.timeScale().setVisibleRange({ from, to })
+      }
       hasAppliedInitialZoomRef.current = true
     }
   }, [candles, analysis, pivotData, chartPreferences.showStandardPivots, hiddenIndicators, interval])

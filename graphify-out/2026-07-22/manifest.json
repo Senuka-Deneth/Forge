@@ -210,8 +210,8 @@
     "semantic_hash": ""
   },
   "supabase/functions/_shared/marketStructure.ts": {
-    "mtime": 1784664832.5237968,
-    "ast_hash": "4ea7fb7d3533661d670a8e04ac4df1fd",
+    "mtime": 1784662337.3711486,
+    "ast_hash": "32df05b9db5bcc63f7e826c9de7a4232",
     "semantic_hash": ""
   },
   "frontend/src/components/AccuracyPanel.jsx": {
@@ -230,8 +230,8 @@
     "semantic_hash": ""
   },
   "supabase/functions/_shared/aiContext.ts": {
-    "mtime": 1784665294.1205356,
-    "ast_hash": "b97ec7319b57f5f31ee9909ee57bd72a",
+    "mtime": 1784649549.6271486,
+    "ast_hash": "826b115d87d620aef648ac8aa47a3d18",
     "semantic_hash": ""
   },
   "supabase/functions/_shared/auth.ts": {
@@ -240,8 +240,8 @@
     "semantic_hash": ""
   },
   "supabase/functions/_shared/binance.ts": {
-    "mtime": 1784665458.7507942,
-    "ast_hash": "f4b57dae992fb5f76e679207f411aa3f",
+    "mtime": 1784649540.6387718,
+    "ast_hash": "d11c1fe0c19bbc998c4fa9fdf7b4d04d",
     "semantic_hash": ""
   },
   "supabase/functions/_shared/candles.ts": {
@@ -485,8 +485,8 @@
     "semantic_hash": ""
   },
   "supabase/functions/tests/structure_test.ts": {
-    "mtime": 1784664914.530458,
-    "ast_hash": "7be0d1963cb003e4b96ca6019c54ac8d",
+    "mtime": 1784649763.3978462,
+    "ast_hash": "bcdbbb104a03783df1cd5733067bad98",
     "semantic_hash": ""
   },
   ".claude/settings.local.json": {
@@ -507,51 +507,6 @@
   "supabase/migrations/20260722060000_regime_calibration_bucket.sql": {
     "mtime": 1784663579.1848423,
     "ast_hash": "eaee06034feabb71920d8bfdb139caa8",
-    "semantic_hash": ""
-  },
-  "supabase/functions/_shared/liquidityMap.ts": {
-    "mtime": 1784665035.9147763,
-    "ast_hash": "3b65bd6312841b6c50d4f18c3c5c3ac7",
-    "semantic_hash": ""
-  },
-  "supabase/functions/_shared/volatility.ts": {
-    "mtime": 1784664340.2459848,
-    "ast_hash": "99f5abd67bec6bc74423ebdc1faf0a19",
-    "semantic_hash": ""
-  },
-  "supabase/functions/_shared/volumeProfile.ts": {
-    "mtime": 1784665126.0926673,
-    "ast_hash": "01fc5741e185485302a61ed854a64d66",
-    "semantic_hash": ""
-  },
-  "supabase/functions/_shared/vwap.ts": {
-    "mtime": 1784664069.410828,
-    "ast_hash": "c1c11fe5771aba5cea325a02ed3e28c7",
-    "semantic_hash": ""
-  },
-  "supabase/functions/tests/liquidity_map_test.ts": {
-    "mtime": 1784665079.5082183,
-    "ast_hash": "2ac94c5729f8af4c389af005655c4c77",
-    "semantic_hash": ""
-  },
-  "supabase/functions/tests/order_book_test.ts": {
-    "mtime": 1784665474.040086,
-    "ast_hash": "78cf8a596917af22d4a93b14ac6bb2d7",
-    "semantic_hash": ""
-  },
-  "supabase/functions/tests/volatility_test.ts": {
-    "mtime": 1784664430.4620845,
-    "ast_hash": "d801eb701c2ef908b8908f88848df512",
-    "semantic_hash": ""
-  },
-  "supabase/functions/tests/volume_profile_test.ts": {
-    "mtime": 1784665210.5072467,
-    "ast_hash": "6de00141c98a1f629dbc3de43d888162",
-    "semantic_hash": ""
-  },
-  "supabase/functions/tests/vwap_test.ts": {
-    "mtime": 1784664236.8611295,
-    "ast_hash": "4ef2180e07669780f3c78ab658a26010",
     "semantic_hash": ""
   }
 }

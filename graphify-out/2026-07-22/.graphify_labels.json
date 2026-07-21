@@ -26,17 +26,13 @@
   "24": "DEFAULT_PRICE_SCALE_MARGINS",
   "25": "marketStructure.test.js",
   "26": "education-app.js",
-  "27": "liquidityMap.ts",
   "28": "eslint.config.js",
   "29": "20260722000000_cron_secret_fail_closed.sql",
   "30": "aiContext.ts",
   "31": "index.ts",
-  "32": "volumeProfile.ts",
   "33": "main.jsx",
-  "34": "features.ts",
   "35": "20260722030000_user_preferences_db_validation.sql",
   "36": "20260722050000_trade_journal.sql",
   "37": "20260722040000_fill_aware_scoring.sql",
-  "38": "20260722020000_gc_crons.sql",
-  "39": "vwap.ts"
+  "38": "20260722020000_gc_crons.sql"
 }

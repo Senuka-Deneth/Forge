@@ -1,4 +1,79 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+
+const POSITION_CALC_STORAGE_KEY = 'forge_position_calc';
+
+function loadPositionCalcDefaults() {
+  try {
+    const raw = localStorage.getItem(POSITION_CALC_STORAGE_KEY);
+    if (!raw) return { accountSize: 1000, riskPct: 1 };
+    const parsed = JSON.parse(raw);
+    return {
+      accountSize: Number.isFinite(parsed.accountSize) ? parsed.accountSize : 1000,
+      riskPct: Number.isFinite(parsed.riskPct) ? parsed.riskPct : 1,
+    };
+  } catch {
+    return { accountSize: 1000, riskPct: 1 };
+  }
+}
+
+function PositionSizeCalculator({ entry, stop }) {
+  const defaults = useMemo(loadPositionCalcDefaults, []);
+  const [accountSize, setAccountSize] = useState(defaults.accountSize);
+  const [riskPct, setRiskPct] = useState(defaults.riskPct);
+
+  useEffect(() => {
+    localStorage.setItem(POSITION_CALC_STORAGE_KEY, JSON.stringify({ accountSize, riskPct }));
+  }, [accountSize, riskPct]);
+
+  const riskPerUnit = entry != null && stop != null ? Math.abs(entry - stop) : null;
+  const riskAmount = accountSize > 0 && riskPct > 0 ? accountSize * (riskPct / 100) : 0;
+  const positionSize = riskPerUnit && riskPerUnit > 0 ? riskAmount / riskPerUnit : null;
+  const positionValue = positionSize != null && entry != null ? positionSize * entry : null;
+
+  return (
+    <div className="position-calc">
+      <div className="position-calc-inputs">
+        <label>
+          Account size ($)
+          <input
+            type="number"
+            min="0"
+            value={accountSize}
+            onChange={(e) => setAccountSize(Number(e.target.value) || 0)}
+          />
+        </label>
+        <label>
+          Risk per trade (%)
+          <input
+            type="number"
+            min="0"
+            step="0.1"
+            value={riskPct}
+            onChange={(e) => setRiskPct(Number(e.target.value) || 0)}
+          />
+        </label>
+      </div>
+      {riskPerUnit == null ? (
+        <p className="ai-signal-note">Set an entry and stop to size a position.</p>
+      ) : (
+        <div className="ai-rows">
+          <div className="ai-row">
+            <span>Risk amount</span>
+            <span>${riskAmount.toFixed(2)}</span>
+          </div>
+          <div className="ai-row">
+            <span>Position size</span>
+            <span>{positionSize != null ? positionSize.toFixed(6) : '—'} units</span>
+          </div>
+          <div className="ai-row">
+            <span>Position value</span>
+            <span>{positionValue != null ? `$${positionValue.toFixed(2)}` : '—'}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const colorMap = {
   // Trends & Momentum
@@ -62,8 +137,8 @@ function StatusPill({ value }) {
   const isTransparent = color === 'transparent'
   
   return (
-    <span className="status-pill" style={{ 
-      backgroundColor: isTransparent ? 'rgba(255,255,255,0.05)' : `var(--${color.replace('var(--', '').replace(')', '')}-soft, rgba(255,255,255,0.1))`,
+    <span className="status-pill" style={{
+      backgroundColor: isTransparent ? 'var(--bg-overlay)' : `var(--${color.replace('var(--', '').replace(')', '')}-soft, var(--bg-overlay))`,
       color: color,
       border: `1px solid ${isTransparent ? 'var(--border-subtle)' : color}`,
       padding: '2px 8px',
@@ -103,14 +178,35 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
       }, 4500);
       return () => clearInterval(interval);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional loading message rotation while aiLoading is true
   }, [aiLoading]);
+
+  const isLiveAI = a?._meta?.source === 'openrouter'
+  const isPartialAI = a?._meta?.source === 'openrouter-partial'
+  const provenanceLabel = isLiveAI ? 'Live AI' : isPartialAI ? 'Partial AI' : 'Baseline'
+  const provenanceColor = isLiveAI ? 'var(--bull)' : isPartialAI ? 'var(--neutral)' : 'var(--text-muted)'
+  const provenanceBg = isLiveAI ? 'var(--bull-soft)' : isPartialAI ? 'var(--neutral-soft)' : 'rgba(255,255,255,0.05)'
+  const modelLabel = a?._meta?.model ?? 'model pending'
 
   return (
     <div id="ai-analysis-section" className="ai-section">
       <div className="ai-section-header">
         <div className="ai-section-title">
           <span>AI Analysis</span>
-          <span className="model-tag" id="ai-model-tag">nemotron-120b · fast validated mode</span>
+          <span className="model-tag" id="ai-model-tag">{modelLabel}</span>
+          {a && (
+            <span
+              className="panel-badge"
+              title={isLiveAI ? 'Generated primarily by the live AI model.' : isPartialAI ? 'Model returned partial output; some fields use deterministic fallbacks.' : 'Rules-based baseline — model unavailable or mostly ignored.'}
+              style={{
+                marginLeft: '8px',
+                backgroundColor: provenanceBg,
+                color: provenanceColor,
+              }}
+            >
+              {provenanceLabel}
+            </span>
+          )}
         </div>
         <div className="ai-section-actions">
           <span 
@@ -123,7 +219,7 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
                   ? 'var(--bear-soft)'
                   : a
                     ? 'var(--bull-soft)'
-                    : 'var(--bg-input)',
+                    : 'var(--bg-overlay)',
               color: aiLoading
                 ? 'var(--neutral)'
                 : aiError
@@ -202,21 +298,7 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
       {!aiLoading && !aiError && !a && (
         <div style={{ padding: '20px 0', color: 'var(--text-muted)', fontSize: 'var(--text-sm)', textAlign: 'center' }}>
           <p style={{ marginBottom: '16px' }}>No AI analysis generated yet.</p>
-          <button 
-            className="ai-create-btn" 
-            onClick={onRefresh}
-            style={{
-              padding: '10px 20px',
-              background: 'var(--accent)',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontWeight: 600,
-              fontSize: '14px',
-              boxShadow: 'var(--shadow-sm)'
-            }}
-          >
+          <button className="btn-primary" onClick={onRefresh}>
             Create AI Analysis
           </button>
         </div>
@@ -248,8 +330,20 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
                 <label>Bias</label>
                 <div id="ai-bias"><StatusPill value={a.summary?.bias} /></div>
               </div>
+              <div className="ai-kpi">
+                <label>Volatility</label>
+                <div id="ai-volatility"><StatusPill value={a.market_regime?.volatility} /></div>
+              </div>
+              <div className="ai-kpi">
+                <label title="MTF alignment blended with signal agreement — not a probability">MTF+signal blend</label>
+                <div id="ai-confluence">
+                  {a._meta?.confluence_breakdown
+                    ? `${a._meta.confluence_breakdown.mtf_confluence}% MTF (${a._meta.confluence_breakdown.mtf_sample_size} TFs) + ${a._meta.confluence_breakdown.signal_agreement}% signals`
+                    : a._meta?.confluence_score != null ? `${a._meta.confluence_score}%` : '—'}
+                </div>
+              </div>
               <div className="ai-kpi wide-kpi">
-                <label>AI Confidence</label>
+                <label>Signal strength</label>
                 <div className="conf-track">
                   <div id="ai-confidence-bar" className="conf-fill" style={{
                     width: `${a.summary?.confidence ?? 0}%`,
@@ -326,7 +420,8 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
               
               {a.pivot_analysis.at_inflection_point && a.pivot_analysis.inflection_level && (
                 <div id="ai-inflection-alert" className="inflection-alert">
-                  ⚡ At inflection: <strong id="ai-inflection-val">{a.pivot_analysis.inflection_level}</strong>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                  <span>At inflection: <strong id="ai-inflection-val">{a.pivot_analysis.inflection_level}</strong></span>
                 </div>
               )}
               
@@ -335,6 +430,88 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
               )}
             </div>
           )}
+
+          {a.trade_plan && (
+            <div className="ai-card wide">
+              <div className="ai-card-header">Trade Plan</div>
+              <div className="ai-summary-strip">
+                <div className="ai-kpi">
+                  <label>Plan Bias</label>
+                  <div><StatusPill value={a.trade_plan.bias} /></div>
+                </div>
+                <div className="ai-kpi">
+                  <label>Entry Zone</label>
+                  <span>
+                    {a.trade_plan.entry_zone
+                      ? `${a.trade_plan.entry_zone.low ?? '—'} – ${a.trade_plan.entry_zone.high ?? '—'}`
+                      : '—'}
+                  </span>
+                </div>
+                <div className="ai-kpi">
+                  <label>Stop Loss</label>
+                  <span style={{ color: 'var(--bear)', fontWeight: 600 }}>{a.trade_plan.stop_loss ?? '—'}</span>
+                </div>
+                <div className="ai-kpi">
+                  <label>Plan signal strength</label>
+                  <span>
+                    Model {a.trade_plan.confidence ?? 0}%
+                    {a.trade_plan.empirical_confidence != null && (
+                      <>
+                        {' · '}
+                        <span style={{ opacity: (a._meta?.calibration?.n ?? 0) < 20 ? 0.45 : 1 }}>
+                          Empirical {a.trade_plan.empirical_confidence}%
+                          {a._meta?.calibration?.n != null ? ` (n=${a._meta.calibration.n})` : ''}
+                        </span>
+                      </>
+                    )}
+                  </span>
+                </div>
+              </div>
+
+              {a.trade_plan.targets?.length > 0 && (
+                <div className="ai-rows">
+                  {a.trade_plan.targets.map((t, i) => (
+                    <div className="ai-row" key={i}>
+                      <span>{t.label}</span>
+                      <span>{t.price ?? '—'}{t.risk_reward != null ? ` · ${t.risk_reward}:1 R:R` : ''}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {a.trade_plan.risk_reward_summary && (
+                <p className="ai-signal-note">{a.trade_plan.risk_reward_summary}</p>
+              )}
+              {a.trade_plan.rationale && (
+                <p id="ai-trade-plan-rationale" className="ai-reasoning-text">{a.trade_plan.rationale}</p>
+              )}
+
+              {a.trade_plan.bias !== 'wait' && (
+                <PositionSizeCalculator entry={a.trade_plan.entry_zone?.high ?? a.trade_plan.entry_zone?.low} stop={a.trade_plan.stop_loss} />
+              )}
+            </div>
+          )}
+
+          <div className="ai-card">
+            <div className="ai-card-header">Order Flow &amp; Positioning</div>
+            <div className="ai-rows">
+              <div className="ai-row">
+                <span>Order Book Imbalance</span>
+                <span>{a.order_flow?.obi != null ? `${(a.order_flow.obi * 100).toFixed(1)}%` : 'unavailable'}</span>
+              </div>
+              <div className="ai-row">
+                <span>Dominant Side</span>
+                <div><StatusPill value={a.order_flow?.dominant_side} /></div>
+              </div>
+              <div className="ai-row">
+                <span>Futures Data</span>
+                <span>{a._meta?.data_completeness?.futures_available ? 'available' : 'unavailable (spot only)'}</span>
+              </div>
+            </div>
+            {a.order_flow?.interpretation && (
+              <p className="ai-signal-note">{a.order_flow.interpretation}</p>
+            )}
+          </div>
 
           <div className="ai-card wide">
             <div className="ai-card-header">AI Trade Logic</div>
@@ -352,7 +529,7 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
             </div>
             {a.trade_logic?.risk_note && (
               <div className="risk-note-box">
-                <span>⚠️</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0, marginTop: '3px' }}><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
                 <p id="ai-risk-note">{a.trade_logic.risk_note}</p>
               </div>
             )}

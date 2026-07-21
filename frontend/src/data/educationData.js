@@ -352,23 +352,21 @@ export const ICONS = {
   'TRADE LOGIC': `<svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>`,
 };
 
-export function getIcon(id) {
-  if (ICONS[id]) return ICONS[id];
-  // Smart fallback: try to match by keyword in id
-  if (id.includes('binance')) return ICONS['binance-pivots'];
-  if (id.includes('price')) return ICONS['last-price'];
-  if (id.includes('volume')) return ICONS['volume'];
-  if (id.includes('ema') || id.includes('ma')) return ICONS['ema'];
-  if (id.includes('rsi')) return ICONS['rsi'];
-  if (id.includes('macd')) return ICONS['macd'];
-  if (id.includes('pivot') || id.includes('pp')) return ICONS['pivot-levels'];
-  if (id.includes('fib')) return ICONS['fibonacci'];
-  if (id.includes('ai') || id.includes('confidence')) return ICONS['ai-overview'];
-  if (id.includes('phase') || id.includes('regime')) return ICONS['market-phase'];
-  if (id.includes('swing')) return ICONS['swing-points'];
-  if (id.includes('anomal') || id.includes('alert')) return ICONS['anomalies'];
-  if (id.includes('logic') || id.includes('trade')) return ICONS['trade-logic'];
-  if (id.includes('zone')) return ICONS['price-zone'];
-  // Generic doc icon
-  return `<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>`;
+export function resolveIconId(id) {
+  if (ICONS[id]) return id;
+  if (id.includes('binance')) return 'binance-pivots';
+  if (id.includes('price')) return 'last-price';
+  if (id.includes('volume')) return 'volume';
+  if (id.includes('ema') || id.includes('ma')) return 'ema';
+  if (id.includes('rsi')) return 'rsi';
+  if (id.includes('macd')) return 'macd';
+  if (id.includes('pivot') || id.includes('pp')) return 'pivot-levels';
+  if (id.includes('fib')) return 'fibonacci';
+  if (id.includes('ai') || id.includes('confidence')) return 'ai-overview';
+  if (id.includes('phase') || id.includes('regime')) return 'market-phase';
+  if (id.includes('swing')) return 'swing-points';
+  if (id.includes('anomal') || id.includes('alert')) return 'anomalies';
+  if (id.includes('logic') || id.includes('trade')) return 'trade-logic';
+  if (id.includes('zone')) return 'price-zone';
+  return 'default';
 }

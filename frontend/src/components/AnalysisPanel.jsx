@@ -22,13 +22,14 @@ export default function AnalysisPanel({
   error = '',
   pivotData
 }) {
+  // Muted bear→bull ramp matching the steel design tokens (chartTheme.js)
   const zoneColors = {
-    above_R3: '#b71c1c',
-    between_R2_R3: '#e53935', between_R1_R2: '#ef5350',
-    between_PP_R1: '#ef9a9a',
-    between_S1_PP: '#a5d6a7',
-    between_S2_S1: '#26a69a', between_S3_S2: '#00897b',
-    below_S3: '#004d40'
+    above_R3: 'hsl(4, 56%, 40%)',
+    between_R2_R3: 'hsl(4, 50%, 48%)', between_R1_R2: 'hsl(4, 45%, 56%)',
+    between_PP_R1: 'hsl(4, 32%, 62%)',
+    between_S1_PP: 'hsl(152, 26%, 56%)',
+    between_S2_S1: 'hsl(152, 34%, 46%)', between_S3_S2: 'hsl(152, 40%, 36%)',
+    below_S3: 'hsl(152, 45%, 26%)'
   }
 
   const pivots = pivotData?.classic?.pivots ?? null
@@ -123,9 +124,9 @@ export default function AnalysisPanel({
             <span id="pivot-zone-tag" className="status-pill" style={{
               backgroundColor: pivotAnalysis?.zone ? zoneColors[pivotAnalysis.zone] : 'transparent',
               color: pivotAnalysis?.zone ? '#fff' : 'inherit',
-              border: pivotAnalysis?.zone ? 'none' : '1px solid var(--border-default)'
+              border: pivotAnalysis?.zone ? 'none' : '1px solid var(--border-medium)'
             }}>
-              {pivotAnalysis ? pivotAnalysis.zone.replace(/_/g, ' ') : '—'}
+              {pivotAnalysis?.zone ? pivotAnalysis.zone.replace(/_/g, ' ') : '—'}
             </span>
           </div>
           <div className="pivot-meta-item">
@@ -133,7 +134,7 @@ export default function AnalysisPanel({
             <span id="pivot-bias-tag" className="status-pill" style={{
                backgroundColor: pivotAnalysis?.bias === 'bullish' ? 'var(--bull)' : pivotAnalysis?.bias === 'bearish' ? 'var(--bear)' : 'transparent',
                color: pivotAnalysis?.bias ? '#fff' : 'inherit',
-               border: pivotAnalysis?.bias ? 'none' : '1px solid var(--border-default)'
+               border: pivotAnalysis?.bias ? 'none' : '1px solid var(--border-medium)'
             }}>
               {pivotAnalysis?.bias || '—'}
             </span>
@@ -166,14 +167,8 @@ export default function AnalysisPanel({
 
         {pivotAnalysis?.atInflectionPoint && pivotAnalysis?.inflectionLevel && (
           <div id="pivot-inflection" className="inflection-alert" style={{ display: 'flex' }}>
-            <span>⚡</span>
-            <span>Inflection: <strong id="pivot-inflection-level">{pivotAnalysis.inflectionLevel.label} @ {pivotAnalysis.inflectionLevel.value}</strong></span>
-          </div>
-        )}
-        {(!pivotAnalysis?.atInflectionPoint || !pivotAnalysis?.inflectionLevel) && (
-          <div id="pivot-inflection" className="inflection-alert" style={{ display: 'none' }}>
-            <span>⚡</span>
-            <span>Inflection: <strong id="pivot-inflection-level"></strong></span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            <span>Inflection: <strong id="pivot-inflection-level">{pivotAnalysis?.inflectionLevel?.label} @ {pivotAnalysis?.inflectionLevel?.value}</strong></span>
           </div>
         )}
 
@@ -208,8 +203,8 @@ export default function AnalysisPanel({
             <div style={{
               display: 'flex', alignItems: 'center', gap: '8px',
               padding: '8px 10px',
-              background: 'hsla(358, 68%, 58%, 0.08)',
-              borderRadius: '5px',
+              background: 'var(--bear-soft)',
+              borderRadius: 'var(--radius-xs)',
               borderLeft: '2px solid var(--color-bear)',
             }}>
               <span style={{ fontFamily: 'var(--font-ui)', fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-bear)', whiteSpace: 'nowrap' }}>Invalidates if</span>
@@ -222,8 +217,8 @@ export default function AnalysisPanel({
             <div style={{
               display: 'flex', alignItems: 'center', gap: '8px',
               padding: '8px 10px',
-              background: 'hsla(158, 55%, 48%, 0.08)',
-              borderRadius: '5px',
+              background: 'var(--bull-soft)',
+              borderRadius: 'var(--radius-xs)',
               borderLeft: '2px solid var(--color-bull)',
             }}>
               <span style={{ fontFamily: 'var(--font-ui)', fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-bull)', whiteSpace: 'nowrap' }}>Invalidates if</span>

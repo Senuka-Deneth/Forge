@@ -1,5 +1,7 @@
-import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.105.4";
 import { handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { safeError } from "../_shared/http.ts";
+import { sanitizePivotTimeframe } from "../_shared/pivotPoints.ts";
 
 const DEFAULT_CHART_PREFERENCES = {
   showCandles: true,
@@ -11,6 +13,10 @@ const DEFAULT_CHART_PREFERENCES = {
   showResistance: false,
   showPivots: false,
   showStandardPivots: false,
+  showHistoricalPivots: true,
+  pivotType: "traditional",
+  pivotTimeframe: "auto",
+  pivotsBack: 15,
 };
 
 const USER_KEY_REGEX = /^[a-zA-Z0-9_.@-]{3,128}$/;
@@ -57,11 +63,21 @@ function resolveRequestedUserId(raw: unknown, authenticatedUserId: string):
 }
 
 function sanitizePreferences(payload: unknown) {
-  const sanitized = { ...DEFAULT_CHART_PREFERENCES };
+  const sanitized = { ...DEFAULT_CHART_PREFERENCES } as Record<string, unknown>;
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return sanitized;
   const source = payload as Record<string, unknown>;
-  for (const key of Object.keys(DEFAULT_CHART_PREFERENCES) as Array<keyof typeof DEFAULT_CHART_PREFERENCES>) {
-    if (key in source) sanitized[key] = Boolean(source[key]);
+  for (const key of Object.keys(DEFAULT_CHART_PREFERENCES)) {
+    if (key in source) {
+      if (key === "pivotType") {
+        sanitized[key] = String(source[key]);
+      } else if (key === "pivotTimeframe") {
+        sanitized[key] = sanitizePivotTimeframe(source[key]);
+      } else if (key === "pivotsBack") {
+        sanitized[key] = Math.max(1, Math.min(50, Number(source[key]) || 15));
+      } else {
+        sanitized[key] = Boolean(source[key]);
+      }
+    }
   }
   return sanitized;
 }
@@ -90,12 +106,13 @@ Deno.serve(async (req) => {
   if (options) return options;
 
   if (!["GET", "POST"].includes(req.method)) {
-    return jsonResponse({ success: false, error: "Method not allowed.", error_code: "METHOD_NOT_ALLOWED" }, 405);
+    return jsonResponse(req, { success: false, error: "Method not allowed.", error_code: "METHOD_NOT_ALLOWED" }, 405);
   }
 
   const clientResult = tryServiceClient();
   if (!clientResult.ok) {
     return jsonResponse(
+      req,
       { success: false, error: clientResult.error, error_code: clientResult.error_code },
       503,
     );
@@ -105,6 +122,7 @@ Deno.serve(async (req) => {
   const authResult = await getAuthenticatedUserId(supabase, req);
   if (!authResult.ok) {
     return jsonResponse(
+      req,
       { success: false, error: authResult.error, error_code: authResult.error_code },
       authResult.status,
     );
@@ -119,7 +137,7 @@ Deno.serve(async (req) => {
         authResult.userId,
       );
       if (!userResult.ok) {
-        return jsonResponse({ success: false, error: userResult.error, error_code: userResult.error_code }, 403);
+        return jsonResponse(req, { success: false, error: userResult.error, error_code: userResult.error_code }, 403);
       }
       const userId = userResult.userId;
       const { data, error } = await supabase
@@ -129,12 +147,12 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (error) {
-        return jsonResponse(
-          { success: false, error: error.message, error_code: "DATABASE_ERROR", hint: "Check that migration ran and table user_preferences exists." },
+        return jsonResponse(req,
+          { success: false, error: safeError("Failed to load preferences.", error), error_code: "DATABASE_ERROR" },
           500,
         );
       }
-      return jsonResponse({
+      return jsonResponse(req, {
         success: true,
         user_id: userId,
         userKey: userId,
@@ -146,7 +164,7 @@ Deno.serve(async (req) => {
     if (body.action === "get") {
       const userResult = resolveRequestedUserId(body.user_id ?? body.userKey, authResult.userId);
       if (!userResult.ok) {
-        return jsonResponse({ success: false, error: userResult.error, error_code: userResult.error_code }, 403);
+        return jsonResponse(req, { success: false, error: userResult.error, error_code: userResult.error_code }, 403);
       }
       const userId = userResult.userId;
       const { data, error } = await supabase
@@ -156,12 +174,12 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (error) {
-        return jsonResponse(
-          { success: false, error: error.message, error_code: "DATABASE_ERROR", hint: "Check that migration ran and table user_preferences exists." },
+        return jsonResponse(req,
+          { success: false, error: safeError("Failed to load preferences.", error), error_code: "DATABASE_ERROR" },
           500,
         );
       }
-      return jsonResponse({
+      return jsonResponse(req, {
         success: true,
         user_id: userId,
         userKey: userId,
@@ -172,7 +190,7 @@ Deno.serve(async (req) => {
     if (body.action === "upsert") {
       const userResult = resolveRequestedUserId(body.user_id ?? body.userKey, authResult.userId);
       if (!userResult.ok) {
-        return jsonResponse({ success: false, error: userResult.error, error_code: userResult.error_code }, 403);
+        return jsonResponse(req, { success: false, error: userResult.error, error_code: userResult.error_code }, 403);
       }
       const userId = userResult.userId;
       const preferences = sanitizePreferences(body.preferences);
@@ -182,12 +200,12 @@ Deno.serve(async (req) => {
         .upsert({ user_id: userId, preferences }, { onConflict: "user_id" });
 
       if (error) {
-        return jsonResponse(
-          { success: false, error: error.message, error_code: "DATABASE_ERROR", hint: "Upsert failed; verify RLS and service role, or migration constraints." },
+        return jsonResponse(req,
+          { success: false, error: safeError("Failed to save preferences.", error), error_code: "DATABASE_ERROR" },
           500,
         );
       }
-      return jsonResponse({
+      return jsonResponse(req, {
         success: true,
         user_id: userId,
         userKey: userId,
@@ -195,15 +213,15 @@ Deno.serve(async (req) => {
       });
     }
 
-    return jsonResponse({
+    return jsonResponse(req, {
       success: false,
       error: "Unknown action. Use action: \"get\" or \"upsert\" (POST), or GET with user_id query param.",
       error_code: "INVALID_ACTION",
     }, 400);
   } catch (error) {
-    return jsonResponse({
+    return jsonResponse(req, {
       success: false,
-      error: error instanceof Error ? error.message : String(error),
+      error: safeError("Unexpected preferences error.", error),
       error_code: "UNEXPECTED_ERROR",
     }, 500);
   }

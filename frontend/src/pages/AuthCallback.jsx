@@ -29,22 +29,34 @@ export default function AuthCallback() {
         return
       }
 
-      const code = params.get('code')
-      if (code) {
-        const { error } = await supabase.auth.exchangeCodeForSession(code)
-        if (error) {
-          setMessage(getFriendlyAuthError(error))
-          window.setTimeout(() => {
-            window.history.replaceState(null, '', '/signin')
-            window.dispatchEvent(new PopStateEvent('popstate'))
-          }, 1600)
-          return
+      // The Supabase client is created with detectSessionInUrl: true (see supabaseClient.js),
+      // so it already exchanges the ?code= param for a session automatically. A PKCE code is
+      // single-use, so calling exchangeCodeForSession here too would race that exchange and
+      // error on whichever call runs second. Instead, wait for the session it produces.
+      const session = await new Promise((resolve) => {
+        let settled = false
+        const finish = (result) => {
+          if (settled) return
+          settled = true
+          clearTimeout(timeoutId)
+          subscription?.unsubscribe()
+          resolve(result)
         }
-      }
 
-      const { data, error } = await supabase.auth.getSession()
-      if (error || !data.session?.user) {
-        setMessage(getFriendlyAuthError(error || 'Session was not created.'))
+        const { data: subscriptionData } = supabase.auth.onAuthStateChange((_event, newSession) => {
+          if (newSession?.user) finish(newSession)
+        })
+        const subscription = subscriptionData?.subscription
+
+        supabase.auth.getSession().then(({ data }) => {
+          if (data.session?.user) finish(data.session)
+        })
+
+        const timeoutId = window.setTimeout(() => finish(null), 6000)
+      })
+
+      if (!session?.user) {
+        setMessage(getFriendlyAuthError('Session was not created.'))
         window.setTimeout(() => {
           window.history.replaceState(null, '', '/signin')
           window.dispatchEvent(new PopStateEvent('popstate'))
@@ -53,7 +65,7 @@ export default function AuthCallback() {
       }
 
       try {
-        await ensureUserPreferences(data.session.user.id)
+        await ensureUserPreferences(session.user.id)
       } catch (preferencesError) {
         console.warn('Unable to ensure preferences after auth callback:', preferencesError)
       }

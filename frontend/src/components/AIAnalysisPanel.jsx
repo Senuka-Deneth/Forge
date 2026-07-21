@@ -137,8 +137,8 @@ function StatusPill({ value }) {
   const isTransparent = color === 'transparent'
   
   return (
-    <span className="status-pill" style={{ 
-      backgroundColor: isTransparent ? 'rgba(255,255,255,0.05)' : `var(--${color.replace('var(--', '').replace(')', '')}-soft, rgba(255,255,255,0.1))`,
+    <span className="status-pill" style={{
+      backgroundColor: isTransparent ? 'var(--bg-overlay)' : `var(--${color.replace('var(--', '').replace(')', '')}-soft, var(--bg-overlay))`,
       color: color,
       border: `1px solid ${isTransparent ? 'var(--border-subtle)' : color}`,
       padding: '2px 8px',
@@ -218,7 +218,7 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
                   ? 'var(--bear-soft)'
                   : a
                     ? 'var(--bull-soft)'
-                    : 'var(--bg-input)',
+                    : 'var(--bg-overlay)',
               color: aiLoading
                 ? 'var(--neutral)'
                 : aiError
@@ -297,21 +297,7 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
       {!aiLoading && !aiError && !a && (
         <div style={{ padding: '20px 0', color: 'var(--text-muted)', fontSize: 'var(--text-sm)', textAlign: 'center' }}>
           <p style={{ marginBottom: '16px' }}>No AI analysis generated yet.</p>
-          <button 
-            className="ai-create-btn" 
-            onClick={onRefresh}
-            style={{
-              padding: '10px 20px',
-              background: 'var(--accent-primary)',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontWeight: 600,
-              fontSize: '14px',
-              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)'
-            }}
-          >
+          <button className="btn-primary" onClick={onRefresh}>
             Create AI Analysis
           </button>
         </div>
@@ -429,7 +415,8 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
               
               {a.pivot_analysis.at_inflection_point && a.pivot_analysis.inflection_level && (
                 <div id="ai-inflection-alert" className="inflection-alert">
-                  ⚡ At inflection: <strong id="ai-inflection-val">{a.pivot_analysis.inflection_level}</strong>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                  <span>At inflection: <strong id="ai-inflection-val">{a.pivot_analysis.inflection_level}</strong></span>
                 </div>
               )}
               
@@ -526,7 +513,7 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
             </div>
             {a.trade_logic?.risk_note && (
               <div className="risk-note-box">
-                <span>⚠️</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0, marginTop: '3px' }}><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
                 <p id="ai-risk-note">{a.trade_logic.risk_note}</p>
               </div>
             )}

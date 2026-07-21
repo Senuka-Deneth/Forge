@@ -14,6 +14,10 @@ export default function AuthShell({ title, subtitle, activeTab, children }) {
           </button>
 
           <div className="brand-middle">
+            <svg className="brand-ridge" viewBox="0 0 480 80" preserveAspectRatio="none" aria-hidden="true">
+              <path d="M0 64 L40 58 L80 66 L120 44 L160 52 L200 30 L240 40 L280 18 L320 30 L360 12 L400 22 L440 8 L480 16 L480 80 L0 80 Z" fill="var(--accent-subtle)" stroke="none" />
+              <path d="M0 64 L40 58 L80 66 L120 44 L160 52 L200 30 L240 40 L280 18 L320 30 L360 12 L400 22 L440 8 L480 16" fill="none" stroke="var(--accent-primary)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+            </svg>
             <h2 className="brand-quote">
               47 indicators.<br /><i>One decision.</i>
             </h2>

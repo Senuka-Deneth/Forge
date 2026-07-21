@@ -4,7 +4,7 @@ import {
   maxPivotsBackForType,
 } from '@forge/pivot'
 
-export const STANDARD_PIVOT_COLOR = 'rgba(255, 159, 67, 0.92)'
+export const STANDARD_PIVOT_COLOR = 'rgba(116, 143, 180, 0.92)'
 
 export const PIVOT_LEVEL_LABELS = {
   PP: 'P',

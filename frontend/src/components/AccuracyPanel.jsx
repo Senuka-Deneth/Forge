@@ -37,7 +37,18 @@ export default function AccuracyPanel() {
     return () => { cancelled = true }
   }, [])
 
-  if (loading) return <div className="panel-card">Loading prediction accuracy…</div>
+  if (loading) {
+    return (
+      <div className="panel-card" aria-busy="true" aria-label="Loading prediction accuracy">
+        <div className="ai-skeleton-line" style={{ width: '40%', height: '10px' }}></div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px', marginTop: '16px' }}>
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="ai-skeleton-line" style={{ height: '64px', marginBottom: 0 }}></div>
+          ))}
+        </div>
+      </div>
+    )
+  }
   if (error) return <div className="panel-card error-text">{error}</div>
   if (!stats || !stats.total_scored) {
     return <div className="panel-card">No scored predictions yet. Run AI analysis and wait for the hourly scoring job.</div>

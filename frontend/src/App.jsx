@@ -1,4 +1,4 @@
-import { Component, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import HeaderControls from './components/HeaderControls'
 import StatusBar from './components/StatusBar'
 import ChartPanel from './components/ChartPanel'
@@ -11,51 +11,23 @@ import {
   invokeFunction,
   isEdgeFunctionUnavailableError,
 } from './supabaseClient'
-import { buildPivotData, sanitizePivotTimeframe } from '@forge/pivot'
-import {
-  buildMarketStructure,
-  computeSignalAgreement,
-  derivePrimaryTrend,
-} from '@forge/market-structure'
-import {
-  DEFAULT_CHART_PREFERENCES,
-  sanitizePreferences,
-} from './utils/userPreferences'
 
 const COMMON_QUOTES = ['USDT', 'BUSD', 'BTC', 'ETH', 'FDUSD']
 const BINANCE_KLINES_URL = 'https://api.binance.com/api/v3/klines'
+const WS_MAX_RECONNECT_DELAY_MS = 30000
+const WS_WATCHDOG_TIMEOUT_MS = 30000
+const AI_COOLDOWN_MS = 8000
 const LOCAL_PREFERENCES_PREFIX = 'forge_chart_preferences'
-
-class ChartPanelErrorBoundary extends Component {
-  constructor(props) {
-    super(props)
-    this.state = { hasError: false }
-  }
-
-  static getDerivedStateFromError() {
-    return { hasError: true }
-  }
-
-  componentDidCatch(error) {
-    console.error('Chart panel rendering error:', error)
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="chart-card">
-          <div className="chart-state-overlay error">
-            <div className="chart-state-title">Chart temporarily unavailable</div>
-            <div className="chart-state-copy">
-              We hit a chart rendering issue. Please reload or toggle indicators to retry.
-            </div>
-          </div>
-        </div>
-      )
-    }
-
-    return this.props.children
-  }
+const DEFAULT_CHART_PREFERENCES = {
+  showCandles: true,
+  showEma20: false,
+  showEma50: false,
+  showRsi: false,
+  showMacd: false,
+  showSupport: false,
+  showResistance: false,
+  showPivots: false,
+  showStandardPivots: false,
 }
 
 function applyTheme(theme) {
@@ -242,6 +214,15 @@ async function fetchMarketCandles(symbol, interval, limit) {
   }
 }
 
+function sanitizePreferences(payload) {
+  const sanitized = { ...DEFAULT_CHART_PREFERENCES }
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return sanitized
+  Object.keys(DEFAULT_CHART_PREFERENCES).forEach((key) => {
+    if (key in payload) sanitized[key] = Boolean(payload[key])
+  })
+  return sanitized
+}
+
 function localPreferencesKey(userKey) {
   return `${LOCAL_PREFERENCES_PREFIX}:${userKey || 'guest'}`
 }
@@ -263,33 +244,239 @@ function saveLocalPreferences(userKey, preferences) {
   }
 }
 
-async function fetchPivotData(symbol, timeframe, candles, pivotType = 'traditional', chartPrefs = DEFAULT_CHART_PREFERENCES) {
-  const prefs = { ...chartPrefs, pivotType }
+function round2(value) {
+  return Number(value.toFixed(2))
+}
+
+function calculateClassicPivots(high, low, close) {
+  const pp = (high + low + close) / 3
+  return {
+    PP: round2(pp),
+    R1: round2(2 * pp - low),
+    R2: round2(pp + (high - low)),
+    R3: round2(high + 2 * (pp - low)),
+    S1: round2(2 * pp - high),
+    S2: round2(pp - (high - low)),
+    S3: round2(low - 2 * (high - pp)),
+  }
+}
+
+function calculateFibonacciPivots(high, low, close) {
+  const pp = (high + low + close) / 3
+  const range = high - low
+  return {
+    PP: round2(pp),
+    R1: round2(pp + 0.382 * range),
+    R2: round2(pp + 0.618 * range),
+    R3: round2(pp + range),
+    S1: round2(pp - 0.382 * range),
+    S2: round2(pp - 0.618 * range),
+    S3: round2(pp - range),
+  }
+}
+
+function calculateTraditionalPivots(high, low, close) {
+  const pp = (high + low + close) / 3
+  const range = high - low
+  const r1 = pp * 2 - low
+  const r2 = pp + range
+  const r3 = pp * 2 + (high - 2 * low)
+  const r4 = r3 + range
+  const r5 = r4 + range
+  const s1 = pp * 2 - high
+  const s2 = pp - range
+  const s3 = pp * 2 - (2 * high - low)
+  const s4 = s3 - range
+  const s5 = s4 - range
+  return {
+    PP: round2(pp), R1: round2(r1), R2: round2(r2), R3: round2(r3), R4: round2(r4), R5: round2(r5),
+    S1: round2(s1), S2: round2(s2), S3: round2(s3), S4: round2(s4), S5: round2(s5),
+  }
+}
+
+function getPivotPeriod(timeframe) {
+  const mapping = {
+    '1m': 'daily', '5m': 'daily', '15m': 'daily', '30m': 'daily',
+    '1h': 'daily', '2h': 'daily',
+    '4h': 'weekly', '6h': 'weekly', '8h': 'weekly', '12h': 'weekly',
+    '1d': 'monthly', '3d': 'monthly',
+    '1w': 'quarterly',
+  }
+  return mapping[timeframe] ?? 'daily'
+}
+
+function bucketStart(timestampSeconds, period) {
+  const date = new Date(timestampSeconds * 1000)
+  const year = date.getUTCFullYear()
+  const month = date.getUTCMonth()
+  const day = date.getUTCDate()
+
+  if (period === 'weekly') {
+    const dayOfWeek = date.getUTCDay()
+    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+    return new Date(Date.UTC(year, month, day + mondayOffset)).toISOString()
+  }
+  if (period === 'monthly') return new Date(Date.UTC(year, month, 1)).toISOString()
+  if (period === 'quarterly') return new Date(Date.UTC(year, Math.floor(month / 3) * 3, 1)).toISOString()
+  return new Date(Date.UTC(year, month, day)).toISOString()
+}
+
+function groupCompletedCandles(candles, period, count = 1) {
+  const groups = new Map()
+  candles.forEach((candle) => {
+    const key = bucketStart(candle.time, period)
+    groups.set(key, [...(groups.get(key) ?? []), candle])
+  })
+
+  const keys = [...groups.keys()].sort()
+  if (keys.length < 2) return []
+
+  return keys.slice(0, -1).slice(-count).map((key) => {
+    const periodCandles = [...groups.get(key)].sort((a, b) => a.time - b.time)
+    return {
+      high: Math.max(...periodCandles.map((c) => c.high)),
+      low: Math.min(...periodCandles.map((c) => c.low)),
+      close: periodCandles[periodCandles.length - 1].close,
+      period: key,
+      startTime: periodCandles[0].time,
+      endTime: periodCandles[periodCandles.length - 1].time,
+    }
+  })
+}
+
+function withPivotMeta(levels, type, period, basedOn) {
+  return { ...levels, type, period, basedOn, generatedAt: new Date().toISOString() }
+}
+
+function analyzePriceVsPivots(currentPrice, pivots) {
+  const pp = Number(pivots.PP)
+  const r1 = Number(pivots.R1)
+  const r2 = Number(pivots.R2)
+  const r3 = Number(pivots.R3)
+  const s1 = Number(pivots.S1)
+  const s2 = Number(pivots.S2)
+  const s3 = Number(pivots.S3)
+
+  let zone = 'below_S3'
+  if (currentPrice > r3) zone = 'above_R3'
+  else if (currentPrice > r2) zone = 'between_R2_R3'
+  else if (currentPrice > r1) zone = 'between_R1_R2'
+  else if (currentPrice > pp) zone = 'between_PP_R1'
+  else if (currentPrice > s1) zone = 'between_S1_PP'
+  else if (currentPrice > s2) zone = 'between_S2_S1'
+  else if (currentPrice > s3) zone = 'between_S3_S2'
+
+  const order = { S5: 1, S4: 2, S3: 3, S2: 4, S1: 5, PP: 6, R1: 7, R2: 8, R3: 9, R4: 10, R5: 11 }
+  const excluded = new Set(['type', 'period', 'basedOn', 'generatedAt'])
+  const allLevels = Object.entries(pivots)
+    .filter(([label, value]) => !excluded.has(label) && typeof value === 'number')
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => (order[a.label] ?? 999) - (order[b.label] ?? 999))
+
+  const above = allLevels.filter((level) => level.value > currentPrice).sort((a, b) => a.value - b.value)
+  const below = allLevels.filter((level) => level.value < currentPrice).sort((a, b) => b.value - a.value)
+  const nearestResistance = above[0] ?? null
+  const nearestSupport = below[0] ?? null
+  const nearestLevel = allLevels
+    .map((level) => ({ ...level, dist: Math.abs(currentPrice - level.value) / currentPrice }))
+    .sort((a, b) => a.dist - b.dist)[0]
+  const atInflectionPoint = nearestLevel ? nearestLevel.dist < 0.003 : false
+
+  return {
+    zone,
+    bias: currentPrice > pp ? 'bullish' : currentPrice < pp ? 'bearish' : 'neutral',
+    nearestResistance,
+    nearestSupport,
+    distToResistance: nearestResistance ? Number((((nearestResistance.value - currentPrice) / currentPrice) * 100).toFixed(3)) : null,
+    distToSupport: nearestSupport ? Number((((currentPrice - nearestSupport.value) / currentPrice) * 100).toFixed(3)) : null,
+    atInflectionPoint,
+    inflectionLevel: atInflectionPoint ? { label: nearestLevel.label, value: nearestLevel.value } : null,
+    sessionBullish: currentPrice > pp,
+    allLevels,
+  }
+}
+
+function buildPivotData(candles, timeframe, selectedSymbol) {
+  if (!Array.isArray(candles) || candles.length < 2) return null
+
+  const period = getPivotPeriod(timeframe)
+  const completed = groupCompletedCandles(candles, period, 1)[0]
+  if (!completed) return null
+
+  const currentPrice = candles[candles.length - 1].close
+  const classicPivots = withPivotMeta(calculateClassicPivots(completed.high, completed.low, completed.close), 'classic', period, completed)
+  const fibonacciPivots = withPivotMeta(calculateFibonacciPivots(completed.high, completed.low, completed.close), 'fibonacci', period, completed)
+  const traditionalPivots = withPivotMeta(calculateTraditionalPivots(completed.high, completed.low, completed.close), 'traditional', period, completed)
+  const standardPeriods = groupCompletedCandles(candles, period, 3).map((periodCandle) => ({
+    period: periodCandle.period,
+    startTime: periodCandle.startTime,
+    endTime: periodCandle.endTime,
+    pivots: calculateTraditionalPivots(periodCandle.high, periodCandle.low, periodCandle.close),
+  }))
+
+  return {
+    success: true,
+    symbol: selectedSymbol,
+    timeframe,
+    currentPrice,
+    classic: { pivots: classicPivots, analysis: analyzePriceVsPivots(currentPrice, classicPivots) },
+    fibonacci: { pivots: fibonacciPivots, analysis: analyzePriceVsPivots(currentPrice, fibonacciPivots) },
+    traditional: { pivots: traditionalPivots, analysis: analyzePriceVsPivots(currentPrice, traditionalPivots) },
+    binance: { pivots: traditionalPivots, analysis: analyzePriceVsPivots(currentPrice, traditionalPivots) },
+    standardPeriods: { periodType: period, items: standardPeriods },
+  }
+}
+
+async function fetchPivotData(symbol, timeframe, candles) {
   try {
-    const data = await invokeFunction('calculate-pivots', {
-      symbol,
-      timeframe,
-      candles,
-      pivotType,
-      pivotTimeframe: sanitizePivotTimeframe(chartPrefs.pivotTimeframe),
-      pivotsBack: chartPrefs.pivotsBack || 15,
-      showHistoricalPivots: chartPrefs.showHistoricalPivots !== false,
-    })
+    const data = await invokeFunction('calculate-pivots', { symbol, timeframe, candles })
     if (data?.success) return { ...data, symbol }
     throw new Error(data?.error || 'Pivot function returned no pivot data.')
   } catch (edgeError) {
     console.warn('Supabase pivot calculation failed; using local fallback:', edgeError)
-    return buildPivotData(candles, timeframe, symbol, prefs)
+    return buildPivotData(candles, timeframe, symbol)
   }
+}
+
+function findSwings(candles, lookback = 2) {
+  const swingHighs = []
+  const swingLows = []
+
+  if (candles.length < lookback * 2 + 1) return { swingHighs, swingLows }
+
+  for (let i = lookback; i < candles.length - lookback; i++) {
+    const currentHigh = candles[i].high
+    const currentLow = candles[i].low
+    const leftHighs = candles.slice(i - lookback, i).map((c) => c.high)
+    const rightHighs = candles.slice(i + 1, i + lookback + 1).map((c) => c.high)
+    const leftLows = candles.slice(i - lookback, i).map((c) => c.low)
+    const rightLows = candles.slice(i + 1, i + lookback + 1).map((c) => c.low)
+
+    if (currentHigh > Math.max(...leftHighs) && currentHigh > Math.max(...rightHighs)) {
+      swingHighs.push({ time: candles[i].time, price: currentHigh })
+    }
+    if (currentLow < Math.min(...leftLows) && currentLow < Math.min(...rightLows)) {
+      swingLows.push({ time: candles[i].time, price: currentLow })
+    }
+  }
+
+  return { swingHighs, swingLows }
+}
+
+function nearestSupportResistance(currentPrice, swingHighs, swingLows) {
+  const supports = swingLows.filter((s) => s.price < currentPrice)
+  const resistances = swingHighs.filter((r) => r.price > currentPrice)
+  const nearestSupport = supports.length ? supports.reduce((best, item) => (item.price > best.price ? item : best), supports[0]) : null
+  const nearestResistance = resistances.length ? resistances.reduce((best, item) => (item.price < best.price ? item : best), resistances[0]) : null
+  return { nearestSupport, nearestResistance }
 }
 
 function buildTechnicalAnalysis(candles, selectedSymbol, selectedInterval) {
   if (candles.length < 60) throw new Error('Not enough candles for analysis.')
 
   const latest = candles[candles.length - 1]
-  const rsiSeries = candles.map((c) => c.rsi14 ?? null)
-  const structure = buildMarketStructure(candles, rsiSeries)
-  const { nearestSupport, nearestResistance, swingHighs, swingLows } = structure
+  const { swingHighs, swingLows } = findSwings(candles, 2)
+  const { nearestSupport, nearestResistance } = nearestSupportResistance(latest.close, swingHighs, swingLows)
 
   const trend = latest.ema20 == null || latest.ema50 == null
     ? 'unknown'
@@ -369,8 +556,8 @@ function buildTechnicalAnalysis(candles, selectedSymbol, selectedInterval) {
     ema50: latest.ema50,
     nearestSupport,
     nearestResistance,
-    swingHighs: swingHighs.slice(-5).map((s) => ({ time: s.time, price: s.price })),
-    swingLows: swingLows.slice(-5).map((s) => ({ time: s.time, price: s.price })),
+    swingHighs: swingHighs.slice(-5),
+    swingLows: swingLows.slice(-5),
     bullishScenario,
     bearishScenario,
     invalidation,
@@ -383,7 +570,7 @@ export default function App() {
   const currentUserId = user?.id || 'guest'
   const [symbolInput, setSymbolInput] = useState('BTCUSDT')
   const [symbol, setSymbol] = useState('BTCUSDT')
-  const [interval, setInterval] = useState('4h')
+  const [timeframe, setTimeframe] = useState('4h')
 
   const [candles, setCandles] = useState([])
   const [loading, setLoading] = useState(false)
@@ -406,7 +593,6 @@ export default function App() {
   };
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true)
-  const [isChartMaximized, setIsChartMaximized] = useState(false)
 
   const [analysis, setAnalysis] = useState(null)
   const [theme, setTheme] = useState(() => localStorage.getItem('forge_theme') || 'dark')
@@ -414,6 +600,7 @@ export default function App() {
   const [aiAnalysis, setAIAnalysis] = useState(null)
   const [aiLoading, setAILoading] = useState(false)
   const [aiError, setAIError] = useState('')
+  const lastAICallRef = useRef(0)
 
   const [pivotData, setPivotData] = useState(null)
   const [chartPreferences, setChartPreferences] = useState(DEFAULT_CHART_PREFERENCES)
@@ -423,6 +610,10 @@ export default function App() {
   const preferencesCloudUnavailableRef = useRef(false)
 
   const wsRef = useRef(null)
+  const reconnectAttemptsRef = useRef(0)
+  const reconnectTimeoutRef = useRef(null)
+  const watchdogTimeoutRef = useRef(null)
+  const wsParamsRef = useRef({ symbol: null, interval: null })
 
   const latestCandle = candles.length ? candles[candles.length - 1] : null
   const latestPrice = latestCandle?.close ?? null
@@ -433,7 +624,25 @@ export default function App() {
     return ((latestPrice - previousPrice) / previousPrice) * 100
   }, [latestPrice, previousPrice])
 
+  const clearReconnectTimer = () => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current)
+      reconnectTimeoutRef.current = null
+    }
+  }
+
+  const clearWatchdog = () => {
+    if (watchdogTimeoutRef.current) {
+      clearTimeout(watchdogTimeoutRef.current)
+      watchdogTimeoutRef.current = null
+    }
+  }
+
   const closeSocket = () => {
+    wsParamsRef.current = { symbol: null, interval: null }
+    clearReconnectTimer()
+    clearWatchdog()
+
     if (wsRef.current) {
       const socket = wsRef.current
       wsRef.current = null
@@ -447,6 +656,36 @@ export default function App() {
     }
 
     setIsLive(false)
+  }
+
+  const scheduleReconnect = () => {
+    clearWatchdog()
+
+    if (wsRef.current) {
+      const socket = wsRef.current
+      wsRef.current = null
+      if (
+        socket.readyState === WebSocket.OPEN ||
+        socket.readyState === WebSocket.CONNECTING
+      ) {
+        socket.close()
+      }
+    }
+
+    const { symbol: pendingSymbol, interval: pendingInterval } = wsParamsRef.current
+    if (!pendingSymbol || !pendingInterval) return
+
+    const attempt = reconnectAttemptsRef.current
+    reconnectAttemptsRef.current = attempt + 1
+    const delayMs = Math.min(1000 * 2 ** attempt, WS_MAX_RECONNECT_DELAY_MS)
+
+    setIsLive(false)
+    setStatus(`Live stream disconnected. Reconnecting in ${Math.round(delayMs / 1000)}s...`)
+
+    clearReconnectTimer()
+    reconnectTimeoutRef.current = setTimeout(() => {
+      startWebSocket(pendingSymbol, pendingInterval)
+    }, delayMs)
   }
 
   const recalculateIndicators = (data) => {
@@ -468,21 +707,48 @@ export default function App() {
   }
 
   const startWebSocket = (selectedSymbol, selectedInterval) => {
-    closeSocket()
+    clearReconnectTimer()
+    clearWatchdog()
+
+    if (wsRef.current) {
+      const previousSocket = wsRef.current
+      wsRef.current = null
+      if (
+        previousSocket.readyState === WebSocket.OPEN ||
+        previousSocket.readyState === WebSocket.CONNECTING
+      ) {
+        previousSocket.close()
+      }
+    }
+
+    wsParamsRef.current = { symbol: selectedSymbol, interval: selectedInterval }
 
     const streamName = `${selectedSymbol.toLowerCase()}@kline_${selectedInterval}`
     const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${streamName}`)
 
     wsRef.current = ws
 
+    const armWatchdog = () => {
+      if (wsRef.current !== ws) return
+      clearWatchdog()
+      watchdogTimeoutRef.current = setTimeout(() => {
+        if (wsRef.current !== ws) return
+        setStatus('Live stream stalled. Reconnecting...')
+        scheduleReconnect()
+      }, WS_WATCHDOG_TIMEOUT_MS)
+    }
+
     ws.onopen = () => {
       if (wsRef.current !== ws) return
+      reconnectAttemptsRef.current = 0
       setStatus('Live stream connected')
       setIsLive(true)
+      armWatchdog()
     }
 
     ws.onmessage = (event) => {
       if (wsRef.current !== ws) return
+      armWatchdog()
 
       try {
         const msg = JSON.parse(event.data)
@@ -532,27 +798,9 @@ export default function App() {
     ws.onclose = () => {
       if (wsRef.current === ws) {
         wsRef.current = null
-        setStatus('Live stream disconnected')
-        setIsLive(false)
+        scheduleReconnect()
       }
     }
-  }
-
-  const fetchPivots = async (selectedSymbol, selectedTimeframe) => {
-    try {
-      const sourceCandles = selectedSymbol === symbol && selectedTimeframe === interval ? candles : null
-      const marketCandles = sourceCandles?.length
-        ? sourceCandles
-        : await fetchMarketCandles(selectedSymbol, selectedTimeframe, 4000)
-      const nextPivotData = await fetchPivotData(selectedSymbol, selectedTimeframe, marketCandles, chartPreferences.pivotType || 'traditional', chartPreferences)
-      if (nextPivotData?.success) {
-        setPivotData(nextPivotData)
-        return nextPivotData
-      }
-    } catch (err) {
-      console.error('Failed to fetch pivots:', err)
-    }
-    return null
   }
 
   useEffect(() => {
@@ -636,153 +884,27 @@ export default function App() {
     return () => clearTimeout(saveTimer)
   }, [chartPreferences, chartPrefsReady, currentUserId])
 
-  useEffect(() => {
-    if (!candles.length) return
-
-    let cancelled = false
-
-    const refreshPivots = async () => {
-      try {
-        const pivotResponse = await fetchPivotData(
-          symbol,
-          interval,
-          candles,
-          chartPreferences.pivotType || 'traditional',
-          chartPreferences,
-        )
-        if (!cancelled && pivotResponse?.success) {
-          setPivotData({ ...pivotResponse, symbol })
-        }
-      } catch (err) {
-        if (!cancelled) console.error('Failed to refresh pivots:', err)
-      }
-    }
-
-    refreshPivots()
-
-    return () => {
-      cancelled = true
-    }
-  }, [
-    candles,
-    chartPreferences.pivotType,
-    chartPreferences.pivotTimeframe,
-    chartPreferences.pivotsBack,
-    chartPreferences.showHistoricalPivots,
-    symbol,
-    interval,
-  ])
-
   const runAIAnalysis = async (currentCandles = null) => {
     const candleData = currentCandles
     if (!candleData || candleData.length < 2) return
 
+    const now = Date.now()
+    const elapsedSinceLastCall = now - lastAICallRef.current
+    if (elapsedSinceLastCall < AI_COOLDOWN_MS) {
+      const waitSeconds = Math.ceil((AI_COOLDOWN_MS - elapsedSinceLastCall) / 1000)
+      setAIError(`Please wait ${waitSeconds}s before requesting another AI analysis.`)
+      return
+    }
+    lastAICallRef.current = now
+
     setAILoading(true)
     setAIError('')
 
-    // Fetch fresh pivots if not already available
-    let currentPivotData = pivotData
-    if (!currentPivotData) {
-      currentPivotData = await fetchPivots(symbol, interval)
-    }
-
-    const latest = candleData[candleData.length - 1]
-    const prev = candleData[candleData.length - 2]
-    const priceChg =
-      prev && prev.close !== 0
-        ? (((latest.close - prev.close) / prev.close) * 100).toFixed(4)
-        : 0
-
-    const analysisSlice = candleData.slice(-100)
-    const rsiSeries = analysisSlice.map((c) => c.rsi14 ?? null)
-    const marketStructure = buildMarketStructure(analysisSlice, rsiSeries)
-    const {
-      atr,
-      divergence,
-      srZones,
-      swingHighs,
-      swingLows,
-      nearestSupport,
-      nearestResistance,
-    } = marketStructure
-
-    const last5 = candleData.slice(-5)
-
-    const pivots = currentPivotData?.classic?.pivots ?? null
-    const pivotAnalysis = currentPivotData?.classic?.analysis ?? null
-    const fibPivots = currentPivotData?.fibonacci?.pivots ?? null
-    const traditionalPivots = currentPivotData?.traditional?.pivots ?? currentPivotData?.binance?.pivots ?? null
-    const traditionalAnalysis = currentPivotData?.traditional?.analysis ?? currentPivotData?.binance?.analysis ?? null
-
-    const primaryTrend = derivePrimaryTrend(latest.close, latest.ema20, latest.ema50)
-    const pivotSessionBias = pivotAnalysis?.bias ?? 'neutral'
-    const signalAgreement = computeSignalAgreement({
-      price: latest.close,
-      ema20: latest.ema20,
-      ema50: latest.ema50,
-      rsi: latest.rsi14,
-      macdLine: latest.macd,
-      signalLine: latest.macdSignal,
-      primaryTrend,
-      pivotSessionBias,
-      hasSupportZone: Boolean(nearestSupport),
-      hasResistanceZone: Boolean(nearestResistance),
-      divergence,
-      atInflectionPoint: Boolean(pivotAnalysis?.atInflectionPoint),
-    })
-
-    const payload = {
-      symbol,
-      timeframe: interval,
-      price: latest.close,
-      change: priceChg,
-      rsi: latest.rsi14 ?? null,
-      ema20: latest.ema20 ?? null,
-      ema50: latest.ema50 ?? null,
-      macd: {
-        macd: latest.macd ?? null,
-        signal: latest.macdSignal ?? null,
-        histogram: latest.macdHist ?? null,
-      },
-      volume: latest.volume ?? null,
-      atr,
-      divergence,
-      srZones,
-      signalAgreement,
-      swingHighs: swingHighs.slice(-5).map((s) => s.price),
-      swingLows: swingLows.slice(-5).map((s) => s.price),
-      support: nearestSupport?.price ?? null,
-      resistance: nearestResistance?.price ?? null,
-      recentCloses: last5.map((c) => c.close),
-      recentVolumes: last5.map((c) => c.volume),
-      obi: null,
-      tfi: null,
-      fundingRate: null,
-      oiDelta: null,
-
-      // Pivot data for AI
-      pivots: pivots ? {
-        classic: pivots,
-        fibonacci: fibPivots,
-        traditional: traditionalPivots,
-        binance: traditionalPivots,
-        analysis: pivotAnalysis ? {
-          zone: pivotAnalysis.zone,
-          bias: pivotAnalysis.bias,
-          nearestPivotResistance: pivotAnalysis.nearestResistance,
-          nearestPivotSupport: pivotAnalysis.nearestSupport,
-          distToResistance: pivotAnalysis.distToResistance,
-          distToSupport: pivotAnalysis.distToSupport,
-          atInflectionPoint: pivotAnalysis.atInflectionPoint,
-          inflectionLevel: pivotAnalysis.inflectionLevel,
-          sessionBullish: pivotAnalysis.sessionBullish,
-        } : null,
-        binanceAnalysis: traditionalAnalysis,
-      } : null,
-    }
-
+    // The ai-analysis edge function gathers all market data (indicators, order book, futures,
+    // multi-timeframe reads, pivots) itself from just the symbol/timeframe — see
+    // supabase/functions/ai-analysis/index.ts.
     try {
-      const data = await invokeFunction('ai-analysis', payload)
+      const data = await invokeFunction('ai-analysis', { symbol, interval: timeframe })
       if (data?.success) {
         setAIAnalysis(data.analysis)
       } else {
@@ -795,7 +917,7 @@ export default function App() {
     }
   }
 
-  const loadChart = async (selectedSymbol = symbol, selectedInterval = interval) => {
+  const loadChart = async (selectedSymbol = symbol, selectedInterval = timeframe) => {
     const cleaned = selectedSymbol.trim().toUpperCase()
     const validationError = validateBinanceSymbol(cleaned)
 
@@ -816,11 +938,11 @@ export default function App() {
 
       setCandles(data)
       setSymbol(cleaned)
-      setInterval(selectedInterval)
+      setTimeframe(selectedInterval)
       setStatus('Historical candles loaded')
       startWebSocket(cleaned, selectedInterval)
       setAnalysis(buildTechnicalAnalysis(data, cleaned, selectedInterval))
-      fetchPivotData(cleaned, selectedInterval, data, chartPreferences.pivotType || 'traditional', chartPreferences).then((pivotResponse) => {
+      fetchPivotData(cleaned, selectedInterval, data).then((pivotResponse) => {
         if (pivotResponse?.success) setPivotData({ ...pivotResponse, symbol: cleaned })
       }).catch((err) => {
         console.error('Failed to fetch pivots:', err)
@@ -855,10 +977,9 @@ export default function App() {
 
   return (
     <>
-      {!isChartMaximized && (
-        <aside className={`sidebar ${isSidebarCollapsed ? 'collapsed' : ''}`}>
+      <aside className={`sidebar ${isSidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-header">
-          <a href="welcome.html" className="sidebar-brand">
+          <a href="/welcome.html" className="sidebar-brand">
             <div className="brand-icon-wrap">
               <svg viewBox="0 0 24 24"><path d="M3 3v18h18M9 15l3-3 4 4 5-5"/></svg>
             </div>
@@ -903,13 +1024,19 @@ export default function App() {
           </button>
         </div>
       </aside>
-      )}
 
       <div className="main-content" style={{ padding: activeTab === 'learning' ? 0 : undefined }}>
-        {activeTab !== 'learning' && !isChartMaximized && (
+        {activeTab !== 'learning' && (
           <>
             <HeaderControls
+              symbolInput={symbolInput}
+              setSymbolInput={setSymbolInput}
+              interval={timeframe}
+              setInterval={setTimeframe}
+              onLoad={() => loadChart(symbolInput, timeframe)}
               isLive={isLive}
+              toggleTheme={toggleTheme}
+              theme={theme}
               preferencesWarning={preferencesSyncError}
             />
 
@@ -925,32 +1052,24 @@ export default function App() {
         {activeTab === 'dashboard' && (
           <div className="dashboard-grid">
             <div className="charts-column">
-              <ChartPanelErrorBoundary>
-                <ChartPanel
-                  symbol={symbol}
-                  interval={interval}
-                  candles={candles}
-                  loading={loading}
-                  error={error}
-                  status={status}
-                  analysis={analysis}
-                  pivotData={pivotData}
-                  chartPreferences={chartPreferences}
-                  onChartPreferencesChange={setChartPreferences}
-                  symbolInput={symbolInput}
-                  setSymbolInput={setSymbolInput}
-                  setInterval={setInterval}
-                  onLoadChart={loadChart}
-                  isMaximized={isChartMaximized}
-                  setIsMaximized={setIsChartMaximized}
-                />
-              </ChartPanelErrorBoundary>
+              <ChartPanel
+                symbol={symbol}
+                interval={timeframe}
+                candles={candles}
+                loading={loading}
+                error={error}
+                status={status}
+                analysis={analysis}
+                pivotData={pivotData}
+                chartPreferences={chartPreferences}
+                onChartPreferencesChange={setChartPreferences}
+              />
             </div>
 
             <div className="analysis-column-fullwidth">
               <AnalysisPanel
                 symbol={symbol}
-                interval={interval}
+                interval={timeframe}
                 analysis={analysis}
                 pivotData={pivotData}
               />

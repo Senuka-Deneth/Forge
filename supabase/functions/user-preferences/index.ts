@@ -105,12 +105,13 @@ Deno.serve(async (req) => {
   if (options) return options;
 
   if (!["GET", "POST"].includes(req.method)) {
-    return jsonResponse({ success: false, error: "Method not allowed.", error_code: "METHOD_NOT_ALLOWED" }, 405);
+    return jsonResponse(req, { success: false, error: "Method not allowed.", error_code: "METHOD_NOT_ALLOWED" }, 405);
   }
 
   const clientResult = tryServiceClient();
   if (!clientResult.ok) {
     return jsonResponse(
+      req,
       { success: false, error: clientResult.error, error_code: clientResult.error_code },
       503,
     );
@@ -120,6 +121,7 @@ Deno.serve(async (req) => {
   const authResult = await getAuthenticatedUserId(supabase, req);
   if (!authResult.ok) {
     return jsonResponse(
+      req,
       { success: false, error: authResult.error, error_code: authResult.error_code },
       authResult.status,
     );
@@ -134,7 +136,7 @@ Deno.serve(async (req) => {
         authResult.userId,
       );
       if (!userResult.ok) {
-        return jsonResponse({ success: false, error: userResult.error, error_code: userResult.error_code }, 403);
+        return jsonResponse(req, { success: false, error: userResult.error, error_code: userResult.error_code }, 403);
       }
       const userId = userResult.userId;
       const { data, error } = await supabase
@@ -144,12 +146,12 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (error) {
-        return jsonResponse(
+        return jsonResponse(req, 
           { success: false, error: error.message, error_code: "DATABASE_ERROR", hint: "Check that migration ran and table user_preferences exists." },
           500,
         );
       }
-      return jsonResponse({
+      return jsonResponse(req, {
         success: true,
         user_id: userId,
         userKey: userId,
@@ -161,7 +163,7 @@ Deno.serve(async (req) => {
     if (body.action === "get") {
       const userResult = resolveRequestedUserId(body.user_id ?? body.userKey, authResult.userId);
       if (!userResult.ok) {
-        return jsonResponse({ success: false, error: userResult.error, error_code: userResult.error_code }, 403);
+        return jsonResponse(req, { success: false, error: userResult.error, error_code: userResult.error_code }, 403);
       }
       const userId = userResult.userId;
       const { data, error } = await supabase
@@ -171,12 +173,12 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (error) {
-        return jsonResponse(
+        return jsonResponse(req, 
           { success: false, error: error.message, error_code: "DATABASE_ERROR", hint: "Check that migration ran and table user_preferences exists." },
           500,
         );
       }
-      return jsonResponse({
+      return jsonResponse(req, {
         success: true,
         user_id: userId,
         userKey: userId,
@@ -187,7 +189,7 @@ Deno.serve(async (req) => {
     if (body.action === "upsert") {
       const userResult = resolveRequestedUserId(body.user_id ?? body.userKey, authResult.userId);
       if (!userResult.ok) {
-        return jsonResponse({ success: false, error: userResult.error, error_code: userResult.error_code }, 403);
+        return jsonResponse(req, { success: false, error: userResult.error, error_code: userResult.error_code }, 403);
       }
       const userId = userResult.userId;
       const preferences = sanitizePreferences(body.preferences);
@@ -197,12 +199,12 @@ Deno.serve(async (req) => {
         .upsert({ user_id: userId, preferences }, { onConflict: "user_id" });
 
       if (error) {
-        return jsonResponse(
+        return jsonResponse(req, 
           { success: false, error: error.message, error_code: "DATABASE_ERROR", hint: "Upsert failed; verify RLS and service role, or migration constraints." },
           500,
         );
       }
-      return jsonResponse({
+      return jsonResponse(req, {
         success: true,
         user_id: userId,
         userKey: userId,
@@ -210,13 +212,13 @@ Deno.serve(async (req) => {
       });
     }
 
-    return jsonResponse({
+    return jsonResponse(req, {
       success: false,
       error: "Unknown action. Use action: \"get\" or \"upsert\" (POST), or GET with user_id query param.",
       error_code: "INVALID_ACTION",
     }, 400);
   } catch (error) {
-    return jsonResponse({
+    return jsonResponse(req, {
       success: false,
       error: error instanceof Error ? error.message : String(error),
       error_code: "UNEXPECTED_ERROR",

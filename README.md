@@ -6,23 +6,30 @@ Forge is a high-performance, real-time market visualization and AI-powered analy
 
 - **Real-time Visualization**: High-performance candlestick charts powered by `Lightweight Charts`.
 - **Advanced Technical Indicators**: Built-in EMA (20/50), RSI (14), and MACD with customizable timeframes.
-- **Pivot Point Analysis**: TradingView-standard pivot levels (Traditional, Fibonacci, Woodie, Classic, DM, Camarilla) from native Binance HTF klines.
-- **AI Market Intelligence**: Deep analysis using OpenRouter integration for market structure, trend, and risk assessment.
+- **Pivot Point Analysis**: Automatic calculation of Classic, Fibonacci, and Traditional Pivot Points to identify key support and resistance levels.
+- **AI Market Intelligence**: Deep analysis via OpenRouter, fed by a full server-gathered feature
+  set — ATR/volatility regime, Bollinger Bands, VWAP, ADX trend strength, OBV/CVD order flow,
+  order-book imbalance, futures funding/open interest/long-short ratio, multi-timeframe confluence,
+  and swing-structure/divergence detection — producing:
+    - Market Structure and Trend & Momentum analysis
+    - An actionable Trade Plan (entry zone, stop-loss, targets with reward-to-risk, confidence)
+    - Order flow & futures positioning context
+    - Anomaly and divergence detection
 - **Responsive Design**: A stunning "Liquid Glass" UI that adapts to all screen sizes with full Dark/Light mode support.
-- **Live Data Streaming**: Seamless real-time price updates via Binance WebSockets.
+- **Live Data Streaming**: Seamless real-time price updates via Binance WebSockets, with automatic reconnection.
 
 ## 🛠️ Tech Stack
 
-### Production (live serving path)
-- **Frontend**: React 18 + Vite (`frontend/`)
-- **Backend**: Supabase Edge Functions (`supabase/functions/`)
-  - `get-market-data` — chart candles
-  - `calculate-pivots` — pivot levels (see [docs/pivots.md](docs/pivots.md))
-  - `user-preferences`, `ai-analysis`
-- **Pivot source of truth**: `supabase/functions/_shared/pivotPoints.ts`
+### Frontend
+- **Framework**: React 18+ (Vite)
+- **Charting**: `lightweight-charts`
+- **Auth & Data**: Supabase (Auth, Postgres, Edge Functions)
+- **Styling**: Modern CSS with "Liquid Glass" aesthetics
 
-### Legacy (not used by frontend)
-- **Flask backend** (`backend/`) — deprecated for serving; kept for local experiments only. Do not use `/api/pivots` (removed).
+### Backend
+- **Runtime**: Supabase Edge Functions (Deno/TypeScript)
+- **APIs**: Binance Public API, OpenRouter API
+- **Database**: Postgres via Supabase (user preferences, market data cache, AI analysis logs)
 
 ---
 
@@ -30,46 +37,65 @@ Forge is a high-performance, real-time market visualization and AI-powered analy
 
 ### Prerequisites
 - Node.js (v18+) and npm
-- [Supabase CLI](https://supabase.com/docs/guides/cli) (for edge functions)
-- OpenRouter API key (for AI analysis)
+- [Supabase CLI](https://supabase.com/docs/guides/cli)
+- A Supabase project (or the local dev stack via `supabase start`)
+- [OpenRouter API Key](https://openrouter.ai/)
 
-### 1. Frontend
+### 1. Supabase Setup
+Navigate to the `supabase/` directory:
+```bash
+cd supabase
+```
 
+Copy `supabase/.env.example` to `supabase/.env` and fill in your values (used by `supabase functions serve` for local development):
+```env
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+MARKET_CACHE_TTL_SECONDS=300
+ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+OPENROUTER_API_KEY=
+OPENROUTER_HTTP_REFERER=
+OPENROUTER_MODEL=
+```
+`OPENROUTER_MODEL` is optional and defaults to a free Nemotron model; a stronger model materially
+improves the quality of the generated trade plan and reasoning.
+
+Run the database migrations and serve the edge functions locally:
+```bash
+supabase start
+supabase db reset
+supabase functions serve --env-file .env
+```
+
+In production, set the same secrets via **Project Settings → Edge Functions → Secrets**, and deploy with `supabase functions deploy`.
+
+### 2. Frontend Setup
+Navigate to the frontend directory:
 ```bash
 cd frontend
+```
+
+Install dependencies:
+```bash
 npm install
+```
+
+Copy `frontend/.env.example` to `frontend/.env` and set your Supabase project URL and anon key:
+```env
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+```
+
+Start the development server:
+```bash
 npm run dev
 ```
-
-App: `http://localhost:5173`
-
-Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in `frontend/.env` (see `.env.example`).
-
-### 2. Supabase Edge Functions (local)
-
-```bash
-supabase functions serve
-```
-
-Deploy: `supabase functions deploy calculate-pivots` (and other functions as needed).
-
-### 3. Legacy Flask (optional, not required)
-
-```bash
-cd backend
-python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-python app.py
-```
-
-Runs on `http://127.0.0.1:5050` — **not connected to the React app**.
+The application will be available at `http://localhost:5173`.
 
 ---
 
-## Pivot documentation
-
-See [docs/pivots.md](docs/pivots.md) for timeframe rules, Binance HTF behavior, and API response contract.
+## 📸 Dashboard Overview
+The dashboard features an integrated sidebar for navigation, header controls for symbol and timeframe selection, and real-time status monitoring. Use the **AI Analysis** tab to trigger a deep-dive market evaluation based on current live data.
 
 ## 📄 License
-
 This project is for educational and personal use only. Use at your own risk in live trading.

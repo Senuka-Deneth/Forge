@@ -1,6 +1,6 @@
 export type DecileStats = { count: number; hits: number; hitRate: number | null; avg_predicted: number | null };
 
-export type SetupStats = { n: number; hit_rate: number | null; avg_r: number | null };
+export type SetupStats = { n: number; decided: number; hit_rate: number | null; avg_r: number | null };
 
 export function confidenceDecile(confidence: number): number {
   return Math.min(9, Math.max(0, Math.floor(confidence / 10)));
@@ -40,19 +40,22 @@ export function computeReliabilityCurve(
 export function computeSetupStats(
   rows: Array<{ setup_type: string | null; outcome: string; realized_r: number | null }>,
 ): Record<string, SetupStats> {
-  const grouped: Record<string, { n: number; hits: number; rs: number[] }> = {};
+  const grouped: Record<string, { n: number; hits: number; losses: number; rs: number[] }> = {};
   for (const row of rows) {
     const key = row.setup_type ?? "unknown";
-    if (!grouped[key]) grouped[key] = { n: 0, hits: 0, rs: [] };
+    if (!grouped[key]) grouped[key] = { n: 0, hits: 0, losses: 0, rs: [] };
     grouped[key].n += 1;
     if (row.outcome === "target_hit") grouped[key].hits += 1;
+    if (row.outcome === "stop_hit") grouped[key].losses += 1;
     if (row.realized_r != null && Number.isFinite(row.realized_r)) grouped[key].rs.push(row.realized_r);
   }
   const out: Record<string, SetupStats> = {};
   for (const [key, g] of Object.entries(grouped)) {
+    const decided = g.hits + g.losses;
     out[key] = {
       n: g.n,
-      hit_rate: g.n > 0 ? Number((g.hits / g.n).toFixed(3)) : null,
+      decided,
+      hit_rate: decided > 0 ? Number((g.hits / decided).toFixed(3)) : null,
       avg_r: g.rs.length ? Number((g.rs.reduce((a, b) => a + b, 0) / g.rs.length).toFixed(3)) : null,
     };
   }
@@ -68,4 +71,20 @@ export function empiricalConfidence(
   if (n <= 0) return Number((globalRate * 100).toFixed(1));
   const rate = (hits + priorWeight * globalRate) / (n + priorWeight);
   return Number((rate * 100).toFixed(1));
+}
+
+/** Clamp headline confidence to empirical hit rate + margin when enough samples exist. */
+export function clampModelConfidence(
+  modelConfidence: number,
+  calibration: { n: number; empirical_hit_rate: number } | null,
+  margin = 15,
+): { confidence: number; capped: boolean } {
+  if (!calibration || calibration.n < 20) {
+    return { confidence: modelConfidence, capped: false };
+  }
+  const ceiling = Math.round(calibration.empirical_hit_rate * 100) + margin;
+  if (modelConfidence <= ceiling) {
+    return { confidence: modelConfidence, capped: false };
+  }
+  return { confidence: Math.min(modelConfidence, ceiling), capped: true };
 }

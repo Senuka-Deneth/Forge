@@ -1836,11 +1836,15 @@ export default function ChartPanel({
                 <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Levels</label>
                 {PIVOT_LEVEL_KEYS.map((level) => {
                   const cfg = levelOptions[level] || { enabled: true, color: STANDARD_PIVOT_COLOR }
+                  const checkboxId = `pivot-level-${level}`
+                  const colorId = `pivot-color-${level}`
                   return (
                     <div key={level} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <input
+                        id={checkboxId}
                         type="checkbox"
                         checked={cfg.enabled !== false}
+                        aria-label={`Show ${PIVOT_LEVEL_LABELS[level]} pivot level`}
                         onChange={(e) => {
                           onChartPreferencesChange((prev) => {
                             const nextLevelOptions = {
@@ -1859,12 +1863,14 @@ export default function ChartPanel({
                         }}
                         style={{ width: '14px', height: '14px', cursor: 'pointer', flexShrink: 0 }}
                       />
-                      <span style={{ fontSize: '11px', width: '28px', color: 'var(--text-secondary)' }}>
+                      <label htmlFor={checkboxId} style={{ fontSize: '11px', width: '28px', color: 'var(--text-secondary)', cursor: 'pointer' }}>
                         {PIVOT_LEVEL_LABELS[level]}
-                      </span>
+                      </label>
                       <input
+                        id={colorId}
                         type="color"
                         value={cfg.color?.startsWith('#') ? cfg.color : '#748fb4'}
+                        aria-label={`${PIVOT_LEVEL_LABELS[level]} pivot color`}
                         onChange={(e) => {
                           onChartPreferencesChange((prev) => ({
                             ...prev,

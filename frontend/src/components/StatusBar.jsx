@@ -35,6 +35,7 @@ export default function StatusBar({
         <div className="kpi-label">Last Price</div>
         <div className={`kpi-value format-tabular${latestPrice == null ? ' skeleton' : ''}`} id="kpi-price">{formatPrice(latestPrice)}</div>
         <div className={`kpi-change ${priceChange != null ? changeColorClass + '-pill' : ''}`} id="kpi-change">{changeText}</div>
+        <div className="kpi-sub">24h</div>
       </div>
       <div className="kpi-card">
         <div className="kpi-label">RSI 14</div>

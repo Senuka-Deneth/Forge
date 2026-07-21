@@ -3,6 +3,7 @@ import {
   computeBrierScore,
   computeSetupStats,
   empiricalConfidence,
+  clampModelConfidence,
 } from "../_shared/calibration.ts";
 
 Deno.test("computeBrierScore for perfect calibration", () => {
@@ -24,5 +25,18 @@ Deno.test("computeSetupStats groups by setup_type", () => {
     { setup_type: "trend_continuation_long", outcome: "stop_hit", realized_r: -1 },
   ]);
   assertEquals(stats.trend_continuation_long.n, 2);
+  assertEquals(stats.trend_continuation_long.decided, 2);
   assertEquals(stats.trend_continuation_long.hit_rate, 0.5);
+});
+
+Deno.test("clampModelConfidence caps when n >= 20", () => {
+  const { confidence, capped } = clampModelConfidence(90, { n: 25, empirical_hit_rate: 0.45 });
+  assertEquals(capped, true);
+  assertEquals(confidence, 60);
+});
+
+Deno.test("clampModelConfidence no cap when n < 20", () => {
+  const { confidence, capped } = clampModelConfidence(90, { n: 10, empirical_hit_rate: 0.45 });
+  assertEquals(capped, false);
+  assertEquals(confidence, 90);
 });

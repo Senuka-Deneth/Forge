@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { barHitLong, barHitShort, scorePlanAgainstCandles } from "../_shared/outcome.ts";
+import { barHitLong, barHitShort, scorePlanAgainstCandles, ROUND_TRIP_COST } from "../_shared/outcome.ts";
 import type { TradePlan } from "../_shared/tradePlan.ts";
 
 const basePlan: TradePlan = {
@@ -20,17 +20,30 @@ Deno.test("barHitShort hits target", () => {
   assertEquals(barHitShort({ high: 104, low: 98 }, 105, 99), "target");
 });
 
-Deno.test("scorePlanAgainstCandles expires with no hits", () => {
+Deno.test("scorePlanAgainstCandles expires after fill with fee-adjusted R", () => {
   const result = scorePlanAgainstCandles(basePlan, [
     { high: 102, low: 98 },
     { high: 103, low: 99 },
-  ]);
+  ], 20);
   assertEquals(result.outcome, "expired");
-  assertEquals(result.realized_r, 0);
+  const entry = 100;
+  const risk = 5;
+  const expected = Number((-(ROUND_TRIP_COST * entry) / risk).toFixed(3));
+  assertEquals(result.realized_r, expected);
+  assertEquals(result.filled_at_bar, 0);
+});
+
+Deno.test("scorePlanAgainstCandles no_fill when entry not touched", () => {
+  const result = scorePlanAgainstCandles(basePlan, [
+    { high: 105, low: 102 },
+    { high: 105, low: 102 },
+  ], 20);
+  assertEquals(result.outcome, "no_fill");
+  assertEquals(result.filled_at_bar, null);
 });
 
 Deno.test("scorePlanAgainstCandles records target hit for long", () => {
-  const result = scorePlanAgainstCandles(basePlan, [{ high: 110, low: 100 }]);
+  const result = scorePlanAgainstCandles(basePlan, [{ high: 110, low: 100 }], 20);
   assertEquals(result.outcome, "target_hit");
   assertEquals(result.bars_to_outcome, 1);
 });

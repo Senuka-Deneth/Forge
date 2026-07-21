@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import DOMPurify from 'dompurify';
 import { educationData } from '../data/educationData';
 import EducationIcon from './EducationIcon';
 import '../education.css';
@@ -192,8 +193,7 @@ export default function EducationPanel() {
                         <div className="edu-block-label">How to read it</div>
                         <p className="edu-block-text">{item.howToRead}</p>
                         {item.visualHtml && (
-                          // SAFETY: compile-time static content
-                          <div dangerouslySetInnerHTML={{ __html: item.visualHtml }} />
+                          <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(item.visualHtml) }} />
                         )}
                       </div>
                       <div className="edu-block">

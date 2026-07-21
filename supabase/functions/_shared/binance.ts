@@ -113,6 +113,9 @@ export type FuturesContext = {
   longShortRatio: number | null;
   longAccountPct: number | null;
   shortAccountPct: number | null;
+  markPrice: number | null;
+  indexPrice: number | null;
+  markBasisPct: number | null;
 };
 
 /**
@@ -129,6 +132,9 @@ export async function fetchFuturesContext(symbol: string): Promise<FuturesContex
     longShortRatio: null,
     longAccountPct: null,
     shortAccountPct: null,
+    markPrice: null,
+    indexPrice: null,
+    markBasisPct: null,
   };
 
   const premiumUrl = new URL(`${BINANCE_FUTURES_BASE}/fapi/v1/premiumIndex`);
@@ -153,6 +159,13 @@ export async function fetchFuturesContext(symbol: string): Promise<FuturesContex
       const data = await premiumRes.value.json();
       result.fundingRate = Number(data.lastFundingRate);
       result.nextFundingTime = Number(data.nextFundingTime);
+      const markPrice = Number(data.markPrice);
+      const indexPrice = Number(data.indexPrice);
+      if (Number.isFinite(markPrice)) result.markPrice = markPrice;
+      if (Number.isFinite(indexPrice)) result.indexPrice = indexPrice;
+      if (Number.isFinite(markPrice) && Number.isFinite(indexPrice) && indexPrice > 0) {
+        result.markBasisPct = Number((((markPrice - indexPrice) / indexPrice) * 100).toFixed(4));
+      }
       if (Number.isFinite(result.fundingRate)) result.available = true;
       else result.fundingRate = null;
       if (!Number.isFinite(result.nextFundingTime)) result.nextFundingTime = null;

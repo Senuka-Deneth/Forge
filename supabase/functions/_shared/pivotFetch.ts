@@ -1,0 +1,61 @@
+/**
+ * HTTP-dependent pivot data fetching — kept separate from pure pivot math
+ * so the Vite client bundle does not pull in server http utilities.
+ */
+
+import { fetchWithTimeout } from "./http.ts";
+import type { Candle } from "./pivotPoints.ts";
+
+export const BINANCE_KLINES_URL = "https://api.binance.com/api/v3/klines";
+
+export function parseBinanceKlines(raw: unknown[][]): Candle[] {
+  return raw.map((item) => ({
+    time: Math.trunc(Number(item[0]) / 1000),
+    open: Number(item[1]),
+    high: Number(item[2]),
+    low: Number(item[3]),
+    close: Number(item[4]),
+    volume: Number(item[5]),
+  })).filter((c) => (
+    Number.isFinite(c.time) &&
+    Number.isFinite(c.open) &&
+    Number.isFinite(c.high) &&
+    Number.isFinite(c.low) &&
+    Number.isFinite(c.close)
+  ));
+}
+
+export async function fetchBinanceHtfKlines(
+  symbol: string,
+  binanceInterval: string,
+  limit: number,
+): Promise<Candle[]> {
+  let remaining = limit;
+  let currentEndTime: number | null = null;
+  let allRawData: unknown[][] = [];
+
+  while (remaining > 0) {
+    const fetchLimit = Math.min(remaining, 1000);
+    const url = new URL(BINANCE_KLINES_URL);
+    url.searchParams.set("symbol", symbol);
+    url.searchParams.set("interval", binanceInterval);
+    url.searchParams.set("limit", String(fetchLimit));
+    if (currentEndTime != null) url.searchParams.set("endTime", String(currentEndTime));
+
+    const response = await fetchWithTimeout(url, {}, { timeoutMs: 10000, retries: 1 });
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`Binance request failed: ${response.status} ${body}`);
+    }
+
+    const rawData = await response.json();
+    if (!Array.isArray(rawData) || rawData.length === 0) break;
+
+    allRawData = [...rawData, ...allRawData];
+    currentEndTime = Number(rawData[0][0]) - 1;
+    remaining -= rawData.length;
+    if (rawData.length < fetchLimit) break;
+  }
+
+  return parseBinanceKlines(allRawData).slice(-limit);
+}

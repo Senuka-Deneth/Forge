@@ -109,34 +109,14 @@ export function calculateMACD(values: number[], fast = 12, slow = 26, signal = 9
   return { macdLine, signalLine, histogram };
 }
 
+import { calculateATR as calcCanonicalATR, trueRangeSeries, wilderSmooth } from "./atr.ts";
+
 type OHLC = { high: number; low: number; close: number };
-
-function trueRangeSeries(candles: OHLC[]): number[] {
-  return candles.map((c, i) => {
-    if (i === 0) return c.high - c.low;
-    const prevClose = candles[i - 1].close;
-    return Math.max(c.high - c.low, Math.abs(c.high - prevClose), Math.abs(c.low - prevClose));
-  });
-}
-
-// Wilder's smoothing: seed with a simple average over the first `period` values, then apply the
-// recursive (prev*(period-1)+value)/period smoothing used by ATR/ADX/RSI in the original indicator.
-function wilderSmooth(values: number[], period: number): Array<number | null> {
-  const out = values.map(() => null as number | null);
-  if (values.length < period) return out;
-  let seed = values.slice(0, period).reduce((a, b) => a + b, 0) / period;
-  out[period - 1] = seed;
-  for (let i = period; i < values.length; i += 1) {
-    seed = (seed * (period - 1) + values[i]) / period;
-    out[i] = seed;
-  }
-  return out;
-}
 
 /** Average True Range (Wilder, period 14 by default). Returns ATR and ATR as % of close (volatility). */
 export function calculateATR(candles: OHLC[], period = 14) {
   const tr = trueRangeSeries(candles);
-  const atr = wilderSmooth(tr, period);
+  const { series: atr } = calcCanonicalATR(candles, period);
   const atrPct = candles.map((c, i) => (atr[i] != null && c.close ? ((atr[i] as number) / c.close) * 100 : null));
   return { tr, atr, atrPct };
 }
@@ -226,7 +206,7 @@ export function calculateADX(candles: OHLC[] & Array<{ high: number; low: number
   });
 
   const dxValues = dx.filter((v): v is number => v != null);
-  const compactAdx = wilderSmooth(dxValues, period);
+  const compactAdx = wilderSmoothOnCompact(dxValues, period);
   const adx: Array<number | null> = candles.map(() => null);
   let compactIdx = 0;
   for (let i = 0; i < dx.length; i += 1) {
@@ -236,6 +216,19 @@ export function calculateADX(candles: OHLC[] & Array<{ high: number; low: number
   }
 
   return { plusDI, minusDI, adx };
+}
+
+/** Wilder smooth on a dense array without leading nulls (used for DX → ADX). */
+function wilderSmoothOnCompact(values: number[], period: number): Array<number | null> {
+  const out = values.map(() => null as number | null);
+  if (values.length < period) return out;
+  let seed = values.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  out[period - 1] = seed;
+  for (let i = period; i < values.length; i += 1) {
+    seed = (seed * (period - 1) + values[i]) / period;
+    out[i] = seed;
+  }
+  return out;
 }
 
 /** On-Balance Volume — a running total of volume signed by the direction of each candle's close. */

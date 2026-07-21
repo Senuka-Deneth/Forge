@@ -59,22 +59,28 @@ function deriveBias(ctx: MarketContext): "long" | "short" | "neutral" {
   return "neutral";
 }
 
-type Bucket = { n: number; hits: number; rs: number[] };
+type Bucket = { n: number; hits: number; losses: number; no_fill: number; expired: number; rs: number[] };
 
 function addToBucket(buckets: Record<string, Bucket>, key: string, outcome: string, realizedR: number | null) {
-  if (!buckets[key]) buckets[key] = { n: 0, hits: 0, rs: [] };
+  if (!buckets[key]) buckets[key] = { n: 0, hits: 0, losses: 0, no_fill: 0, expired: 0, rs: [] };
   buckets[key].n += 1;
   if (outcome === "target_hit") buckets[key].hits += 1;
+  if (outcome === "stop_hit") buckets[key].losses += 1;
+  if (outcome === "no_fill") buckets[key].no_fill += 1;
+  if (outcome === "expired") buckets[key].expired += 1;
   if (realizedR != null && Number.isFinite(realizedR)) buckets[key].rs.push(realizedR);
 }
 
 function summarize(buckets: Record<string, Bucket>) {
-  const out: Record<string, { n: number; hit_rate: number | null; avg_r: number | null }> = {};
+  const out: Record<string, { n: number; hit_rate: number | null; avg_r: number | null; no_fill_rate: number | null; expiry_rate: number | null }> = {};
   for (const [key, b] of Object.entries(buckets)) {
+    const decided = b.hits + b.losses;
     out[key] = {
       n: b.n,
-      hit_rate: b.n > 0 ? Number((b.hits / b.n).toFixed(3)) : null,
+      hit_rate: decided > 0 ? Number((b.hits / decided).toFixed(3)) : null,
       avg_r: b.rs.length ? Number((b.rs.reduce((a, c) => a + c, 0) / b.rs.length).toFixed(3)) : null,
+      no_fill_rate: b.n > 0 ? Number((b.no_fill / b.n).toFixed(3)) : null,
+      expiry_rate: b.n > 0 ? Number((b.expired / b.n).toFixed(3)) : null,
     };
   }
   return out;

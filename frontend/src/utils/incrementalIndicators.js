@@ -1,3 +1,99 @@
+function round6(value) {
+  return value == null ? null : Number(value.toFixed(6))
+}
+
+function calculateEMA(values, period) {
+  if (!values.length) return []
+  if (period <= 0) return values.map(() => null)
+  if (values.length < period) return values.map(() => null)
+
+  const ema = values.map(() => null)
+  const multiplier = 2 / (period + 1)
+
+  const seed = values.slice(0, period).reduce((a, b) => a + b, 0) / period
+  ema[period - 1] = seed
+
+  for (let i = period; i < values.length; i++) {
+    ema[i] = (values[i] - ema[i - 1]) * multiplier + ema[i - 1]
+  }
+
+  return ema
+}
+
+function calculateRSI(values, period = 14) {
+  if (values.length < 2) return Array(values.length).fill(null)
+
+  const gains = [0]
+  const losses = [0]
+
+  for (let i = 1; i < values.length; i++) {
+    const change = values[i] - values[i - 1]
+    gains.push(Math.max(change, 0))
+    losses.push(Math.abs(Math.min(change, 0)))
+  }
+
+  const rsi = Array(values.length).fill(null)
+  if (values.length <= period) return rsi
+
+  let avgGain = gains.slice(1, period + 1).reduce((a, b) => a + b, 0) / period
+  let avgLoss = losses.slice(1, period + 1).reduce((a, b) => a + b, 0) / period
+
+  rsi[period] = avgLoss === 0 ? 100 : 100 - (100 / (1 + avgGain / avgLoss))
+
+  for (let i = period + 1; i < values.length; i++) {
+    avgGain = ((avgGain * (period - 1)) + gains[i]) / period
+    avgLoss = ((avgLoss * (period - 1)) + losses[i]) / period
+    rsi[i] = avgLoss === 0 ? 100 : 100 - (100 / (1 + avgGain / avgLoss))
+  }
+
+  return rsi
+}
+
+function calculateMACD(values, fast = 12, slow = 26, signal = 9) {
+  const fastEma = calculateEMA(values, fast)
+  const slowEma = calculateEMA(values, slow)
+
+  const macd = values.map((_, i) => (
+    fastEma[i] != null && slowEma[i] != null ? fastEma[i] - slowEma[i] : null
+  ))
+
+  const compactMacd = macd.filter((v) => v != null)
+  const compactSignal = calculateEMA(compactMacd, signal)
+
+  const signalLine = values.map(() => null)
+  const hist = values.map(() => null)
+  let compactIdx = 0
+
+  for (let i = 0; i < macd.length; i++) {
+    if (macd[i] == null) continue
+    const sig = compactSignal[compactIdx]
+    signalLine[i] = sig
+    hist[i] = sig != null ? macd[i] - sig : null
+    compactIdx += 1
+  }
+
+  return { macd, signalLine, hist }
+}
+
+/** Full-series indicator enrichment for historical candles and bar closes. */
+export function computeSeriesIndicators(candles) {
+  const closes = candles.map((c) => c.close)
+  const ema20 = calculateEMA(closes, 20)
+  const ema50 = calculateEMA(closes, 50)
+  const rsi14 = calculateRSI(closes, 14)
+  const { macd, signalLine, hist } = calculateMACD(closes)
+
+  return candles.map((c, i) => ({
+    ...c,
+    ema20: round6(ema20[i]),
+    ema50: round6(ema50[i]),
+    rsi14: round6(rsi14[i]),
+    macd: round6(macd[i]),
+    macdSignal: round6(signalLine[i]),
+    macdHist: round6(hist[i]),
+  }))
+}
+
 export function updateEmaLast(prevEma, newClose, period) {
   if (prevEma == null || !Number.isFinite(newClose)) return prevEma
   const k = 2 / (period + 1)

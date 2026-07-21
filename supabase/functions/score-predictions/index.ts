@@ -8,6 +8,7 @@ import type { TradePlan } from "../_shared/tradePlan.ts";
 
 const BATCH_SIZE = 50;
 const EXPIRE_BARS = 100;
+const BATCH_DEADLINE_MS = 45_000;
 
 type LogRow = {
   id: string;
@@ -29,7 +30,15 @@ async function scoreRow(row: LogRow) {
   const interval = row.timeframe;
   const plan = asTradePlan(row.response_payload);
   if (!symbol || !interval || !plan || plan.bias === "wait") {
-    return { outcome: "invalid" as const, bars_to_outcome: null, mfe: null, mae: null, realized_r: null };
+    return {
+      outcome: "invalid" as const,
+      bars_to_outcome: null,
+      filled_at_bar: null,
+      mfe: null,
+      mae: null,
+      realized_r: null,
+      scoring_version: 2,
+    };
   }
 
   const analysisTime = Math.floor(new Date(row.created_at).getTime() / 1000);
@@ -69,9 +78,15 @@ Deno.serve(async (req) => {
 
     if (error) throw error;
 
+    const batchStarted = Date.now();
     let scored = 0;
     let failed = 0;
+    let skipped = 0;
     for (const row of (rows ?? []) as LogRow[]) {
+      if (Date.now() - batchStarted >= BATCH_DEADLINE_MS) {
+        skipped += 1;
+        continue;
+      }
       try {
         const result = await scoreRow(row);
         const { error: updateError } = await supabase
@@ -80,6 +95,8 @@ Deno.serve(async (req) => {
             evaluated_at: new Date().toISOString(),
             outcome: result.outcome,
             bars_to_outcome: result.bars_to_outcome,
+            filled_at_bar: result.filled_at_bar,
+            scoring_version: result.scoring_version,
             mfe: result.mfe,
             mae: result.mae,
             realized_r: result.realized_r,
@@ -92,7 +109,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    return jsonResponse(req, { success: true, processed: rows?.length ?? 0, scored, failed });
+    return jsonResponse(req, { success: true, processed: rows?.length ?? 0, scored, failed, skipped });
   } catch (error) {
     return jsonResponse(req, { success: false, error: safeError("Prediction scoring failed.", error) }, 500);
   }

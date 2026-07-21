@@ -30,3 +30,9 @@ export async function fetchWithTimeout(
   }
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
+
+/** Log the real error server-side; return a safe public message for clients. */
+export function safeError(publicMessage: string, err: unknown): string {
+  console.error(publicMessage, err instanceof Error ? err.message : String(err));
+  return publicMessage;
+}

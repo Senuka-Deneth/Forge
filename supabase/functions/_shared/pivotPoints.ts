@@ -5,6 +5,7 @@
  */
 
 import { calculateATR, inflectionThreshold } from "./marketStructure.ts";
+import { fetchWithTimeout } from "./http.ts";
 
 export type Candle = {
   time: number;
@@ -120,8 +121,8 @@ export function maxPivotsBackForType(pivotType: string, enabledLevelCount?: numb
   return Math.floor(PIVOT_SEGMENT_CAP / levels);
 }
 
-export function round2(value: number): number {
-  return Number(value.toFixed(2));
+export function round6(value: number): number {
+  return Number(value.toFixed(6));
 }
 
 export function sanitizePivotTimeframe(raw: unknown): PivotTimeframePreference {
@@ -270,7 +271,7 @@ export function calculatePivotsGeneric(
   for (const key of Object.keys(levels)) {
     const val = levels[key];
     if (val !== null && val !== undefined && typeof val === "number") {
-      levels[key] = round2(val);
+      levels[key] = round6(val);
     }
   }
 
@@ -311,7 +312,7 @@ export async function fetchBinanceHtfKlines(
     url.searchParams.set("limit", String(fetchLimit));
     if (currentEndTime != null) url.searchParams.set("endTime", String(currentEndTime));
 
-    const response = await fetch(url);
+    const response = await fetchWithTimeout(url, {}, { timeoutMs: 10000, retries: 1 });
     if (!response.ok) {
       const body = await response.text();
       throw new Error(`Binance request failed: ${response.status} ${body}`);

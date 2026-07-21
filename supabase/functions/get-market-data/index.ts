@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { safeError } from "../_shared/http.ts";
 import { requireAuthenticatedUser, tryServiceClient } from "../_shared/auth.ts";
+import { consumeQuota } from "../_shared/rateLimit.ts";
 import type { Candle } from "../_shared/indicators.ts";
 import { fetchBinanceKlines } from "../_shared/binance.ts";
 
@@ -10,6 +12,9 @@ const ALLOWED_INTERVALS = new Set([
   "1d", "3d", "1w", "1M",
 ]);
 const SYMBOL_REGEX = /^[A-Z0-9]{5,20}$/;
+const MAX_LIMIT = 1500;
+const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
+const RATE_LIMIT_MAX_CALLS = 60;
 
 function parseCacheTtlSeconds(): number {
   const raw = Deno.env.get("MARKET_CACHE_TTL_SECONDS");
@@ -99,17 +104,26 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const quota = await consumeQuota(supabase, authResult.userId, RATE_LIMIT_WINDOW_MS, RATE_LIMIT_MAX_CALLS, "market_data");
+    if (!quota.ok) {
+      if (quota.reason === "unavailable") {
+        return jsonResponse(req, { error: "Rate limit check unavailable. Please try again shortly." }, 503);
+      }
+      return jsonResponse(req, { error: "Too many market data requests. Please wait and try again." }, 429);
+    }
+
     const url = new URL(req.url);
     const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
     const symbol = String(body.symbol ?? url.searchParams.get("symbol") ?? "BTCUSDT").toUpperCase().trim();
     const interval = String(body.interval ?? url.searchParams.get("interval") ?? "4h").trim();
     const limitRaw = body.limit ?? url.searchParams.get("limit") ?? "300";
-    const limit = Number.parseInt(String(limitRaw), 10);
+    const parsedLimit = Number.parseInt(String(limitRaw), 10);
+    const limit = Math.min(MAX_LIMIT, parsedLimit);
 
     if (!SYMBOL_REGEX.test(symbol)) return jsonResponse(req, { error: "Invalid symbol format." }, 400);
     if (!ALLOWED_INTERVALS.has(interval)) return jsonResponse(req, { error: "Invalid interval." }, 400);
-    if (!Number.isInteger(limit)) return jsonResponse(req, { error: "Limit must be an integer." }, 400);
-    if (limit < 50 || limit > 10000) return jsonResponse(req, { error: "Limit must be between 50 and 10000." }, 400);
+    if (!Number.isInteger(parsedLimit)) return jsonResponse(req, { error: "Limit must be an integer." }, 400);
+    if (parsedLimit < 50 || parsedLimit > 10000) return jsonResponse(req, { error: "Limit must be between 50 and 10000." }, 400);
 
     const ttlSeconds = parseCacheTtlSeconds();
 
@@ -126,9 +140,6 @@ Deno.serve(async (req) => {
 
     return jsonResponse(req, candles);
   } catch (error) {
-    return jsonResponse(req, {
-      error: "Unexpected market data error.",
-      details: error instanceof Error ? error.message : String(error),
-    }, 500);
+    return jsonResponse(req, { error: safeError("Unexpected market data error.", error) }, 500);
   }
 });

@@ -1,35 +1,22 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { handleOptions, jsonResponse } from "../_shared/cors.ts";
-import { fetchWithTimeout } from "../_shared/http.ts";
+import { fetchWithTimeout, safeError } from "../_shared/http.ts";
 import { requireAuthenticatedUser, tryServiceClient } from "../_shared/auth.ts";
+import { consumeQuota } from "../_shared/rateLimit.ts";
 import {
-  type Candle,
-  type Divergence,
-  type MarketStructure,
-  type SwingPoint,
-  classifyMarketStructure,
-  detectDivergence,
-  detectSwingPoints,
-} from "../_shared/indicators.ts";
+  buildUserMessage,
+  gatherMarketContext,
+  type MarketContext,
+  PRIMARY_CANDLE_LIMIT,
+  SERIES_WINDOW,
+} from "../_shared/aiContext.ts";
 import {
-  type FuturesContext,
-  type OrderBookImbalance,
-  type Ticker24hr,
-  fetchBinanceKlines,
-  fetchFuturesContext,
-  fetchOrderBookImbalance,
-  fetchTicker24hr,
-  getConfluenceTimeframes,
-} from "../_shared/binance.ts";
-import {
-  analyzePriceVsPivots,
-  calculateClassicPivots,
-  calculateFibonacciPivots,
-  calculateTraditionalPivots,
-  getPivotPeriod,
-  groupCompletedCandles,
-  withMeta,
-} from "../_shared/pivots.ts";
+  appendPositionSizing,
+  recomputeTradePlanRiskReward,
+  type TradePlan,
+  type TradePlanTarget,
+  validateTradePlanGeometry,
+} from "../_shared/tradePlan.ts";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_MODEL = "nvidia/nemotron-super-49b-v1:free";
@@ -41,25 +28,41 @@ const ALLOWED_INTERVALS = new Set([
   "1d", "3d", "1w", "1M",
 ]);
 const SYMBOL_REGEX = /^[A-Z0-9]{5,20}$/;
-const PRIMARY_CANDLE_LIMIT = 500;
-const MTF_CANDLE_LIMIT = 150;
-const SERIES_WINDOW = 12;
+const PRIMARY_CANDLE_LIMIT_REF = PRIMARY_CANDLE_LIMIT;
+void PRIMARY_CANDLE_LIMIT_REF;
+const SERIES_WINDOW_REF = SERIES_WINDOW;
+void SERIES_WINDOW_REF;
 
 const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
 const RATE_LIMIT_MAX_CALLS = 10;
+const ANALYSIS_CACHE_TTL_MS = 90 * 1000;
 
-async function checkRateLimit(supabase: SupabaseClient, userId: string): Promise<boolean> {
-  const windowStart = new Date(Date.now() - RATE_LIMIT_WINDOW_MS).toISOString();
-  const { count, error } = await supabase
-    .from("ai_analysis_logs")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .gte("created_at", windowStart);
-  if (error) {
-    console.error("[ai-analysis] rate limit check failed:", error.message);
-    return true;
-  }
-  return (count ?? 0) < RATE_LIMIT_MAX_CALLS;
+async function readAnalysisCache(
+  supabase: SupabaseClient,
+  cacheKey: string,
+): Promise<Record<string, unknown> | null> {
+  const { data, error } = await supabase
+    .from("ai_analysis_cache")
+    .select("response_payload")
+    .eq("cache_key", cacheKey)
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+  if (error || !data?.response_payload) return null;
+  return data.response_payload as Record<string, unknown>;
+}
+
+async function writeAnalysisCache(
+  supabase: SupabaseClient,
+  cacheKey: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const expiresAt = new Date(Date.now() + ANALYSIS_CACHE_TTL_MS).toISOString();
+  const { error } = await supabase.from("ai_analysis_cache").upsert({
+    cache_key: cacheKey,
+    response_payload: payload,
+    expires_at: expiresAt,
+  }, { onConflict: "cache_key" });
+  if (error) console.error("[ai-analysis] cache upsert failed:", error.message);
 }
 
 async function logAiAnalysis(
@@ -72,6 +75,8 @@ async function logAiAnalysis(
     status: "success" | "fallback" | "error" | "rate_limited";
     latencyMs: number;
     errorMessage?: string;
+    requestPayload?: Record<string, unknown> | null;
+    responsePayload?: Record<string, unknown> | null;
   },
 ): Promise<void> {
   const { error } = await supabase.from("ai_analysis_logs").insert({
@@ -82,6 +87,8 @@ async function logAiAnalysis(
     status: entry.status,
     latency_ms: entry.latencyMs,
     error_message: entry.errorMessage ?? null,
+    request_payload: entry.requestPayload ?? null,
+    response_payload: entry.responsePayload ?? null,
   });
   if (error) console.error("[ai-analysis] failed to write ai_analysis_logs:", error.message);
 }
@@ -140,200 +147,9 @@ function extractJson(rawText: string): Record<string, unknown> {
 }
 
 // ---------------------------------------------------------------------------
-// Market context gathering — everything the model (and the deterministic
-// fallback) reasons over is computed here, server-side, from real market
-// data. The client only ever sends {symbol, interval}.
-// ---------------------------------------------------------------------------
-
-type PivotSet = ReturnType<typeof calculateClassicPivots>;
-type PivotBundle = { pivots: PivotSet & Record<string, unknown>; analysis: ReturnType<typeof analyzePriceVsPivots> };
-
-type MtfRead = {
-  interval: string;
-  trend: "bullish" | "bearish" | "mixed";
-  rsi: number | null;
-};
-
-type MarketContext = {
-  symbol: string;
-  interval: string;
-  price: number;
-  latest: Candle;
-  series: {
-    closes: number[];
-    rsi: Array<number | null>;
-    macdHist: Array<number | null>;
-    atrPct: Array<number | null>;
-    obv: number[];
-    cvd: Array<number | null>;
-    volume: number[];
-  };
-  ticker24h: Ticker24hr;
-  volatilityState: "low" | "medium" | "high";
-  trendStrength: number;
-  vwapRelation: "above" | "below" | "at" | "unknown";
-  swingHighs: SwingPoint[];
-  swingLows: SwingPoint[];
-  structure: MarketStructure;
-  rsiDivergence: Divergence;
-  macdDivergence: Divergence;
-  orderFlow: OrderBookImbalance;
-  cvdTrend: "buying" | "selling" | "neutral";
-  futures: FuturesContext;
-  pivots: { classic: PivotBundle; fibonacci: PivotBundle; traditional: PivotBundle };
-  nearestSupport: { label: string; value: number } | null;
-  nearestResistance: { label: string; value: number } | null;
-  mtf: MtfRead[];
-  confluenceScore: number;
-};
-
-function seriesTrend(alignment: "bullish" | "bearish" | "mixed", macdHist: number | null): "bullish" | "bearish" | "mixed" {
-  if (alignment !== "mixed") return alignment;
-  if (macdHist != null) return macdHist > 0 ? "bullish" : macdHist < 0 ? "bearish" : "mixed";
-  return "mixed";
-}
-
-function readTrendFromCandles(candles: Candle[]): MtfRead["trend"] {
-  const latest = candles[candles.length - 1];
-  if (!latest) return "mixed";
-  const { close, ema20, ema50, macdHist } = latest;
-  let alignment: "bullish" | "bearish" | "mixed" = "mixed";
-  if (ema20 != null && ema50 != null) {
-    if (close > ema20 && ema20 > ema50) alignment = "bullish";
-    else if (close < ema20 && ema20 < ema50) alignment = "bearish";
-  }
-  return seriesTrend(alignment, macdHist);
-}
-
-function volatilityStateFromAtr(atrPctSeries: Array<number | null>): "low" | "medium" | "high" {
-  const recent = atrPctSeries.filter((v): v is number => v != null).slice(-50);
-  if (!recent.length) return "medium";
-  const current = recent[recent.length - 1];
-  const sorted = [...recent].sort((a, b) => a - b);
-  const median = sorted[Math.floor(sorted.length / 2)];
-  if (median === 0) return "medium";
-  const ratio = current / median;
-  if (ratio >= 1.3) return "high";
-  if (ratio <= 0.7) return "low";
-  return "medium";
-}
-
-function trendStrengthFromAdx(adx: number | null): number {
-  if (adx == null) return 35;
-  return clamp(Math.round(adx * 2), 0, 100);
-}
-
-async function gatherMarketContext(symbol: string, interval: string): Promise<MarketContext> {
-  const primaryCandles = await fetchBinanceKlines(symbol, interval, PRIMARY_CANDLE_LIMIT);
-  if (!primaryCandles.length) throw new Error("No candle data returned for this symbol/interval.");
-
-  const latest = primaryCandles[primaryCandles.length - 1];
-  const price = latest.close;
-
-  const [orderFlow, futures, ticker24h, mtfResults] = await Promise.all([
-    fetchOrderBookImbalance(symbol),
-    fetchFuturesContext(symbol),
-    fetchTicker24hr(symbol),
-    Promise.all(
-      getConfluenceTimeframes(interval).map(async (tf) => {
-        try {
-          const candles = await fetchBinanceKlines(symbol, tf, MTF_CANDLE_LIMIT);
-          return { interval: tf, trend: readTrendFromCandles(candles), rsi: candles[candles.length - 1]?.rsi14 ?? null } as MtfRead;
-        } catch {
-          return { interval: tf, trend: "mixed", rsi: null } as MtfRead;
-        }
-      }),
-    ),
-  ]);
-
-  const period = getPivotPeriod(interval);
-  const completed = groupCompletedCandles(primaryCandles, period, 1)[0];
-  const pivotBasis = completed ?? { high: latest.high, low: latest.low, close: latest.close };
-  const classicPivots = withMeta(calculateClassicPivots(pivotBasis.high, pivotBasis.low, pivotBasis.close), "classic", period, completed ?? null);
-  const fibonacciPivots = withMeta(calculateFibonacciPivots(pivotBasis.high, pivotBasis.low, pivotBasis.close), "fibonacci", period, completed ?? null);
-  const traditionalPivots = withMeta(calculateTraditionalPivots(pivotBasis.high, pivotBasis.low, pivotBasis.close), "traditional", period, completed ?? null);
-
-  const classicAnalysis = analyzePriceVsPivots(price, classicPivots);
-  const fibonacciAnalysis = analyzePriceVsPivots(price, fibonacciPivots);
-  const traditionalAnalysis = analyzePriceVsPivots(price, traditionalPivots);
-
-  const { swingHighs, swingLows } = detectSwingPoints(primaryCandles, 2);
-  const structure = classifyMarketStructure(primaryCandles, swingHighs, swingLows);
-  const rsiDivergence = detectDivergence(primaryCandles, swingHighs, swingLows, "rsi");
-  const macdDivergence = detectDivergence(primaryCandles, swingHighs, swingLows, "macd");
-
-  const recentCvd = primaryCandles.slice(-10).map((c) => c.cvd).filter((v): v is number => v != null);
-  const cvdTrend: MarketContext["cvdTrend"] = recentCvd.length >= 2
-    ? (recentCvd[recentCvd.length - 1] > recentCvd[0] ? "buying" : recentCvd[recentCvd.length - 1] < recentCvd[0] ? "selling" : "neutral")
-    : "neutral";
-
-  const atrPctSeries = primaryCandles.map((c) => c.atrPct);
-  const adxSeries = primaryCandles.map((c) => c.adx14);
-  const latestAdx = adxSeries[adxSeries.length - 1] ?? null;
-
-  let vwapRelation: MarketContext["vwapRelation"] = "unknown";
-  if (latest.vwap != null) {
-    const tol = Math.abs(price) * 0.0005;
-    vwapRelation = Math.abs(price - latest.vwap) <= tol ? "at" : price > latest.vwap ? "above" : "below";
-  }
-
-  const primaryTrend = readTrendFromCandles(primaryCandles);
-  const agreeing = mtfResults.filter((r) => r.trend === primaryTrend).length;
-  const confluenceScore = mtfResults.length ? Math.round((agreeing / mtfResults.length) * 100) : 50;
-
-  return {
-    symbol,
-    interval,
-    price,
-    latest,
-    series: {
-      closes: primaryCandles.slice(-SERIES_WINDOW).map((c) => c.close),
-      rsi: primaryCandles.slice(-SERIES_WINDOW).map((c) => c.rsi14),
-      macdHist: primaryCandles.slice(-SERIES_WINDOW).map((c) => c.macdHist),
-      atrPct: primaryCandles.slice(-SERIES_WINDOW).map((c) => c.atrPct),
-      obv: primaryCandles.slice(-SERIES_WINDOW).map((c) => c.obv ?? 0),
-      cvd: primaryCandles.slice(-SERIES_WINDOW).map((c) => c.cvd),
-      volume: primaryCandles.slice(-SERIES_WINDOW).map((c) => c.volume),
-    },
-    ticker24h,
-    volatilityState: volatilityStateFromAtr(atrPctSeries),
-    trendStrength: trendStrengthFromAdx(latestAdx),
-    vwapRelation,
-    swingHighs: swingHighs.slice(-5),
-    swingLows: swingLows.slice(-5),
-    structure,
-    rsiDivergence,
-    macdDivergence,
-    orderFlow,
-    cvdTrend,
-    futures,
-    pivots: {
-      classic: { pivots: classicPivots, analysis: classicAnalysis },
-      fibonacci: { pivots: fibonacciPivots, analysis: fibonacciAnalysis },
-      traditional: { pivots: traditionalPivots, analysis: traditionalAnalysis },
-    },
-    nearestSupport: classicAnalysis.nearestSupport,
-    nearestResistance: classicAnalysis.nearestResistance,
-    mtf: mtfResults,
-    confluenceScore,
-  };
-}
-
-// ---------------------------------------------------------------------------
 // Deterministic trade plan — used both as the resilient fallback and as the
 // baseline the model's own trade_plan is validated against.
 // ---------------------------------------------------------------------------
-
-type TradePlanTarget = { label: string; price: number | null; risk_reward: number | null };
-type TradePlan = {
-  bias: "long" | "short" | "wait";
-  entry_zone: { low: number | null; high: number | null } | null;
-  stop_loss: number | null;
-  targets: TradePlanTarget[];
-  risk_reward_summary: string;
-  confidence: number;
-  rationale: string;
-};
 
 function buildDeterministicTradePlan(ctx: MarketContext, bias: "long" | "short" | "neutral"): TradePlan {
   const { price, latest, pivots, confluenceScore } = ctx;
@@ -439,7 +255,7 @@ function deterministicFallback(ctx: MarketContext, source = "local-fallback") {
     : "neutral";
 
   const confluences: Array<{ level: string; price: number; confluent_with: string; significance: string }> = [];
-  const pp = ctx.pivots.classic.pivots.PP as number;
+  const pp = Number(ctx.pivots.classic.pivots.PP);
   if (pp != null && ema20 != null && price && Math.abs(pp - ema20) / Math.abs(price) <= 0.005) {
     confluences.push({ level: "PP", price: Number(pp.toFixed(6)), confluent_with: "EMA20", significance: "medium" });
   }
@@ -547,6 +363,7 @@ function deterministicFallback(ctx: MarketContext, source = "local-fallback") {
       timestamp: new Date().toISOString(),
       validated: true,
       confluence_score: ctx.confluenceScore,
+      signal_strength: ctx.signalAgreement,
       data_completeness: {
         futures_available: ctx.futures.available,
         order_book_available: ctx.orderFlow.obi != null,
@@ -601,72 +418,6 @@ Reasoning rules:
 - If futures or order-book data is unavailable (null), say so rather than inventing a reading, and
   do not let its absence be the sole driver of confidence.
 - Keep every field data-grounded. Never fabricate values for inputs that were not provided.`;
-}
-
-function buildUserMessage(ctx: MarketContext): string {
-  const c = ctx.pivots.classic.pivots;
-  const f = ctx.pivots.fibonacci.pivots;
-  const t = ctx.pivots.traditional.pivots;
-
-  return `Analyze this market context and return strict JSON only.
-
-MARKET:
-- symbol: ${ctx.symbol}
-- timeframe: ${ctx.interval}
-- price: ${ctx.price}
-- 24h_change_pct: ${ctx.ticker24h.priceChangePercent}
-- 24h_volume: ${ctx.ticker24h.volume}
-- 24h_high: ${ctx.ticker24h.highPrice}
-- 24h_low: ${ctx.ticker24h.lowPrice}
-
-INDICATOR SERIES (last ${SERIES_WINDOW} candles, oldest to newest):
-- closes: ${JSON.stringify(ctx.series.closes)}
-- rsi14: ${JSON.stringify(ctx.series.rsi)}
-- macd_histogram: ${JSON.stringify(ctx.series.macdHist)}
-- atr_pct: ${JSON.stringify(ctx.series.atrPct)}
-- obv: ${JSON.stringify(ctx.series.obv)}
-- cumulative_volume_delta: ${JSON.stringify(ctx.series.cvd)}
-- volume: ${JSON.stringify(ctx.series.volume)}
-
-LATEST INDICATORS:
-- ema20: ${ctx.latest.ema20}
-- ema50: ${ctx.latest.ema50}
-- macd: ${JSON.stringify({ macd: ctx.latest.macd, signal: ctx.latest.macdSignal, histogram: ctx.latest.macdHist })}
-- bollinger: ${JSON.stringify({ upper: ctx.latest.bbUpper, middle: ctx.latest.bbMiddle, lower: ctx.latest.bbLower, percentB: ctx.latest.bbPercentB, bandwidth: ctx.latest.bbBandwidth })}
-- vwap: ${ctx.latest.vwap} (price is ${ctx.vwapRelation} VWAP)
-- adx14: ${ctx.latest.adx14} (+DI ${ctx.latest.plusDI14} / -DI ${ctx.latest.minusDI14})
-- relative_volume: ${ctx.latest.relativeVolume}
-- volatility_state (ATR vs its recent median): ${ctx.volatilityState}
-- adx_trend_strength_score: ${ctx.trendStrength}
-
-MARKET STRUCTURE:
-- swing_highs: ${JSON.stringify(ctx.swingHighs.map((s) => s.price))}
-- swing_lows: ${JSON.stringify(ctx.swingLows.map((s) => s.price))}
-- last_swing_high_label: ${ctx.structure.lastSwingHighLabel}
-- last_swing_low_label: ${ctx.structure.lastSwingLowLabel}
-- break_of_structure: ${ctx.structure.breakOfStructure}
-- rsi_divergence: ${JSON.stringify(ctx.rsiDivergence)}
-- macd_divergence: ${JSON.stringify(ctx.macdDivergence)}
-- nearest_support: ${JSON.stringify(ctx.nearestSupport)}
-- nearest_resistance: ${JSON.stringify(ctx.nearestResistance)}
-
-ORDER FLOW:
-- order_book_imbalance (-1 sell-heavy to +1 buy-heavy, within 1% of mid, null if unavailable): ${ctx.orderFlow.obi}
-- cumulative_volume_delta_trend: ${ctx.cvdTrend}
-
-FUTURES POSITIONING (null fields mean no futures market / unavailable):
-- available: ${ctx.futures.available}
-- funding_rate: ${ctx.futures.fundingRate}
-- open_interest: ${ctx.futures.openInterest}
-- long_short_account_ratio: ${ctx.futures.longShortRatio}
-
-MULTI-TIMEFRAME CONFLUENCE:
-- reads: ${JSON.stringify(ctx.mtf)}
-- confluence_score_pct (share of higher timeframes agreeing with the current-timeframe trend): ${ctx.confluenceScore}
-
-PIVOTS (classic / fibonacci / traditional, period=${ctx.pivots.classic.pivots.period}):
-${JSON.stringify({ classic: c, fibonacci: f, traditional: t })}
-PIVOT_ANALYSIS: ${JSON.stringify(ctx.pivots.classic.analysis)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -823,7 +574,7 @@ function normalizeModelOutput(parsed: Record<string, unknown>, ctx: MarketContex
 
   const tradePlanBias = asEnum(tradePlanObj.bias, new Set(["long", "short", "wait"]), baseTradePlan.bias);
   const entryZoneObj = asObject(tradePlanObj.entry_zone);
-  const validatedTradePlan: TradePlan = {
+  let validatedTradePlan: TradePlan = {
     bias: tradePlanBias,
     entry_zone: tradePlanBias === "wait"
       ? null
@@ -838,6 +589,34 @@ function normalizeModelOutput(parsed: Record<string, unknown>, ctx: MarketContex
     rationale: String(tradePlanObj.rationale ?? baseTradePlan.rationale),
   };
 
+  let modelFieldCount = 0;
+  let totalFieldCount = 0;
+  const trackField = (modelValue: unknown, baseValue: unknown) => {
+    totalFieldCount += 1;
+    if (modelValue !== undefined && modelValue !== null && modelValue !== baseValue) modelFieldCount += 1;
+  };
+  trackField(summary.primary_trend, baseSummary.primary_trend);
+  trackField(summary.momentum, baseSummary.momentum);
+  trackField(summary.confidence, baseSummary.confidence);
+  trackField(tradePlanObj.bias, baseTradePlan.bias);
+  trackField(tradePlanObj.stop_loss, baseTradePlan.stop_loss);
+  trackField(validatedTargets.length, baseTradePlan.targets.length);
+
+  const geometry = validateTradePlanGeometry(validatedTradePlan, ctx.price);
+  let tradePlanGeometryValid = geometry.valid;
+  if (!geometry.valid && validatedTradePlan.bias !== "wait") {
+    const fallbackBias = validatedTradePlan.bias === "long" ? "long" : validatedTradePlan.bias === "short" ? "short" : "neutral";
+    const detBias = fallbackBias === "long" || fallbackBias === "short" ? fallbackBias : "neutral";
+    validatedTradePlan = buildDeterministicTradePlan(ctx, detBias as "long" | "short" | "neutral");
+    tradePlanGeometryValid = false;
+  } else {
+    validatedTradePlan = recomputeTradePlanRiskReward(validatedTradePlan);
+    validatedTradePlan = appendPositionSizing(validatedTradePlan);
+  }
+
+  const modelFieldRatio = totalFieldCount > 0 ? modelFieldCount / totalFieldCount : 0;
+  const source = modelFieldRatio >= 0.7 ? "openrouter" : modelFieldRatio > 0 ? "openrouter-partial" : "deterministic";
+
   const out = {
     ...base,
     summary: validatedSummary,
@@ -851,11 +630,17 @@ function normalizeModelOutput(parsed: Record<string, unknown>, ctx: MarketContex
     trade_plan: validatedTradePlan,
     _meta: {
       model: MODEL,
-      source: "openrouter",
+      source,
       timestamp: new Date().toISOString(),
       validated: true,
-      confluence_score: base._meta.confluence_score,
-      data_completeness: base._meta.data_completeness,
+      confluence_score: ctx.confluenceScore,
+      signal_strength: ctx.signalAgreement,
+      model_field_ratio: Number(modelFieldRatio.toFixed(3)),
+      trade_plan_geometry_valid: tradePlanGeometryValid,
+      data_completeness: {
+        futures_available: ctx.futures.available,
+        order_book_available: ctx.orderFlow.obi != null,
+      },
     },
   };
 
@@ -900,15 +685,6 @@ Deno.serve(async (req) => {
   let ctxForFallback: MarketContext | null = null;
 
   try {
-    const withinLimit = await checkRateLimit(supabase, userId);
-    if (!withinLimit) {
-      await logAiAnalysis(supabase, { userId, symbol: null, timeframe: null, model: MODEL, status: "rate_limited", latencyMs: Date.now() - started });
-      return jsonResponse(req, { success: false, error: "Too many AI analysis requests. Please wait a few minutes and try again." }, 429);
-    }
-
-    const apiKey = Deno.env.get("OPENROUTER_API_KEY");
-    if (!apiKey) return jsonResponse(req, { success: false, error: "OPENROUTER_API_KEY is not configured." }, 500);
-
     const body = await req.json().catch(() => null);
     symbol = String(body?.symbol ?? "").toUpperCase().trim();
     interval = String(body?.interval ?? body?.timeframe ?? "4h").trim();
@@ -920,8 +696,44 @@ Deno.serve(async (req) => {
       return jsonResponse(req, { success: false, error: "Invalid interval." }, 400);
     }
 
+    const cacheKey = `${symbol}:${interval}`;
+    const cached = await readAnalysisCache(supabase, cacheKey);
+    if (cached) {
+      return jsonResponse(req, {
+        success: true,
+        analysis: { ...cached, _meta: { ...(cached._meta as Record<string, unknown>), cached: true } },
+      });
+    }
+
+    const quota = await consumeQuota(supabase, userId, RATE_LIMIT_WINDOW_MS, RATE_LIMIT_MAX_CALLS, "ai_analysis");
+    if (!quota.ok) {
+      if (quota.reason === "unavailable") {
+        return jsonResponse(req, { success: false, error: "Rate limit check unavailable. Please try again shortly." }, 503);
+      }
+      await logAiAnalysis(supabase, { userId, symbol, timeframe: interval, model: MODEL, status: "rate_limited", latencyMs: Date.now() - started });
+      return jsonResponse(req, { success: false, error: "Too many AI analysis requests. Please wait a few minutes and try again." }, 429);
+    }
+
+    const apiKey = Deno.env.get("OPENROUTER_API_KEY");
+    if (!apiKey) return jsonResponse(req, { success: false, error: "OPENROUTER_API_KEY is not configured." }, 500);
+
     const ctx = await gatherMarketContext(symbol, interval);
     ctxForFallback = ctx;
+
+    const requestPayload = {
+      symbol,
+      interval,
+      price: ctx.price,
+      confluence_score: ctx.confluenceScore,
+      signal_strength: ctx.signalAgreement,
+      indicators: {
+        rsi14: ctx.latest.rsi14,
+        ema20: ctx.latest.ema20,
+        ema50: ctx.latest.ema50,
+        macd_hist: ctx.latest.macdHist,
+        adx14: ctx.latest.adx14,
+      },
+    };
 
     const response = await fetchWithTimeout(OPENROUTER_URL, {
       method: "POST",
@@ -939,31 +751,68 @@ Deno.serve(async (req) => {
         ],
         temperature: 0,
         max_tokens: 3000,
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "forge_analysis",
+            strict: true,
+            schema: {
+              type: "object",
+              additionalProperties: true,
+              properties: {
+                summary: { type: "object" },
+                indicators: { type: "object" },
+                pivot_analysis: { type: "object" },
+                structure: { type: "object" },
+                order_flow: { type: "object" },
+                trade_logic: { type: "object" },
+                anomalies: { type: "array" },
+                market_regime: { type: "object" },
+                trade_plan: { type: "object" },
+              },
+              required: ["trade_plan", "summary", "indicators"],
+            },
+          },
+        },
       }),
     }, { timeoutMs: 25000, retries: 1 });
 
     if (response.status === 429) {
-      await logAiAnalysis(supabase, { userId, symbol, timeframe: interval, model: MODEL, status: "error", latencyMs: Date.now() - started, errorMessage: "OpenRouter rate limit" });
+      await logAiAnalysis(supabase, { userId, symbol, timeframe: interval, model: MODEL, status: "error", latencyMs: Date.now() - started, errorMessage: "OpenRouter rate limit", requestPayload });
       return jsonResponse(req, { success: false, error: "OpenRouter rate limit hit. Wait and retry." }, 429);
     }
     if (response.status === 401) {
-      await logAiAnalysis(supabase, { userId, symbol, timeframe: interval, model: MODEL, status: "error", latencyMs: Date.now() - started, errorMessage: "Invalid OpenRouter API key" });
+      await logAiAnalysis(supabase, { userId, symbol, timeframe: interval, model: MODEL, status: "error", latencyMs: Date.now() - started, errorMessage: "Invalid OpenRouter API key", requestPayload });
       return jsonResponse(req, { success: false, error: "Invalid OpenRouter API key." }, 500);
     }
     if (!response.ok) {
       const text = await response.text();
-      await logAiAnalysis(supabase, { userId, symbol, timeframe: interval, model: MODEL, status: "error", latencyMs: Date.now() - started, errorMessage: `OpenRouter error: ${response.status}` });
-      return jsonResponse(req, { success: false, error: `OpenRouter error: ${response.status}`, details: text }, 502);
+      console.error("[ai-analysis] OpenRouter error:", response.status, text.slice(0, 500));
+      await logAiAnalysis(supabase, { userId, symbol, timeframe: interval, model: MODEL, status: "error", latencyMs: Date.now() - started, errorMessage: `OpenRouter error: ${response.status}`, requestPayload });
+      return jsonResponse(req, { success: false, error: "AI service returned an error. Please try again." }, 502);
     }
 
     const payload = await response.json();
+    if (payload?.usage) {
+      console.log("[ai-analysis] token usage:", JSON.stringify(payload.usage));
+    }
     const content = payload?.choices?.[0]?.message?.content ?? "";
     const parsed = extractJson(content);
     const analysis = normalizeModelOutput(parsed, ctx);
     const latencyMs = Date.now() - started;
     analysis._meta = { ...analysis._meta, latency_ms: latencyMs };
 
-    await logAiAnalysis(supabase, { userId, symbol, timeframe: interval, model: MODEL, status: "success", latencyMs });
+    await writeAnalysisCache(supabase, cacheKey, analysis as Record<string, unknown>);
+    await logAiAnalysis(supabase, {
+      userId,
+      symbol,
+      timeframe: interval,
+      model: MODEL,
+      status: "success",
+      latencyMs,
+      requestPayload,
+      responsePayload: analysis as Record<string, unknown>,
+    });
 
     return jsonResponse(req, { success: true, analysis });
   } catch (error) {
@@ -981,6 +830,6 @@ Deno.serve(async (req) => {
       }
     } catch { /* fall through to hard error below */ }
 
-    return jsonResponse(req, { success: false, error: `Unable to gather market data or reach the AI service: ${errorMessage}` }, 502);
+    return jsonResponse(req, { success: false, error: safeError("Unable to complete AI analysis.", error) }, 502);
   }
 });

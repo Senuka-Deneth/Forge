@@ -21,8 +21,8 @@ export const ALLOWED_INTERVALS = new Set([
   "1d", "3d", "1w", "1M",
 ]);
 
-function round2(value: number): number {
-  return Number(value.toFixed(2));
+function round6(value: number): number {
+  return Number(value.toFixed(6));
 }
 
 export function calculateClassicPivots(high: number, low: number, close: number): PivotLevels {
@@ -32,13 +32,13 @@ export function calculateClassicPivots(high: number, low: number, close: number)
   // S1 = 2*PP - high, S2 = PP - (high-low), S3 = low - 2*(high-PP)
   const pp = (high + low + close) / 3;
   return {
-    PP: round2(pp),
-    R1: round2(2 * pp - low),
-    R2: round2(pp + (high - low)),
-    R3: round2(high + 2 * (pp - low)),
-    S1: round2(2 * pp - high),
-    S2: round2(pp - (high - low)),
-    S3: round2(low - 2 * (high - pp)),
+    PP: round6(pp),
+    R1: round6(2 * pp - low),
+    R2: round6(pp + (high - low)),
+    R3: round6(high + 2 * (pp - low)),
+    S1: round6(2 * pp - high),
+    S2: round6(pp - (high - low)),
+    S3: round6(low - 2 * (high - pp)),
   };
 }
 
@@ -50,13 +50,13 @@ export function calculateFibonacciPivots(high: number, low: number, close: numbe
   const pp = (high + low + close) / 3;
   const range = high - low;
   return {
-    PP: round2(pp),
-    R1: round2(pp + 0.382 * range),
-    R2: round2(pp + 0.618 * range),
-    R3: round2(pp + 1.000 * range),
-    S1: round2(pp - 0.382 * range),
-    S2: round2(pp - 0.618 * range),
-    S3: round2(pp - 1.000 * range),
+    PP: round6(pp),
+    R1: round6(pp + 0.382 * range),
+    R2: round6(pp + 0.618 * range),
+    R3: round6(pp + 1.000 * range),
+    S1: round6(pp - 0.382 * range),
+    S2: round6(pp - 0.618 * range),
+    S3: round6(pp - 1.000 * range),
   };
 }
 
@@ -74,17 +74,17 @@ export function calculateTraditionalPivots(high: number, low: number, close: num
   const s4 = s3 - range;
   const s5 = s4 - range;
   return {
-    PP: round2(pp),
-    R1: round2(r1),
-    R2: round2(r2),
-    R3: round2(r3),
-    R4: round2(r4),
-    R5: round2(r5),
-    S1: round2(s1),
-    S2: round2(s2),
-    S3: round2(s3),
-    S4: round2(s4),
-    S5: round2(s5),
+    PP: round6(pp),
+    R1: round6(r1),
+    R2: round6(r2),
+    R3: round6(r3),
+    R4: round6(r4),
+    R5: round6(r5),
+    S1: round6(s1),
+    S2: round6(s2),
+    S3: round6(s3),
+    S4: round6(s4),
+    S5: round6(s5),
   };
 }
 

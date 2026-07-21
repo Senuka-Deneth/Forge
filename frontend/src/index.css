@@ -1,6 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
 :root {
+  --sidebar-w: 240px;
+  --surface-overlay: color-mix(in srgb, var(--bg-raised) 92%, transparent);
   --font-display: 'Instrument Serif', Georgia, serif;
   --font-ui: 'DM Sans', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
@@ -180,8 +182,8 @@ body, #root {
 
 /* ── DASHBOARD LAYOUT ── */
 .sidebar {
-  width: 240px;
-  min-width: 240px;
+  width: var(--sidebar-w);
+  min-width: var(--sidebar-w);
   height: 100vh;
   background: var(--bg-base);
   border-right: 1px solid var(--border-subtle);
@@ -842,9 +844,7 @@ body, #root {
 }
 
 .chart-container {
-  /* Price pane (~65vh) plus the RSI and MACD panes (120px each) — all panes
-     live inside one chart so their time scales stay locked together. */
-  height: calc(65vh + 240px);
+  height: min(calc(65vh + 240px), calc(100vh - 180px));
   background: var(--chart-bg);
 }
 
@@ -2152,5 +2152,31 @@ mark {
   .options-row {
     align-items: flex-start;
     flex-direction: column;
+  }
+}
+
+@media (max-width: 1024px) {
+  :root {
+    --sidebar-w: 72px;
+  }
+
+  .sidebar:not(.collapsed) {
+    position: fixed;
+    z-index: 40;
+    width: min(280px, calc(100vw - 32px));
+    min-width: min(280px, calc(100vw - 32px));
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  }
+
+  .main-content {
+    width: 100%;
+  }
+
+  .dashboard-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .analysis-column-fullwidth {
+    width: 100%;
   }
 }

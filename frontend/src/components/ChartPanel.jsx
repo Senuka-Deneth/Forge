@@ -196,7 +196,7 @@ export default function ChartPanel({
   onChartPreferencesChange,
   symbolInput,
   setSymbolInput,
-  setInterval,
+  onIntervalChange,
   onLoadChart,
   isMaximized,
   setIsMaximized,
@@ -389,8 +389,8 @@ export default function ChartPanel({
     }
     
     fetchTickers()
-    const intervalId = setInterval(fetchTickers, 10000)
-    return () => clearInterval(intervalId)
+    const intervalId = window.setInterval(fetchTickers, 10000)
+    return () => window.clearInterval(intervalId)
   }, [])
 
   useEffect(() => {
@@ -1139,7 +1139,7 @@ export default function ChartPanel({
                   top: '38px',
                   left: '0',
                   zIndex: 200,
-                  background: 'rgba(7, 12, 20, 0.98)',
+                  background: 'var(--surface-overlay)',
                   border: '1px solid var(--border-medium)',
                   borderRadius: '16px',
                   padding: '18px',
@@ -1259,7 +1259,7 @@ export default function ChartPanel({
               <select
                 id="timeframe-select-chart"
                 value={interval}
-                onChange={(e) => setInterval(e.target.value)}
+                onChange={(e) => onIntervalChange(e.target.value)}
                 style={{
                   background: 'var(--bg-raised)',
                   border: '1px solid var(--border-medium)',
@@ -1478,7 +1478,7 @@ export default function ChartPanel({
           <button
             onClick={() => setLegendCollapsed(!legendCollapsed)}
             style={{
-              background: 'rgba(7, 12, 20, 0.85)',
+              background: 'var(--surface-overlay)',
               border: '1px solid var(--border-subtle)',
               borderRadius: '6px',
               width: '24px',
@@ -1567,7 +1567,7 @@ export default function ChartPanel({
                       display: 'flex',
                       alignItems: 'center',
                       gap: '8px',
-                      background: 'rgba(7, 12, 20, 0.85)',
+                      background: 'var(--surface-overlay)',
                       border: '1px solid var(--border-subtle)',
                       borderRadius: '6px',
                       padding: '4px 8px',
@@ -1676,7 +1676,7 @@ export default function ChartPanel({
             top: '40px',
             left: '180px',
             zIndex: 80,
-            background: 'rgba(7, 12, 20, 0.95)',
+            background: 'var(--surface-overlay)',
             border: '1px solid var(--border-medium)',
             borderRadius: '16px',
             padding: '20px',

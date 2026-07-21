@@ -1,0 +1,359 @@
+import type { Candle as IndicatorCandle } from "./indicators.ts";
+import {
+  type FuturesContext,
+  type OrderBookImbalance,
+  type Ticker24hr,
+  fetchBinanceKlines,
+  fetchFuturesContext,
+  fetchOrderBookImbalance,
+  fetchTicker24hr,
+  getConfluenceTimeframes,
+} from "./binance.ts";
+import { sliceClosedCandles } from "./candles.ts";
+import {
+  buildMarketStructure,
+  computeSignalAgreement,
+  derivePrimaryTrend,
+  type SrZone,
+} from "./marketStructure.ts";
+import {
+  buildPivotDataFromHtf,
+  fetchBinanceHtfKlines,
+  getBinanceIntervalForPeriod,
+  getHtfFetchLimit,
+  resolvePivotPeriod,
+  type PivotDataResponse,
+} from "./pivotPoints.ts";
+import { gatherMarketFeatures, type MarketFeatures } from "./features.ts";
+import { enrichCandles } from "./indicators.ts";
+
+export const PRIMARY_CANDLE_LIMIT = 500;
+export const MTF_CANDLE_LIMIT = 150;
+export const SERIES_WINDOW = 12;
+
+export type MtfRead = {
+  interval: string;
+  trend: "bullish" | "bearish" | "mixed";
+  rsi: number | null;
+};
+
+export type MarketContext = {
+  symbol: string;
+  interval: string;
+  price: number;
+  latest: IndicatorCandle;
+  series: {
+    closes: number[];
+    rsi: Array<number | null>;
+    macdHist: Array<number | null>;
+    atrPct: Array<number | null>;
+    obv: number[];
+    cvd: Array<number | null>;
+    volume: number[];
+  };
+  ticker24h: Ticker24hr;
+  volatilityState: "low" | "medium" | "high";
+  trendStrength: number;
+  vwapRelation: "above" | "below" | "at" | "unknown";
+  swingHighs: Array<{ index: number; price: number; time?: number }>;
+  swingLows: Array<{ index: number; price: number; time?: number }>;
+  structure: {
+    breakOfStructure: "bullish" | "bearish" | "none";
+    lastSwingHighLabel: string;
+    lastSwingLowLabel: string;
+    supportZones: SrZone[];
+    resistanceZones: SrZone[];
+  };
+  rsiDivergence: { type: string; description: string };
+  macdDivergence: { type: string; description: string };
+  orderFlow: OrderBookImbalance;
+  cvdTrend: "buying" | "selling" | "neutral";
+  futures: FuturesContext;
+  pivots: PivotDataResponse;
+  nearestSupport: { label: string; value: number } | null;
+  nearestResistance: { label: string; value: number } | null;
+  mtf: MtfRead[];
+  confluenceScore: number;
+  signalAgreement: number;
+  features: MarketFeatures;
+};
+
+function clamp(value: number, low: number, high: number): number {
+  return Math.max(low, Math.min(high, value));
+}
+
+function seriesTrend(alignment: "bullish" | "bearish" | "mixed", macdHist: number | null): "bullish" | "bearish" | "mixed" {
+  if (alignment !== "mixed") return alignment;
+  if (macdHist != null) return macdHist > 0 ? "bullish" : macdHist < 0 ? "bearish" : "mixed";
+  return "mixed";
+}
+
+function readTrendFromCandles(candles: IndicatorCandle[]): MtfRead["trend"] {
+  const latest = candles[candles.length - 1];
+  if (!latest) return "mixed";
+  const { close, ema20, ema50, macdHist } = latest;
+  let alignment: "bullish" | "bearish" | "mixed" = "mixed";
+  if (ema20 != null && ema50 != null) {
+    if (close > ema20 && ema20 > ema50) alignment = "bullish";
+    else if (close < ema20 && ema20 < ema50) alignment = "bearish";
+  }
+  return seriesTrend(alignment, macdHist);
+}
+
+function volatilityStateFromAtr(atrPctSeries: Array<number | null>): "low" | "medium" | "high" {
+  const recent = atrPctSeries.filter((v): v is number => v != null).slice(-50);
+  if (!recent.length) return "medium";
+  const current = recent[recent.length - 1];
+  const sorted = [...recent].sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)];
+  if (median === 0) return "medium";
+  const ratio = current / median;
+  if (ratio >= 1.3) return "high";
+  if (ratio <= 0.7) return "low";
+  return "medium";
+}
+
+function trendStrengthFromAdx(adx: number | null): number {
+  if (adx == null) return 35;
+  return clamp(Math.round(adx * 2), 0, 100);
+}
+
+function nearestZones(price: number, zones: SrZone[], count = 3): SrZone[] {
+  return [...zones]
+    .sort((a, b) => Math.abs(a.mid - price) - Math.abs(b.mid - price))
+    .slice(0, count);
+}
+
+function labelSwing(points: Array<{ price: number }>, kind: "high" | "low"): string {
+  if (points.length < 2) return kind === "high" ? "HH" : "LL";
+  const prev = points[points.length - 2].price;
+  const last = points[points.length - 1].price;
+  if (kind === "high") return last > prev ? "HH" : "LH";
+  return last > prev ? "HL" : "LL";
+}
+
+function divergenceToLegacy(type: "bullish" | "bearish" | "none"): { type: string; description: string } {
+  if (type === "bullish") return { type: "bullish", description: "Filtered RSI bullish divergence detected." };
+  if (type === "bearish") return { type: "bearish", description: "Filtered RSI bearish divergence detected." };
+  return { type: "none", description: "No significant RSI divergence." };
+}
+
+export async function gatherMarketContext(symbol: string, interval: string): Promise<MarketContext> {
+  const rawPrimary = await fetchBinanceKlines(symbol, interval, PRIMARY_CANDLE_LIMIT);
+  if (!rawPrimary.length) throw new Error("No candle data returned for this symbol/interval.");
+
+  const closedPrimary = sliceClosedCandles(rawPrimary, interval);
+  const analysisCandles = closedPrimary.length ? closedPrimary : rawPrimary.slice(0, -1);
+  if (!analysisCandles.length) throw new Error("Not enough closed candles for analysis.");
+
+  const primaryCandles = enrichCandles(analysisCandles.map((c) => ({ ...c })));
+  const latest = primaryCandles[primaryCandles.length - 1];
+
+  const [orderFlow, futures, ticker24h, mtfResults] = await Promise.all([
+    fetchOrderBookImbalance(symbol),
+    fetchFuturesContext(symbol),
+    fetchTicker24hr(symbol),
+    Promise.all(
+      getConfluenceTimeframes(interval).map(async (tf) => {
+        try {
+          const raw = await fetchBinanceKlines(symbol, tf, MTF_CANDLE_LIMIT);
+          const closed = sliceClosedCandles(raw, tf);
+          const candles = enrichCandles((closed.length ? closed : raw.slice(0, -1)).map((c) => ({ ...c })));
+          return {
+            interval: tf,
+            trend: readTrendFromCandles(candles),
+            rsi: candles[candles.length - 1]?.rsi14 ?? null,
+            candles,
+          };
+        } catch {
+          return { interval: tf, trend: "mixed" as const, rsi: null, candles: [] as IndicatorCandle[] };
+        }
+      }),
+    ),
+    gatherMarketFeatures(symbol, primaryCandles, []),
+  ]);
+
+  const price = ticker24h.highPrice != null && ticker24h.lowPrice != null
+    ? (rawPrimary[rawPrimary.length - 1]?.close ?? latest.close)
+    : latest.close;
+
+  const period = resolvePivotPeriod(interval, "auto");
+  const binanceInterval = getBinanceIntervalForPeriod(period);
+  const htfCandles = await fetchBinanceHtfKlines(symbol, binanceInterval, getHtfFetchLimit(15, period));
+  const pivotPayload = buildPivotDataFromHtf({
+    htfCandles,
+    chartCandles: rawPrimary.map((c) => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume })),
+    chartInterval: interval,
+    symbol,
+    chartPrefs: { pivotType: "traditional", pivotsBack: 15 },
+  });
+  if (!pivotPayload) throw new Error("Unable to compute pivot data.");
+
+  const mktStruct = buildMarketStructure(
+    primaryCandles.map((c) => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume })),
+    primaryCandles.map((c) => c.rsi14),
+  );
+
+  const supportZones = nearestZones(price, mktStruct.srZones.supports);
+  const resistanceZones = nearestZones(price, mktStruct.srZones.resistances);
+
+  const classicAnalysis = pivotPayload.classic.analysis;
+  const primaryTrend = derivePrimaryTrend(price, latest.ema20, latest.ema50);
+  const signalAgreement = computeSignalAgreement({
+    price,
+    ema20: latest.ema20,
+    ema50: latest.ema50,
+    rsi: latest.rsi14,
+    macdLine: latest.macd,
+    signalLine: latest.macdSignal,
+    primaryTrend,
+    pivotSessionBias: classicAnalysis.bias,
+    hasSupportZone: supportZones.length > 0,
+    hasResistanceZone: resistanceZones.length > 0,
+    divergence: mktStruct.divergence,
+    atInflectionPoint: classicAnalysis.atInflectionPoint,
+  });
+
+  const mtfReads: MtfRead[] = mtfResults.map(({ interval: tf, trend, rsi }) => ({ interval: tf, trend, rsi }));
+  const primaryTrendRead = readTrendFromCandles(primaryCandles);
+  const agreeing = mtfReads.filter((r) => r.trend === primaryTrendRead).length;
+  const mtfConfluence = mtfReads.length ? Math.round((agreeing / mtfReads.length) * 100) : 50;
+  const confluenceScore = Math.round((mtfConfluence + signalAgreement) / 2);
+
+  const recentCvd = primaryCandles.slice(-10).map((c) => c.cvd).filter((v): v is number => v != null);
+  const cvdTrend: MarketContext["cvdTrend"] = recentCvd.length >= 2
+    ? (recentCvd[recentCvd.length - 1] > recentCvd[0] ? "buying" : recentCvd[recentCvd.length - 1] < recentCvd[0] ? "selling" : "neutral")
+    : "neutral";
+
+  const atrPctSeries = primaryCandles.map((c) => c.atrPct);
+  const adxSeries = primaryCandles.map((c) => c.adx14);
+  const latestAdx = adxSeries[adxSeries.length - 1] ?? null;
+
+  let vwapRelation: MarketContext["vwapRelation"] = "unknown";
+  if (latest.vwap != null) {
+    const tol = Math.abs(price) * 0.0005;
+    vwapRelation = Math.abs(price - latest.vwap) <= tol ? "at" : price > latest.vwap ? "above" : "below";
+  }
+
+  const rsiDiv = divergenceToLegacy(mktStruct.divergence);
+
+  const mtfDepthCandles = mtfResults
+    .filter((r) => r.candles.length)
+    .map((r) => ({ interval: r.interval, candles: r.candles }));
+  const enrichedFeatures = await gatherMarketFeatures(symbol, primaryCandles, mtfDepthCandles);
+
+  return {
+    symbol,
+    interval,
+    price,
+    latest,
+    series: {
+      closes: primaryCandles.slice(-SERIES_WINDOW).map((c) => c.close),
+      rsi: primaryCandles.slice(-SERIES_WINDOW).map((c) => c.rsi14),
+      macdHist: primaryCandles.slice(-SERIES_WINDOW).map((c) => c.macdHist),
+      atrPct: primaryCandles.slice(-SERIES_WINDOW).map((c) => c.atrPct),
+      obv: primaryCandles.slice(-SERIES_WINDOW).map((c) => c.obv ?? 0),
+      cvd: primaryCandles.slice(-SERIES_WINDOW).map((c) => c.cvd),
+      volume: primaryCandles.slice(-SERIES_WINDOW).map((c) => c.volume),
+    },
+    ticker24h,
+    volatilityState: volatilityStateFromAtr(atrPctSeries),
+    trendStrength: trendStrengthFromAdx(latestAdx),
+    vwapRelation,
+    swingHighs: mktStruct.swingHighs.slice(-5),
+    swingLows: mktStruct.swingLows.slice(-5),
+    structure: {
+      breakOfStructure: "none",
+      lastSwingHighLabel: labelSwing(mktStruct.swingHighs, "high"),
+      lastSwingLowLabel: labelSwing(mktStruct.swingLows, "low"),
+      supportZones,
+      resistanceZones,
+    },
+    rsiDivergence: rsiDiv,
+    macdDivergence: { type: "none", description: "MACD divergence not separately filtered in this pipeline." },
+    orderFlow,
+    cvdTrend,
+    futures,
+    pivots: pivotPayload,
+    nearestSupport: classicAnalysis.nearestSupport,
+    nearestResistance: classicAnalysis.nearestResistance,
+    mtf: mtfReads,
+    confluenceScore,
+    signalAgreement,
+    features: enrichedFeatures,
+  };
+}
+
+export function buildUserMessage(ctx: MarketContext): string {
+  const c = ctx.pivots.classic.pivots;
+  const f = ctx.pivots.fibonacci.pivots;
+  const t = ctx.pivots.traditional.pivots;
+
+  return `Analyze this market context and return strict JSON only.
+
+MARKET:
+- symbol: ${ctx.symbol}
+- timeframe: ${ctx.interval}
+- price: ${ctx.price}
+- 24h_change_pct: ${ctx.ticker24h.priceChangePercent}
+- 24h_volume: ${ctx.ticker24h.volume}
+- 24h_high: ${ctx.ticker24h.highPrice}
+- 24h_low: ${ctx.ticker24h.lowPrice}
+
+INDICATOR SERIES (last ${SERIES_WINDOW} closed candles, oldest to newest):
+- closes: ${JSON.stringify(ctx.series.closes)}
+- rsi14: ${JSON.stringify(ctx.series.rsi)}
+- macd_histogram: ${JSON.stringify(ctx.series.macdHist)}
+- atr_pct: ${JSON.stringify(ctx.series.atrPct)}
+- obv: ${JSON.stringify(ctx.series.obv)}
+- cumulative_volume_delta: ${JSON.stringify(ctx.series.cvd)}
+- volume: ${JSON.stringify(ctx.series.volume)}
+
+LATEST INDICATORS (last closed candle):
+- ema20: ${ctx.latest.ema20}
+- ema50: ${ctx.latest.ema50}
+- macd: ${JSON.stringify({ macd: ctx.latest.macd, signal: ctx.latest.macdSignal, histogram: ctx.latest.macdHist })}
+- bollinger: ${JSON.stringify({ upper: ctx.latest.bbUpper, middle: ctx.latest.bbMiddle, lower: ctx.latest.bbLower, percentB: ctx.latest.bbPercentB, bandwidth: ctx.latest.bbBandwidth })}
+- vwap: ${ctx.latest.vwap} (price is ${ctx.vwapRelation} VWAP)
+- adx14: ${ctx.latest.adx14} (+DI ${ctx.latest.plusDI14} / -DI ${ctx.latest.minusDI14})
+- relative_volume: ${ctx.latest.relativeVolume}
+- volatility_state (ATR vs its recent median): ${ctx.volatilityState}
+- adx_trend_strength_score: ${ctx.trendStrength}
+
+MARKET STRUCTURE (prominence-filtered swings + ATR-clustered zones):
+- swing_highs: ${JSON.stringify(ctx.swingHighs.map((s) => s.price))}
+- swing_lows: ${JSON.stringify(ctx.swingLows.map((s) => s.price))}
+- nearest_support_zones: ${JSON.stringify(ctx.structure.supportZones)}
+- nearest_resistance_zones: ${JSON.stringify(ctx.structure.resistanceZones)}
+- last_swing_high_label: ${ctx.structure.lastSwingHighLabel}
+- last_swing_low_label: ${ctx.structure.lastSwingLowLabel}
+- rsi_divergence: ${JSON.stringify(ctx.rsiDivergence)}
+- nearest_support: ${JSON.stringify(ctx.nearestSupport)}
+- nearest_resistance: ${JSON.stringify(ctx.nearestResistance)}
+
+ORDER FLOW:
+- order_book_imbalance (-1 sell-heavy to +1 buy-heavy, within 1% of mid, null if unavailable): ${ctx.orderFlow.obi}
+- cumulative_volume_delta_trend: ${ctx.cvdTrend}
+
+FUTURES POSITIONING (null fields mean no futures market / unavailable):
+- available: ${ctx.futures.available}
+- funding_rate: ${ctx.futures.fundingRate}
+- open_interest: ${ctx.futures.openInterest}
+- long_short_account_ratio: ${ctx.futures.longShortRatio}
+- oi_history: ${JSON.stringify(ctx.features.oi)}
+- funding_signal: ${JSON.stringify(ctx.features.funding)}
+- taker_buy_sell_ratio: ${JSON.stringify(ctx.features.takerRatio)}
+
+VOLUME PROFILE (from last ${PRIMARY_CANDLE_LIMIT} closed candles):
+${JSON.stringify(ctx.features.volumeProfile)}
+
+MULTI-TIMEFRAME:
+- reads: ${JSON.stringify(ctx.mtf)}
+- mtf_depth (last 5 closed RSI/MACD-hist per HTF): ${JSON.stringify(ctx.features.mtfDepth)}
+- confluence_score_pct: ${ctx.confluenceScore}
+- signal_agreement_score (deterministic, not probability): ${ctx.signalAgreement}
+
+PIVOTS (native HTF — classic / fibonacci / traditional):
+${JSON.stringify({ classic: c, fibonacci: f, traditional: t })}
+PIVOT_ANALYSIS: ${JSON.stringify(ctx.pivots.classic.analysis)}`;
+}

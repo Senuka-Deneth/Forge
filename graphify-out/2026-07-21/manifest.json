@@ -1,17 +1,52 @@
 {
+  "backend/app.py": {
+    "mtime": 1784427637.5119112,
+    "ast_hash": "bb791ebc4b1c801e03dee2dc3a0377d1",
+    "semantic_hash": ""
+  },
+  "backend/services/__init__.py": {
+    "mtime": 1779336836.0,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": ""
+  },
+  "backend/services/openrouter_service.py": {
+    "mtime": 1784428386.9037077,
+    "ast_hash": "026631407ebb783a38be903c8db8158a",
+    "semantic_hash": ""
+  },
+  "backend/utils/__init__.py": {
+    "mtime": 1779336836.0,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": ""
+  },
+  "frontend/education-app.js": {
+    "mtime": 1779336926.0,
+    "ast_hash": "47f3d01ca4a83a7c4a1f6e61cf719c9a",
+    "semantic_hash": ""
+  },
+  "frontend/education-data.js": {
+    "mtime": 1779336836.0,
+    "ast_hash": "e090b10d082e8e4704788fece71e3700",
+    "semantic_hash": ""
+  },
   "frontend/package.json": {
-    "mtime": 1784642636.7234795,
-    "ast_hash": "b9ac2e8df0695df7f3c00f66474bd2ae",
+    "mtime": 1784427581.6060731,
+    "ast_hash": "1bd8fbfafdb1928809e3cdd95b1c2a26",
+    "semantic_hash": ""
+  },
+  "frontend/screenshot2.js": {
+    "mtime": 1779874732.0,
+    "ast_hash": "2afa6383b6dfc05ed1054363ebe9e4f8",
     "semantic_hash": ""
   },
   "frontend/src/App.jsx": {
-    "mtime": 1784642878.9194455,
-    "ast_hash": "84fbd583b0a8156d8a2fedc1cc8f8908",
+    "mtime": 1784428363.3422961,
+    "ast_hash": "67bca9ace3dc277309eda813a7964387",
     "semantic_hash": ""
   },
   "frontend/src/components/AIAnalysisPanel.jsx": {
-    "mtime": 1784642862.2452419,
-    "ast_hash": "4e029bd1ecaba11fdc8d712bc4208c67",
+    "mtime": 1784428486.6229126,
+    "ast_hash": "d8998c79a5f6dd97bd1560f12797a827",
     "semantic_hash": ""
   },
   "frontend/src/components/AnalysisPanel.jsx": {
@@ -25,8 +60,8 @@
     "semantic_hash": ""
   },
   "frontend/src/components/ChartPanel.jsx": {
-    "mtime": 1784642921.8472235,
-    "ast_hash": "c8ee2fb082785f17f5dfe283f912e076",
+    "mtime": 1784428005.8670416,
+    "ast_hash": "cd3c52efd1b41ac078f91f01a8892095",
     "semantic_hash": ""
   },
   "frontend/src/components/EducationPanel.jsx": {
@@ -55,8 +90,8 @@
     "semantic_hash": ""
   },
   "frontend/src/components/StatusBar.jsx": {
-    "mtime": 1784641649.904652,
-    "ast_hash": "91f614ebadc61e10c4b61698b226b8ee",
+    "mtime": 1784428482.3171093,
+    "ast_hash": "09e8dc2b4a3d5bc464bf013ce17e8f5e",
     "semantic_hash": ""
   },
   "frontend/src/context/AuthContext.jsx": {
@@ -80,8 +115,8 @@
     "semantic_hash": ""
   },
   "frontend/src/pages/AuthCallback.jsx": {
-    "mtime": 1784641649.9055383,
-    "ast_hash": "9bd67c79482b1a9b3243a39dc269ca74",
+    "mtime": 1780319153.0,
+    "ast_hash": "162e473b3f467bd1cef1f2a301acad27",
     "semantic_hash": ""
   },
   "frontend/src/pages/SignIn.jsx": {
@@ -140,33 +175,33 @@
     "semantic_hash": ""
   },
   "supabase/functions/_shared/cors.ts": {
-    "mtime": 1784641649.909224,
-    "ast_hash": "fe189e7a12379aa26624a54a7de1d259",
+    "mtime": 1779336926.0,
+    "ast_hash": "0bdf22701bd069ac8dd2d143ea43de1c",
     "semantic_hash": ""
   },
   "supabase/functions/_shared/pivotPoints.ts": {
-    "mtime": 1784642692.9050255,
-    "ast_hash": "635e864b5e1c0d7ad75a6650e5882751",
+    "mtime": 1784428350.7261808,
+    "ast_hash": "5fb0f725872fcaa44ea3c44e011b1a4a",
     "semantic_hash": ""
   },
   "supabase/functions/ai-analysis/index.ts": {
-    "mtime": 1784642840.9226098,
-    "ast_hash": "dd370b5e01e327a0f298c1e5bdabe8d9",
+    "mtime": 1784428489.4093163,
+    "ast_hash": "31dca2963ffa8914dca182c0d46d2929",
     "semantic_hash": ""
   },
   "supabase/functions/calculate-pivots/index.ts": {
-    "mtime": 1784642822.3286393,
-    "ast_hash": "691b749581accc4b69e2985fd7d25baa",
+    "mtime": 1784427529.325911,
+    "ast_hash": "8f2402a8e887fcf1bdac4f3f1276345e",
     "semantic_hash": ""
   },
   "supabase/functions/get-market-data/index.ts": {
-    "mtime": 1784642828.2907436,
-    "ast_hash": "3aba36ee38a6aa57e287f2086d1a0f04",
+    "mtime": 1779336926.0,
+    "ast_hash": "d053d300cc76017b4eb9decdb3d26c15",
     "semantic_hash": ""
   },
   "supabase/functions/user-preferences/index.ts": {
-    "mtime": 1784642824.0274591,
-    "ast_hash": "15ae785d8d971eb410cd744b1a85a1ca",
+    "mtime": 1784427539.386362,
+    "ast_hash": "d1e5d204e143dc31118e72e9a1749aec",
     "semantic_hash": ""
   },
   "supabase/migrations/20260518000000_chart_bot_schema.sql": {
@@ -190,8 +225,18 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1784641649.8768213,
-    "ast_hash": "536bdaebc9e42c817ac98a2447d5e9ed",
+    "mtime": 1784427571.3063493,
+    "ast_hash": "8b88f754aec0033a61799234e367898f",
+    "semantic_hash": ""
+  },
+  "backend/requirements.txt": {
+    "mtime": 1779336836.0,
+    "ast_hash": "61c86d354b36c01fa1e7c37620a43666",
+    "semantic_hash": ""
+  },
+  "diff.txt": {
+    "mtime": 1779874802.0,
+    "ast_hash": "7ab7c496effa314fb0ab4e50eeb882f8",
     "semantic_hash": ""
   },
   "docs/pivots.md": {
@@ -199,9 +244,59 @@
     "ast_hash": "5ecadf40d57a1b8414a52df775630da2",
     "semantic_hash": ""
   },
+  "frontend/education.html": {
+    "mtime": 1779874555.0,
+    "ast_hash": "3c27066f41b393751347e676142cc450",
+    "semantic_hash": ""
+  },
   "frontend/index.html": {
     "mtime": 1779336926.0,
     "ast_hash": "a4ec16944e7c80b8fd80601c1cb3cb66",
+    "semantic_hash": ""
+  },
+  "frontend/login.html": {
+    "mtime": 1779874555.0,
+    "ast_hash": "4231d6494fe563b53efc3637b2e5c334",
+    "semantic_hash": ""
+  },
+  "frontend/welcome.html": {
+    "mtime": 1779875535.0,
+    "ast_hash": "cd84bfe8ddbfa847b86c75b2e67fc264",
+    "semantic_hash": ""
+  },
+  "frontend/canva-mockup.png": {
+    "mtime": 1779873926.0,
+    "ast_hash": "026b8fa6e66325562b7c69e9a3e064ac",
+    "semantic_hash": ""
+  },
+  "frontend/canva.png": {
+    "mtime": 1779873822.0,
+    "ast_hash": "026f759f509651ceba1891fc8b484f55",
+    "semantic_hash": ""
+  },
+  "frontend/canva_real.png": {
+    "mtime": 1779873843.0,
+    "ast_hash": "ee2e366c7c39746e7e11575ef5453834",
+    "semantic_hash": ""
+  },
+  "frontend/chart Background Removed.png": {
+    "mtime": 1779874336.0,
+    "ast_hash": "62316231a8caa6614221893ef710c4cc",
+    "semantic_hash": ""
+  },
+  "frontend/chart.png": {
+    "mtime": 1779867305.0,
+    "ast_hash": "75fc31ef626c70eff0355fe95cfb00b7",
+    "semantic_hash": ""
+  },
+  "frontend/coin.png": {
+    "mtime": 1779875497.0,
+    "ast_hash": "df7b9b65a44137c4ac78246fa28ab16e",
+    "semantic_hash": ""
+  },
+  "frontend/screenshot_current.png": {
+    "mtime": 1780413885.0,
+    "ast_hash": "8658d87a0309fb7d17611b8db0bb6d2f",
     "semantic_hash": ""
   },
   "frontend/src/utils/marketStructure.test.js": {
@@ -212,131 +307,6 @@
   "supabase/functions/_shared/marketStructure.ts": {
     "mtime": 1784428335.2640917,
     "ast_hash": "74ea2a2bab39da41d33a812da833c007",
-    "semantic_hash": ""
-  },
-  "frontend/public/education-app.js": {
-    "mtime": 1784641649.8935864,
-    "ast_hash": "47f3d01ca4a83a7c4a1f6e61cf719c9a",
-    "semantic_hash": ""
-  },
-  "frontend/public/education-data.js": {
-    "mtime": 1784641649.8937082,
-    "ast_hash": "e090b10d082e8e4704788fece71e3700",
-    "semantic_hash": ""
-  },
-  "frontend/src/components/AccuracyPanel.jsx": {
-    "mtime": 1784642858.2451801,
-    "ast_hash": "8ef2a3e56529cf801b8493688eef89fc",
-    "semantic_hash": ""
-  },
-  "frontend/src/utils/incrementalIndicators.js": {
-    "mtime": 1784642854.3130662,
-    "ast_hash": "54a8c565bf18903669602f14a378d101",
-    "semantic_hash": ""
-  },
-  "package.json": {
-    "mtime": 1784642635.889893,
-    "ast_hash": "43457ec8ead502364486eb84fa71111a",
-    "semantic_hash": ""
-  },
-  "supabase/functions/_shared/aiContext.ts": {
-    "mtime": 1784642921.3566983,
-    "ast_hash": "a6b4fd294be559d129597b54a822e88b",
-    "semantic_hash": ""
-  },
-  "supabase/functions/_shared/auth.ts": {
-    "mtime": 1784641649.9065075,
-    "ast_hash": "94a3ff1e091f2e679eacd448f96a18ad",
-    "semantic_hash": ""
-  },
-  "supabase/functions/_shared/binance.ts": {
-    "mtime": 1784642690.8702707,
-    "ast_hash": "537c9137073af516f15b50a4d34fd67e",
-    "semantic_hash": ""
-  },
-  "supabase/functions/_shared/candles.ts": {
-    "mtime": 1784642665.768638,
-    "ast_hash": "a0f20eb60ab5f37a80688d2d5c608781",
-    "semantic_hash": ""
-  },
-  "supabase/functions/_shared/features.ts": {
-    "mtime": 1784642741.761662,
-    "ast_hash": "8cea06468c0d52138ca4d843d358e70b",
-    "semantic_hash": ""
-  },
-  "supabase/functions/_shared/http.ts": {
-    "mtime": 1784642671.5568461,
-    "ast_hash": "15c052c92c80dd7685758d1a4f16a7f5",
-    "semantic_hash": ""
-  },
-  "supabase/functions/_shared/indicators.ts": {
-    "mtime": 1784641649.9095602,
-    "ast_hash": "e2f5b5082df4d73bef87aa3dff1d36fe",
-    "semantic_hash": ""
-  },
-  "supabase/functions/_shared/pivots.ts": {
-    "mtime": 1784642691.1541936,
-    "ast_hash": "e9581ed115d3a520b33d3831cd7aec39",
-    "semantic_hash": ""
-  },
-  "supabase/functions/_shared/rateLimit.ts": {
-    "mtime": 1784642670.732933,
-    "ast_hash": "1443da0cc8db1f9c709c3b37c566254f",
-    "semantic_hash": ""
-  },
-  "supabase/functions/_shared/tradePlan.ts": {
-    "mtime": 1784642669.2739203,
-    "ast_hash": "f3f8e591db65bf19814b19ded4105889",
-    "semantic_hash": ""
-  },
-  "supabase/functions/analysis-stats/index.ts": {
-    "mtime": 1784642748.7702591,
-    "ast_hash": "7c908cb75b373406bbc6af71feb56137",
-    "semantic_hash": ""
-  },
-  "supabase/functions/score-predictions/index.ts": {
-    "mtime": 1784642746.2440538,
-    "ast_hash": "06f483406113405552cffdfc1c07aa07",
-    "semantic_hash": ""
-  },
-  "supabase/functions/tests/audit_fixes_test.ts": {
-    "mtime": 1784642842.162706,
-    "ast_hash": "b4fd7b6c91f50f02ead6d67c75dd4ed3",
-    "semantic_hash": ""
-  },
-  "supabase/migrations/20260721120000_rate_limit_and_cron.sql": {
-    "mtime": 1784642662.6612346,
-    "ast_hash": "3d4ccb70cb3215ffb23cf7108b56befb",
-    "semantic_hash": ""
-  },
-  "frontend/public/education.html": {
-    "mtime": 1784641649.8939128,
-    "ast_hash": "3c27066f41b393751347e676142cc450",
-    "semantic_hash": ""
-  },
-  "frontend/public/welcome.html": {
-    "mtime": 1784642936.146585,
-    "ast_hash": "8274fa4ba6a60acb1fd6ce938d242e95",
-    "semantic_hash": ""
-  },
-  "frontend/public/chart.png": {
-    "mtime": 1784642941.8866823,
-    "ast_hash": "6e9534438d8dbfb52b49574bcc979d0f",
-    "semantic_hash": ""
-  },
-  "frontend/public/chart.webp": {
-    "mtime": 1784642930.1165714,
-    "ast_hash": "036d34802af9fe9dcf96606bee95ef9a",
-    "semantic_hash": ""
-  },
-  "frontend/public/coin.png": {
-    "mtime": 1784641649.8932946,
-    "ast_hash": "df7b9b65a44137c4ac78246fa28ab16e",
-    "semantic_hash": ""
-  },
-  "frontend/public/coin.webp": {
-    "mtime": 1784642935.2894294,
-    "ast_hash": "4bc6e0e89a202433c72959ff23bbfe1f",
     "semantic_hash": ""
   }
 }

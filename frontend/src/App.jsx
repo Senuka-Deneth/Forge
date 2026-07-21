@@ -4,6 +4,7 @@ import StatusBar from './components/StatusBar'
 import ChartPanel from './components/ChartPanel'
 import AnalysisPanel from './components/AnalysisPanel'
 import AIAnalysisPanel from './components/AIAnalysisPanel'
+import AccuracyPanel from './components/AccuracyPanel'
 import EducationPanel from './components/EducationPanel'
 import { useAuth } from './hooks/useAuth'
 import {
@@ -17,6 +18,7 @@ import {
   DEFAULT_CHART_PREFERENCES,
   sanitizePreferences,
 } from './utils/userPreferences'
+import { patchLastCandleIndicators } from './utils/incrementalIndicators'
 
 const COMMON_QUOTES = ['USDT', 'BUSD', 'BTC', 'ETH', 'FDUSD']
 const BINANCE_KLINES_URL = 'https://api.binance.com/api/v3/klines'
@@ -426,6 +428,9 @@ export default function App() {
   const [aiLoading, setAILoading] = useState(false)
   const [aiError, setAIError] = useState('')
   const lastAICallRef = useRef(0)
+  const skipIntervalReloadRef = useRef(true)
+  const intervalReloadTimerRef = useRef(null)
+  const fullIndicatorThrottleRef = useRef(0)
 
   const [pivotData, setPivotData] = useState(null)
   const [chartPreferences, setChartPreferences] = useState(DEFAULT_CHART_PREFERENCES)
@@ -588,6 +593,8 @@ export default function App() {
           volume: parseFloat(k.v)
         }
 
+        const isBarClosed = Boolean(k.x)
+
         setCandles((prev) => {
           if (!prev.length) {
             return recalculateIndicators([liveCandle])
@@ -607,7 +614,13 @@ export default function App() {
             return prev
           }
 
-          return recalculateIndicators(next)
+          const now = Date.now()
+          if (isBarClosed || now - fullIndicatorThrottleRef.current >= 1000) {
+            fullIndicatorThrottleRef.current = now
+            return recalculateIndicators(next)
+          }
+
+          return patchLastCandleIndicators(next, liveCandle, isBarClosed)
         })
       } catch {
         setStatus('Live update parse error')
@@ -742,6 +755,7 @@ export default function App() {
     }
   }, [
     lastBarTime,
+    candles.length,
     chartPreferences.pivotType,
     chartPreferences.pivotTimeframe,
     chartPreferences.pivotsBack,
@@ -823,6 +837,18 @@ export default function App() {
     setTheme(initTheme())
     return () => closeSocket()
   }, [])
+
+  useEffect(() => {
+    if (skipIntervalReloadRef.current) {
+      skipIntervalReloadRef.current = false
+      return undefined
+    }
+    clearTimeout(intervalReloadTimerRef.current)
+    intervalReloadTimerRef.current = setTimeout(() => {
+      loadChart(symbol, interval)
+    }, 300)
+    return () => clearTimeout(intervalReloadTimerRef.current)
+  }, [interval])
 
   const toggleTheme = () => {
     const currentTheme = document.body.getAttribute('data-theme') || 'dark'
@@ -924,7 +950,7 @@ export default function App() {
                   onChartPreferencesChange={setChartPreferences}
                   symbolInput={symbolInput}
                   setSymbolInput={setSymbolInput}
-                  setInterval={setInterval}
+                  onIntervalChange={setInterval}
                   onLoadChart={loadChart}
                   isMaximized={isChartMaximized}
                   setIsMaximized={setIsChartMaximized}
@@ -937,6 +963,8 @@ export default function App() {
                 symbol={symbol}
                 interval={interval}
                 analysis={analysis}
+                loading={loading}
+                error={error}
                 pivotData={pivotData}
               />
             </div>
@@ -951,6 +979,7 @@ export default function App() {
                aiError={aiError}
                onRefresh={() => runAIAnalysis(candles)}
             />
+            <AccuracyPanel />
           </div>
         )}
 

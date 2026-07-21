@@ -5,6 +5,7 @@
     "dev": "npm run dev --prefix frontend",
     "build": "npm run build --prefix frontend",
     "preview": "npm run preview --prefix frontend",
-    "test": "npm run test --prefix frontend"
+    "test": "npm run test --prefix frontend",
+    "test:functions": "deno test supabase/functions/tests --allow-read"
   }
 }

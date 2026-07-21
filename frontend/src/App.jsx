@@ -14,6 +14,9 @@ import {
 
 const COMMON_QUOTES = ['USDT', 'BUSD', 'BTC', 'ETH', 'FDUSD']
 const BINANCE_KLINES_URL = 'https://api.binance.com/api/v3/klines'
+const WS_MAX_RECONNECT_DELAY_MS = 30000
+const WS_WATCHDOG_TIMEOUT_MS = 30000
+const AI_COOLDOWN_MS = 8000
 const LOCAL_PREFERENCES_PREFIX = 'forge_chart_preferences'
 const DEFAULT_CHART_PREFERENCES = {
   showCandles: true,
@@ -567,7 +570,7 @@ export default function App() {
   const currentUserId = user?.id || 'guest'
   const [symbolInput, setSymbolInput] = useState('BTCUSDT')
   const [symbol, setSymbol] = useState('BTCUSDT')
-  const [interval, setInterval] = useState('4h')
+  const [timeframe, setTimeframe] = useState('4h')
 
   const [candles, setCandles] = useState([])
   const [loading, setLoading] = useState(false)
@@ -607,6 +610,10 @@ export default function App() {
   const preferencesCloudUnavailableRef = useRef(false)
 
   const wsRef = useRef(null)
+  const reconnectAttemptsRef = useRef(0)
+  const reconnectTimeoutRef = useRef(null)
+  const watchdogTimeoutRef = useRef(null)
+  const wsParamsRef = useRef({ symbol: null, interval: null })
 
   const latestCandle = candles.length ? candles[candles.length - 1] : null
   const latestPrice = latestCandle?.close ?? null
@@ -617,7 +624,25 @@ export default function App() {
     return ((latestPrice - previousPrice) / previousPrice) * 100
   }, [latestPrice, previousPrice])
 
+  const clearReconnectTimer = () => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current)
+      reconnectTimeoutRef.current = null
+    }
+  }
+
+  const clearWatchdog = () => {
+    if (watchdogTimeoutRef.current) {
+      clearTimeout(watchdogTimeoutRef.current)
+      watchdogTimeoutRef.current = null
+    }
+  }
+
   const closeSocket = () => {
+    wsParamsRef.current = { symbol: null, interval: null }
+    clearReconnectTimer()
+    clearWatchdog()
+
     if (wsRef.current) {
       const socket = wsRef.current
       wsRef.current = null
@@ -631,6 +656,36 @@ export default function App() {
     }
 
     setIsLive(false)
+  }
+
+  const scheduleReconnect = () => {
+    clearWatchdog()
+
+    if (wsRef.current) {
+      const socket = wsRef.current
+      wsRef.current = null
+      if (
+        socket.readyState === WebSocket.OPEN ||
+        socket.readyState === WebSocket.CONNECTING
+      ) {
+        socket.close()
+      }
+    }
+
+    const { symbol: pendingSymbol, interval: pendingInterval } = wsParamsRef.current
+    if (!pendingSymbol || !pendingInterval) return
+
+    const attempt = reconnectAttemptsRef.current
+    reconnectAttemptsRef.current = attempt + 1
+    const delayMs = Math.min(1000 * 2 ** attempt, WS_MAX_RECONNECT_DELAY_MS)
+
+    setIsLive(false)
+    setStatus(`Live stream disconnected. Reconnecting in ${Math.round(delayMs / 1000)}s...`)
+
+    clearReconnectTimer()
+    reconnectTimeoutRef.current = setTimeout(() => {
+      startWebSocket(pendingSymbol, pendingInterval)
+    }, delayMs)
   }
 
   const recalculateIndicators = (data) => {
@@ -652,21 +707,48 @@ export default function App() {
   }
 
   const startWebSocket = (selectedSymbol, selectedInterval) => {
-    closeSocket()
+    clearReconnectTimer()
+    clearWatchdog()
+
+    if (wsRef.current) {
+      const previousSocket = wsRef.current
+      wsRef.current = null
+      if (
+        previousSocket.readyState === WebSocket.OPEN ||
+        previousSocket.readyState === WebSocket.CONNECTING
+      ) {
+        previousSocket.close()
+      }
+    }
+
+    wsParamsRef.current = { symbol: selectedSymbol, interval: selectedInterval }
 
     const streamName = `${selectedSymbol.toLowerCase()}@kline_${selectedInterval}`
     const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${streamName}`)
 
     wsRef.current = ws
 
+    const armWatchdog = () => {
+      if (wsRef.current !== ws) return
+      clearWatchdog()
+      watchdogTimeoutRef.current = setTimeout(() => {
+        if (wsRef.current !== ws) return
+        setStatus('Live stream stalled. Reconnecting...')
+        scheduleReconnect()
+      }, WS_WATCHDOG_TIMEOUT_MS)
+    }
+
     ws.onopen = () => {
       if (wsRef.current !== ws) return
+      reconnectAttemptsRef.current = 0
       setStatus('Live stream connected')
       setIsLive(true)
+      armWatchdog()
     }
 
     ws.onmessage = (event) => {
       if (wsRef.current !== ws) return
+      armWatchdog()
 
       try {
         const msg = JSON.parse(event.data)
@@ -716,15 +798,14 @@ export default function App() {
     ws.onclose = () => {
       if (wsRef.current === ws) {
         wsRef.current = null
-        setStatus('Live stream disconnected')
-        setIsLive(false)
+        scheduleReconnect()
       }
     }
   }
 
   const fetchPivots = async (selectedSymbol, selectedTimeframe) => {
     try {
-      const sourceCandles = selectedSymbol === symbol && selectedTimeframe === interval ? candles : null
+      const sourceCandles = selectedSymbol === symbol && selectedTimeframe === timeframe ? candles : null
       const marketCandles = sourceCandles?.length
         ? sourceCandles
         : await fetchMarketCandles(selectedSymbol, selectedTimeframe, 4000)
@@ -824,13 +905,22 @@ export default function App() {
     const candleData = currentCandles
     if (!candleData || candleData.length < 2) return
 
+    const now = Date.now()
+    const elapsedSinceLastCall = now - lastAICallRef.current
+    if (elapsedSinceLastCall < AI_COOLDOWN_MS) {
+      const waitSeconds = Math.ceil((AI_COOLDOWN_MS - elapsedSinceLastCall) / 1000)
+      setAIError(`Please wait ${waitSeconds}s before requesting another AI analysis.`)
+      return
+    }
+    lastAICallRef.current = now
+
     setAILoading(true)
     setAIError('')
 
     // Fetch fresh pivots if not already available
     let currentPivotData = pivotData
     if (!currentPivotData) {
-      currentPivotData = await fetchPivots(symbol, interval)
+      currentPivotData = await fetchPivots(symbol, timeframe)
     }
 
     const latest = candleData[candleData.length - 1]
@@ -873,7 +963,7 @@ export default function App() {
 
     const payload = {
       symbol,
-      timeframe: interval,
+      timeframe,
       price: latest.close,
       change: priceChg,
       rsi: latest.rsi14 ?? null,
@@ -921,7 +1011,6 @@ export default function App() {
       const data = await invokeFunction('ai-analysis', payload)
       if (data?.success) {
         setAIAnalysis(data.analysis)
-        lastAICallRef.current = Date.now()
       } else {
         setAIError(data?.error || data?.fallback || 'AI analysis failed.')
       }
@@ -932,7 +1021,7 @@ export default function App() {
     }
   }
 
-  const loadChart = async (selectedSymbol = symbol, selectedInterval = interval) => {
+  const loadChart = async (selectedSymbol = symbol, selectedInterval = timeframe) => {
     const cleaned = selectedSymbol.trim().toUpperCase()
     const validationError = validateBinanceSymbol(cleaned)
 
@@ -953,7 +1042,7 @@ export default function App() {
 
       setCandles(data)
       setSymbol(cleaned)
-      setInterval(selectedInterval)
+      setTimeframe(selectedInterval)
       setStatus('Historical candles loaded')
       startWebSocket(cleaned, selectedInterval)
       setAnalysis(buildTechnicalAnalysis(data, cleaned, selectedInterval))
@@ -994,7 +1083,7 @@ export default function App() {
     <>
       <aside className={`sidebar ${isSidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-header">
-          <a href="welcome.html" className="sidebar-brand">
+          <a href="/welcome.html" className="sidebar-brand">
             <div className="brand-icon-wrap">
               <svg viewBox="0 0 24 24"><path d="M3 3v18h18M9 15l3-3 4 4 5-5"/></svg>
             </div>
@@ -1046,9 +1135,9 @@ export default function App() {
             <HeaderControls
               symbolInput={symbolInput}
               setSymbolInput={setSymbolInput}
-              interval={interval}
-              setInterval={setInterval}
-              onLoad={() => loadChart(symbolInput, interval)}
+              interval={timeframe}
+              setInterval={setTimeframe}
+              onLoad={() => loadChart(symbolInput, timeframe)}
               isLive={isLive}
               toggleTheme={toggleTheme}
               theme={theme}
@@ -1069,7 +1158,7 @@ export default function App() {
             <div className="charts-column">
               <ChartPanel
                 symbol={symbol}
-                interval={interval}
+                interval={timeframe}
                 candles={candles}
                 loading={loading}
                 error={error}
@@ -1084,7 +1173,7 @@ export default function App() {
             <div className="analysis-column-fullwidth">
               <AnalysisPanel
                 symbol={symbol}
-                interval={interval}
+                interval={timeframe}
                 analysis={analysis}
                 pivotData={pivotData}
               />

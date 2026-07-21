@@ -1,7 +1,51 @@
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { fetchWithTimeout } from "../_shared/http.ts";
+import { requireAuthenticatedUser, tryServiceClient } from "../_shared/auth.ts";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const MODEL = "nvidia/nemotron-super-49b-v1:free";
+
+const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
+const RATE_LIMIT_MAX_CALLS = 10;
+
+async function checkRateLimit(supabase: SupabaseClient, userId: string): Promise<boolean> {
+  const windowStart = new Date(Date.now() - RATE_LIMIT_WINDOW_MS).toISOString();
+  const { count, error } = await supabase
+    .from("ai_analysis_logs")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .gte("created_at", windowStart);
+  if (error) {
+    console.error("[ai-analysis] rate limit check failed:", error.message);
+    return true;
+  }
+  return (count ?? 0) < RATE_LIMIT_MAX_CALLS;
+}
+
+async function logAiAnalysis(
+  supabase: SupabaseClient,
+  entry: {
+    userId: string;
+    symbol: string | null;
+    timeframe: string | null;
+    model: string;
+    status: "success" | "fallback" | "error" | "rate_limited";
+    latencyMs: number;
+    errorMessage?: string;
+  },
+): Promise<void> {
+  const { error } = await supabase.from("ai_analysis_logs").insert({
+    user_id: entry.userId,
+    symbol: entry.symbol,
+    timeframe: entry.timeframe,
+    model: entry.model,
+    status: entry.status,
+    latency_ms: entry.latencyMs,
+    error_message: entry.errorMessage ?? null,
+  });
+  if (error) console.error("[ai-analysis] failed to write ai_analysis_logs:", error.message);
+}
 
 function safeFloat(value: unknown, fallback: number | null = null): number | null {
   const n = Number(value);
@@ -275,32 +319,158 @@ PIVOTS:
 ${JSON.stringify(pivots)}`;
 }
 
+function asObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+// Strictly validates every field of the model's output against known enums/types instead of
+// trusting a shallow merge — a malformed or adversarial model response can only ever override a
+// field with a value that passes validation; anything else falls back to the deterministic base.
 function normalizeModelOutput(parsed: Record<string, unknown>, marketData: Record<string, unknown>) {
   const base = deterministicFallback(marketData, "normalized");
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return base;
 
-  const summary = parsed.summary && typeof parsed.summary === "object" ? parsed.summary as Record<string, unknown> : {};
-  const indicators = parsed.indicators && typeof parsed.indicators === "object" ? parsed.indicators as Record<string, unknown> : {};
-  const pivotAnalysis = parsed.pivot_analysis && typeof parsed.pivot_analysis === "object" ? parsed.pivot_analysis as Record<string, unknown> : {};
-  const tradeLogic = parsed.trade_logic && typeof parsed.trade_logic === "object" ? parsed.trade_logic as Record<string, unknown> : {};
-  const marketRegime = parsed.market_regime && typeof parsed.market_regime === "object" ? parsed.market_regime as Record<string, unknown> : {};
+  const summary = asObject(parsed.summary);
+  const indicators = asObject(parsed.indicators);
+  const rsiObj = asObject(indicators.rsi);
+  const macdObj = asObject(indicators.macd);
+  const emaObj = asObject(indicators.ema);
+  const pivotAnalysis = asObject(parsed.pivot_analysis);
+  const structure = asObject(parsed.structure);
+  const orderFlow = asObject(parsed.order_flow);
+  const tradeLogic = asObject(parsed.trade_logic);
+  const marketRegime = asObject(parsed.market_regime);
+
+  const baseSummary = base.summary as Record<string, unknown>;
+  const baseIndicators = base.indicators as { rsi: Record<string, unknown>; macd: Record<string, unknown>; ema: Record<string, unknown> };
+  const basePivotAnalysis = base.pivot_analysis as Record<string, unknown>;
+  const baseStructure = base.structure as Record<string, unknown>;
+  const baseOrderFlow = base.order_flow as Record<string, unknown>;
+  const baseTradeLogic = base.trade_logic as Record<string, unknown>;
+  const baseMarketRegime = base.market_regime as Record<string, unknown>;
+
+  const validatedSummary = {
+    primary_trend: asEnum(summary.primary_trend, new Set(["bullish", "bearish", "sideways"]), baseSummary.primary_trend as string),
+    momentum: asEnum(summary.momentum, new Set(["strong_bullish", "bullish", "neutral", "bearish", "strong_bearish"]), baseSummary.momentum as string),
+    phase: asEnum(summary.phase, new Set(["accumulation", "markup", "distribution", "markdown", "consolidation"]), baseSummary.phase as string),
+    confidence: clamp(safeInt(summary.confidence, baseSummary.confidence as number), 0, 100),
+    bias: asEnum(summary.bias, new Set(["long", "short", "neutral"]), baseSummary.bias as string),
+    reasoning: String(summary.reasoning ?? baseSummary.reasoning),
+  };
+
+  const validatedIndicators = {
+    rsi: {
+      value: safeFloat(rsiObj.value, baseIndicators.rsi.value as number | null),
+      state: asEnum(rsiObj.state, new Set(["overbought", "bullish_zone", "neutral", "bearish_zone", "oversold"]), baseIndicators.rsi.state as string),
+      divergence: asEnum(rsiObj.divergence, new Set(["bullish", "bearish", "none"]), baseIndicators.rsi.divergence as string),
+      signal: String(rsiObj.signal ?? baseIndicators.rsi.signal),
+    },
+    macd: {
+      macd_line: safeFloat(macdObj.macd_line, baseIndicators.macd.macd_line as number | null),
+      signal_line: safeFloat(macdObj.signal_line, baseIndicators.macd.signal_line as number | null),
+      histogram: safeFloat(macdObj.histogram, baseIndicators.macd.histogram as number | null),
+      state: asEnum(macdObj.state, new Set(["bullish_crossover", "bearish_crossover", "bullish_momentum", "bearish_momentum"]), baseIndicators.macd.state as string),
+      signal: String(macdObj.signal ?? baseIndicators.macd.signal),
+    },
+    ema: {
+      ema20: safeFloat(emaObj.ema20, baseIndicators.ema.ema20 as number | null),
+      ema50: safeFloat(emaObj.ema50, baseIndicators.ema.ema50 as number | null),
+      alignment: asEnum(emaObj.alignment, new Set(["bullish", "bearish", "mixed"]), baseIndicators.ema.alignment as string),
+      price_vs_ema20: asEnum(emaObj.price_vs_ema20, new Set(["above", "below", "at"]), baseIndicators.ema.price_vs_ema20 as string),
+      price_vs_ema50: asEnum(emaObj.price_vs_ema50, new Set(["above", "below", "at"]), baseIndicators.ema.price_vs_ema50 as string),
+      signal: String(emaObj.signal ?? baseIndicators.ema.signal),
+    },
+  };
+
+  const nearestResistance = normalizeLabelValue(pivotAnalysis.nearest_pivot_resistance) ?? (basePivotAnalysis.nearest_pivot_resistance as ReturnType<typeof normalizeLabelValue>);
+  const nearestSupport = normalizeLabelValue(pivotAnalysis.nearest_pivot_support) ?? (basePivotAnalysis.nearest_pivot_support as ReturnType<typeof normalizeLabelValue>);
+
+  const rawConfluences = Array.isArray(pivotAnalysis.confluences) ? pivotAnalysis.confluences : [];
+  const validatedConfluences = rawConfluences
+    .filter((c): c is Record<string, unknown> => !!c && typeof c === "object")
+    .map((c) => ({
+      level: String(c.level ?? "N/A"),
+      price: safeFloat(c.price, null),
+      confluent_with: String(c.confluent_with ?? "unknown"),
+      significance: asEnum(c.significance, new Set(["high", "medium", "low"]), "low"),
+    }))
+    .filter((c) => c.price != null);
+
+  const validatedPivotAnalysis = {
+    pp: safeFloat(pivotAnalysis.pp, basePivotAnalysis.pp as number | null),
+    current_zone: String(pivotAnalysis.current_zone ?? basePivotAnalysis.current_zone),
+    session_bias: asEnum(pivotAnalysis.session_bias, new Set(["bullish", "bearish", "neutral"]), basePivotAnalysis.session_bias as string),
+    nearest_pivot_resistance: nearestResistance,
+    nearest_pivot_support: nearestSupport,
+    distance_to_pivot_resistance_pct: safeFloat(pivotAnalysis.distance_to_pivot_resistance_pct, basePivotAnalysis.distance_to_pivot_resistance_pct as number | null),
+    distance_to_pivot_support_pct: safeFloat(pivotAnalysis.distance_to_pivot_support_pct, basePivotAnalysis.distance_to_pivot_support_pct as number | null),
+    at_inflection_point: Boolean(pivotAnalysis.at_inflection_point ?? basePivotAnalysis.at_inflection_point),
+    inflection_level: pivotAnalysis.inflection_level != null ? String(pivotAnalysis.inflection_level) : basePivotAnalysis.inflection_level,
+    pivot_target_bull: normalizeLabelValue(pivotAnalysis.pivot_target_bull) ?? nearestResistance,
+    pivot_target_bear: normalizeLabelValue(pivotAnalysis.pivot_target_bear) ?? nearestSupport,
+    confluences: validatedConfluences.length ? validatedConfluences : basePivotAnalysis.confluences,
+    pivot_signal: String(pivotAnalysis.pivot_signal ?? basePivotAnalysis.pivot_signal),
+  };
+
+  const filterFiniteNumbers = (value: unknown, fallback: unknown, take: number) => {
+    const list = Array.isArray(value) ? value : fallback;
+    return (Array.isArray(list) ? list : [])
+      .map((v) => safeFloat(v, null))
+      .filter((v): v is number => v != null)
+      .slice(-take);
+  };
+
+  const validatedStructure = {
+    nearest_support: safeFloat(structure.nearest_support, baseStructure.nearest_support as number | null),
+    nearest_resistance: safeFloat(structure.nearest_resistance, baseStructure.nearest_resistance as number | null),
+    key_support_levels: filterFiniteNumbers(structure.key_support_levels, baseStructure.key_support_levels, 5),
+    key_resistance_levels: filterFiniteNumbers(structure.key_resistance_levels, baseStructure.key_resistance_levels, 5),
+    range_bound: Boolean(structure.range_bound ?? baseStructure.range_bound),
+    breakout_watch: asEnum(structure.breakout_watch, new Set(["bullish", "bearish", "none"]), baseStructure.breakout_watch as string),
+  };
+
+  const validatedOrderFlow = {
+    obi: safeFloat(orderFlow.obi, baseOrderFlow.obi as number | null),
+    tfi: safeFloat(orderFlow.tfi, baseOrderFlow.tfi as number | null),
+    dominant_side: asEnum(orderFlow.dominant_side, new Set(["buyers", "sellers", "neutral"]), baseOrderFlow.dominant_side as string),
+    interpretation: String(orderFlow.interpretation ?? baseOrderFlow.interpretation),
+  };
+
+  const validatedTradeLogic = {
+    bullish_scenario: String(tradeLogic.bullish_scenario ?? baseTradeLogic.bullish_scenario),
+    bearish_scenario: String(tradeLogic.bearish_scenario ?? baseTradeLogic.bearish_scenario),
+    invalidation_bull: safeFloat(tradeLogic.invalidation_bull, baseTradeLogic.invalidation_bull as number | null),
+    invalidation_bear: safeFloat(tradeLogic.invalidation_bear, baseTradeLogic.invalidation_bear as number | null),
+    suggested_bias: asEnum(tradeLogic.suggested_bias, new Set(["long", "short", "wait"]), baseTradeLogic.suggested_bias as string),
+    risk_note: String(tradeLogic.risk_note ?? baseTradeLogic.risk_note),
+  };
+
+  const rawAnomalies = Array.isArray(parsed.anomalies) ? parsed.anomalies : [];
+  const validatedAnomalies = rawAnomalies
+    .filter((a): a is Record<string, unknown> => !!a && typeof a === "object")
+    .map((a) => ({
+      type: asEnum(a.type, new Set(["divergence", "liquidity_trap", "trend_exhaustion", "pivot_confluence", "volume_spike", "none"]), "none"),
+      description: String(a.description ?? ""),
+      severity: asEnum(a.severity, new Set(["low", "medium", "high"]), "low"),
+    }));
+
+  const validatedMarketRegime = {
+    volatility: asEnum(marketRegime.volatility, new Set(["low", "medium", "high"]), baseMarketRegime.volatility as string),
+    trend_strength: clamp(safeInt(marketRegime.trend_strength, baseMarketRegime.trend_strength as number), 0, 100),
+    is_trending: Boolean(marketRegime.is_trending ?? baseMarketRegime.is_trending),
+    regime: asEnum(marketRegime.regime, new Set(["trending", "ranging", "breakout", "reversal"]), baseMarketRegime.regime as string),
+  };
 
   const out = {
     ...base,
-    summary: {
-      ...(base.summary as Record<string, unknown>),
-      primary_trend: asEnum(summary.primary_trend, new Set(["bullish", "bearish", "sideways"]), base.summary.primary_trend),
-      momentum: asEnum(summary.momentum, new Set(["strong_bullish", "bullish", "neutral", "bearish", "strong_bearish"]), base.summary.momentum),
-      phase: asEnum(summary.phase, new Set(["accumulation", "markup", "distribution", "markdown", "consolidation"]), base.summary.phase),
-      confidence: clamp(safeInt(summary.confidence, base.summary.confidence), 0, 100),
-      bias: asEnum(summary.bias, new Set(["long", "short", "neutral"]), base.summary.bias),
-      reasoning: String(summary.reasoning ?? base.summary.reasoning),
-    },
-    indicators: Object.keys(indicators).length ? { ...base.indicators, ...indicators } : base.indicators,
-    pivot_analysis: Object.keys(pivotAnalysis).length ? { ...base.pivot_analysis, ...pivotAnalysis } : base.pivot_analysis,
-    trade_logic: Object.keys(tradeLogic).length ? { ...base.trade_logic, ...tradeLogic } : base.trade_logic,
-    market_regime: Object.keys(marketRegime).length ? { ...base.market_regime, ...marketRegime } : base.market_regime,
-    anomalies: Array.isArray(parsed.anomalies) && parsed.anomalies.length ? parsed.anomalies : base.anomalies,
+    summary: validatedSummary,
+    indicators: validatedIndicators,
+    pivot_analysis: validatedPivotAnalysis,
+    structure: validatedStructure,
+    order_flow: validatedOrderFlow,
+    trade_logic: validatedTradeLogic,
+    anomalies: validatedAnomalies.length ? validatedAnomalies : base.anomalies,
+    market_regime: validatedMarketRegime,
     _meta: {
       model: MODEL,
       source: "openrouter",
@@ -311,14 +481,14 @@ function normalizeModelOutput(parsed: Record<string, unknown>, marketData: Recor
 
   return {
     ...out,
-    market_structure: parsed.market_structure ?? out.structure,
-    trend_momentum: parsed.trend_momentum ?? {
+    market_structure: out.structure,
+    trend_momentum: {
       summary: out.summary,
       indicators: out.indicators,
       market_regime: out.market_regime,
     },
-    trade_logic_risk: parsed.trade_logic_risk ?? out.trade_logic,
-    anomaly_detection: parsed.anomaly_detection ?? out.anomalies,
+    trade_logic_risk: out.trade_logic,
+    anomaly_detection: out.anomalies,
   };
 }
 
@@ -326,21 +496,51 @@ Deno.serve(async (req) => {
   const options = handleOptions(req);
   if (options) return options;
 
-  if (req.method !== "POST") return jsonResponse({ success: false, error: "Method not allowed." }, 405);
+  if (req.method !== "POST") return jsonResponse(req, { success: false, error: "Method not allowed." }, 405);
+
+  const clientResult = tryServiceClient();
+  if (!clientResult.ok) {
+    return jsonResponse(req, { success: false, error: clientResult.error, error_code: clientResult.error_code }, 503);
+  }
+  const supabase = clientResult.client;
+
+  const authResult = await requireAuthenticatedUser(supabase, req);
+  if (!authResult.ok) {
+    return jsonResponse(req, { success: false, error: authResult.error, error_code: authResult.error_code }, authResult.status);
+  }
+  const userId = authResult.userId;
 
   const started = Date.now();
   let marketDataForFallback: Record<string, unknown> = {};
+  let symbolForLog: string | null = null;
+  let timeframeForLog: string | null = null;
+
   try {
+    const withinLimit = await checkRateLimit(supabase, userId);
+    if (!withinLimit) {
+      await logAiAnalysis(supabase, {
+        userId,
+        symbol: null,
+        timeframe: null,
+        model: MODEL,
+        status: "rate_limited",
+        latencyMs: Date.now() - started,
+      });
+      return jsonResponse(req, { success: false, error: "Too many AI analysis requests. Please wait a few minutes and try again." }, 429);
+    }
+
     const apiKey = Deno.env.get("OPENROUTER_API_KEY");
-    if (!apiKey) return jsonResponse({ success: false, error: "OPENROUTER_API_KEY is not configured." }, 500);
+    if (!apiKey) return jsonResponse(req, { success: false, error: "OPENROUTER_API_KEY is not configured." }, 500);
 
     const marketData = await req.json().catch(() => null);
     if (!marketData || typeof marketData !== "object" || safeFloat((marketData as Record<string, unknown>).price) == null) {
-      return jsonResponse({ success: false, error: "Invalid market data: price is required." }, 400);
+      return jsonResponse(req, { success: false, error: "Invalid market data: price is required." }, 400);
     }
     marketDataForFallback = marketData as Record<string, unknown>;
+    symbolForLog = String((marketData as Record<string, unknown>).symbol ?? "") || null;
+    timeframeForLog = String((marketData as Record<string, unknown>).timeframe ?? "") || null;
 
-    const response = await fetch(OPENROUTER_URL, {
+    const response = await fetchWithTimeout(OPENROUTER_URL, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -357,30 +557,39 @@ Deno.serve(async (req) => {
         temperature: 0,
         max_tokens: 2200,
       }),
-    });
+    }, { timeoutMs: 20000, retries: 1 });
 
     if (response.status === 429) {
-      return jsonResponse({ success: false, error: "OpenRouter rate limit hit. Wait and retry." }, 429);
+      await logAiAnalysis(supabase, { userId, symbol: symbolForLog, timeframe: timeframeForLog, model: MODEL, status: "error", latencyMs: Date.now() - started, errorMessage: "OpenRouter rate limit" });
+      return jsonResponse(req, { success: false, error: "OpenRouter rate limit hit. Wait and retry." }, 429);
     }
     if (response.status === 401) {
-      return jsonResponse({ success: false, error: "Invalid OpenRouter API key." }, 500);
+      await logAiAnalysis(supabase, { userId, symbol: symbolForLog, timeframe: timeframeForLog, model: MODEL, status: "error", latencyMs: Date.now() - started, errorMessage: "Invalid OpenRouter API key" });
+      return jsonResponse(req, { success: false, error: "Invalid OpenRouter API key." }, 500);
     }
     if (!response.ok) {
       const text = await response.text();
-      return jsonResponse({ success: false, error: `OpenRouter error: ${response.status}`, details: text }, 502);
+      await logAiAnalysis(supabase, { userId, symbol: symbolForLog, timeframe: timeframeForLog, model: MODEL, status: "error", latencyMs: Date.now() - started, errorMessage: `OpenRouter error: ${response.status}` });
+      return jsonResponse(req, { success: false, error: `OpenRouter error: ${response.status}`, details: text }, 502);
     }
 
     const payload = await response.json();
     const content = payload?.choices?.[0]?.message?.content ?? "";
     const parsed = extractJson(content);
     const analysis = normalizeModelOutput(parsed, marketData as Record<string, unknown>);
-    analysis._meta = { ...analysis._meta, latency_ms: Date.now() - started };
+    const latencyMs = Date.now() - started;
+    analysis._meta = { ...analysis._meta, latency_ms: latencyMs };
 
-    return jsonResponse({ success: true, analysis });
+    await logAiAnalysis(supabase, { userId, symbol: symbolForLog, timeframe: timeframeForLog, model: MODEL, status: "success", latencyMs });
+
+    return jsonResponse(req, { success: true, analysis });
   } catch (error) {
-    return jsonResponse({
+    const latencyMs = Date.now() - started;
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    await logAiAnalysis(supabase, { userId, symbol: symbolForLog, timeframe: timeframeForLog, model: MODEL, status: "fallback", latencyMs, errorMessage });
+    return jsonResponse(req, {
       success: true,
-      analysis: deterministicFallback(marketDataForFallback, error instanceof Error ? `fallback: ${error.message}` : "fallback"),
+      analysis: deterministicFallback(marketDataForFallback, `fallback: ${errorMessage}`),
     });
   }
 });

@@ -6,66 +6,62 @@ Forge is a high-performance, real-time market visualization and AI-powered analy
 
 - **Real-time Visualization**: High-performance candlestick charts powered by `Lightweight Charts`.
 - **Advanced Technical Indicators**: Built-in EMA (20/50), RSI (14), and MACD with customizable timeframes.
-- **Pivot Point Analysis**: Automatic calculation of Classic and Fibonacci Pivot Points to identify key support and resistance levels.
-- **AI Market Intelligence**: Deep analysis using OpenRouter integration (Nvidia Nemotron model) for:
+- **Pivot Point Analysis**: Automatic calculation of Classic, Fibonacci, and Traditional Pivot Points to identify key support and resistance levels.
+- **AI Market Intelligence**: Deep analysis using OpenRouter integration for:
     - Market Structure analysis
     - Trend & Momentum evaluation
     - Trade Logic & Risk assessment
     - Anomaly detection
 - **Responsive Design**: A stunning "Liquid Glass" UI that adapts to all screen sizes with full Dark/Light mode support.
-- **Live Data Streaming**: Seamless real-time price updates via Binance WebSockets.
+- **Live Data Streaming**: Seamless real-time price updates via Binance WebSockets, with automatic reconnection.
 
 ## 🛠️ Tech Stack
-
-### Backend
-- **Framework**: Python 3.10+ (Flask)
-- **APIs**: Binance Public API, OpenRouter API
-- **Key Libraries**: `flask-cors`, `requests`, `python-dotenv`
 
 ### Frontend
 - **Framework**: React 18+ (Vite)
 - **Charting**: `lightweight-charts`
+- **Auth & Data**: Supabase (Auth, Postgres, Edge Functions)
 - **Styling**: Modern CSS with "Liquid Glass" aesthetics
+
+### Backend
+- **Runtime**: Supabase Edge Functions (Deno/TypeScript)
+- **APIs**: Binance Public API, OpenRouter API
+- **Database**: Postgres via Supabase (user preferences, market data cache, AI analysis logs)
 
 ---
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Python 3.10 or higher
 - Node.js (v18+) and npm
+- [Supabase CLI](https://supabase.com/docs/guides/cli)
+- A Supabase project (or the local dev stack via `supabase start`)
 - [OpenRouter API Key](https://openrouter.ai/)
 
-### 1. Backend Setup
-Navigate to the backend directory:
+### 1. Supabase Setup
+Navigate to the `supabase/` directory:
 ```bash
-cd backend
+cd supabase
 ```
 
-Create and activate a virtual environment:
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows use `venv\Scripts\activate`
-```
-
-Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-Configure environment variables:
-Copy `backend/.env.example` to `backend/.env` and set your key, or create a `.env` file in the `backend/` directory with the following:
+Copy `supabase/.env.example` to `supabase/.env` and fill in your values (used by `supabase functions serve` for local development):
 ```env
-OPENROUTER_API_KEY=your_api_key_here
-OPENROUTER_MODEL=nvidia/nemotron-3-super-120b-a12b:free
-OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+MARKET_CACHE_TTL_SECONDS=300
+ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+OPENROUTER_API_KEY=
+OPENROUTER_HTTP_REFERER=
 ```
 
-Run the server:
+Run the database migrations and serve the edge functions locally:
 ```bash
-python app.py
+supabase start
+supabase db reset
+supabase functions serve --env-file .env
 ```
-The backend will run on `http://127.0.0.1:5000`.
+
+In production, set the same secrets via **Project Settings → Edge Functions → Secrets**, and deploy with `supabase functions deploy`.
 
 ### 2. Frontend Setup
 Navigate to the frontend directory:
@@ -76,6 +72,12 @@ cd frontend
 Install dependencies:
 ```bash
 npm install
+```
+
+Copy `frontend/.env.example` to `frontend/.env` and set your Supabase project URL and anon key:
+```env
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
 ```
 
 Start the development server:

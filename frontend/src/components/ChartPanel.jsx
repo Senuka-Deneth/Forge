@@ -757,7 +757,7 @@ export default function ChartPanel({
                 <div className="indicator-modal-title">Indicators</div>
                 <div className="indicator-modal-subtitle">Toggle overlays and jump to the education note.</div>
               </div>
-              <button className="indicator-modal-close" onClick={() => setShowIndicatorPanel(false)} aria-label="Close indicators">x</button>
+              <button className="indicator-modal-close" onClick={() => setShowIndicatorPanel(false)} aria-label="Close indicators">×</button>
             </div>
 
             <div className="indicator-list">

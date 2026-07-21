@@ -19,7 +19,7 @@ import {
   DEFAULT_CHART_PREFERENCES,
   sanitizePreferences,
 } from './utils/userPreferences'
-import { patchLastCandleIndicators } from './utils/incrementalIndicators'
+import { patchLastCandleIndicators, extractClosedIndicatorState } from './utils/incrementalIndicators'
 
 const COMMON_QUOTES = ['USDT', 'BUSD', 'BTC', 'ETH', 'FDUSD']
 const BINANCE_KLINES_URL = 'https://api.binance.com/api/v3/klines'
@@ -186,61 +186,74 @@ function enrichCandles(candles) {
 }
 
 async function fetchBinanceCandles(symbol, interval, limit) {
-  let remaining = limit
-  let currentEndTime = null
-  let allRawData = []
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 12000)
 
-  while (remaining > 0) {
-    const fetchLimit = Math.min(remaining, 1000)
-    const url = new URL(BINANCE_KLINES_URL)
-    url.searchParams.set('symbol', symbol)
-    url.searchParams.set('interval', interval)
-    url.searchParams.set('limit', String(fetchLimit))
-    if (currentEndTime != null) url.searchParams.set('endTime', String(currentEndTime))
+  try {
+    let remaining = limit
+    let currentEndTime = null
+    let allRawData = []
 
-    const response = await fetch(url)
-    if (!response.ok) {
-      const body = await response.text().catch(() => '')
-      throw new Error(`Binance request failed: ${response.status}${body ? ` ${body}` : ''}`)
+    while (remaining > 0) {
+      const fetchLimit = Math.min(remaining, 1000)
+      const url = new URL(BINANCE_KLINES_URL)
+      url.searchParams.set('symbol', symbol)
+      url.searchParams.set('interval', interval)
+      url.searchParams.set('limit', String(fetchLimit))
+      if (currentEndTime != null) url.searchParams.set('endTime', String(currentEndTime))
+
+      const response = await fetch(url, { signal: controller.signal })
+      if (!response.ok) {
+        const body = await response.text().catch(() => '')
+        throw new Error(`Binance request failed: ${response.status}${body ? ` ${body}` : ''}`)
+      }
+
+      const rawData = await response.json()
+      if (!Array.isArray(rawData) || rawData.length === 0) break
+
+      allRawData = [...rawData, ...allRawData]
+      currentEndTime = Number(rawData[0][0]) - 1
+      remaining -= rawData.length
+      if (rawData.length < fetchLimit) break
     }
 
-    const rawData = await response.json()
-    if (!Array.isArray(rawData) || rawData.length === 0) break
+    const candles = allRawData.map((item) => ({
+      time: Math.trunc(Number(item[0]) / 1000),
+      open: Number(item[1]),
+      high: Number(item[2]),
+      low: Number(item[3]),
+      close: Number(item[4]),
+      volume: Number(item[5]),
+    })).filter((c) => (
+      Number.isFinite(c.time) &&
+      Number.isFinite(c.open) &&
+      Number.isFinite(c.high) &&
+      Number.isFinite(c.low) &&
+      Number.isFinite(c.close) &&
+      Number.isFinite(c.volume)
+    )).slice(-limit)
 
-    allRawData = [...rawData, ...allRawData]
-    currentEndTime = Number(rawData[0][0]) - 1
-    remaining -= rawData.length
-    if (rawData.length < fetchLimit) break
+    if (!candles.length) throw new Error('No candle data returned for this symbol and interval.')
+    return enrichCandles(candles)
+  } catch (err) {
+    if (err?.name === 'AbortError') {
+      throw new Error('Binance request timed out')
+    }
+    throw err
+  } finally {
+    clearTimeout(timeoutId)
   }
-
-  const candles = allRawData.map((item) => ({
-    time: Math.trunc(Number(item[0]) / 1000),
-    open: Number(item[1]),
-    high: Number(item[2]),
-    low: Number(item[3]),
-    close: Number(item[4]),
-    volume: Number(item[5]),
-  })).filter((c) => (
-    Number.isFinite(c.time) &&
-    Number.isFinite(c.open) &&
-    Number.isFinite(c.high) &&
-    Number.isFinite(c.low) &&
-    Number.isFinite(c.close) &&
-    Number.isFinite(c.volume)
-  )).slice(-limit)
-
-  if (!candles.length) throw new Error('No candle data returned for this symbol and interval.')
-  return enrichCandles(candles)
 }
 
 async function fetchMarketCandles(symbol, interval, limit) {
+  const clampedLimit = Math.min(1500, limit)
   try {
-    const data = await invokeFunction('get-market-data', { symbol, interval, limit })
+    const data = await invokeFunction('get-market-data', { symbol, interval, limit: clampedLimit })
     if (Array.isArray(data) && data.length) return data
     throw new Error('Market data function returned no candles.')
   } catch (edgeError) {
     console.warn('Supabase market data failed; using Binance fallback:', edgeError)
-    return fetchBinanceCandles(symbol, interval, limit)
+    return fetchBinanceCandles(symbol, interval, clampedLimit)
   }
 }
 
@@ -431,7 +444,7 @@ export default function App() {
   const lastAICallRef = useRef(0)
   const skipIntervalReloadRef = useRef(true)
   const intervalReloadTimerRef = useRef(null)
-  const fullIndicatorThrottleRef = useRef(0)
+  const lastClosedIndicatorStateRef = useRef(null)
 
   const [pivotData, setPivotData] = useState(null)
   const [chartPreferences, setChartPreferences] = useState(DEFAULT_CHART_PREFERENCES)
@@ -526,7 +539,7 @@ export default function App() {
     const rsi14 = calculateRSI(closes, 14)
     const { macd, signalLine, hist } = calculateMACD(closes)
 
-    return data.map((c, i) => ({
+    const result = data.map((c, i) => ({
       ...c,
       ema20: ema20[i],
       ema50: ema50[i],
@@ -535,6 +548,8 @@ export default function App() {
       macdSignal: signalLine[i],
       macdHist: hist[i]
     }))
+    lastClosedIndicatorStateRef.current = extractClosedIndicatorState(result)
+    return result
   }
 
   const startWebSocket = (selectedSymbol, selectedInterval) => {
@@ -615,13 +630,11 @@ export default function App() {
             return prev
           }
 
-          const now = Date.now()
-          if (isBarClosed || now - fullIndicatorThrottleRef.current >= 1000) {
-            fullIndicatorThrottleRef.current = now
+          if (isBarClosed) {
             return recalculateIndicators(next)
           }
 
-          return patchLastCandleIndicators(next, liveCandle, isBarClosed)
+          return patchLastCandleIndicators(next, liveCandle, lastClosedIndicatorStateRef.current)
         })
       } catch {
         setStatus('Live update parse error')
@@ -837,6 +850,7 @@ export default function App() {
     loadChart('BTCUSDT', '4h')
     setTheme(initTheme())
     return () => closeSocket()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only bootstrap
   }, [])
 
   useEffect(() => {

@@ -1,8 +1,9 @@
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.105.4";
 import { handleOptions, jsonResponse } from "../_shared/cors.ts";
 import { fetchWithTimeout, safeError } from "../_shared/http.ts";
 import { requireAuthenticatedUser, tryServiceClient } from "../_shared/auth.ts";
 import { consumeQuota } from "../_shared/rateLimit.ts";
+import { empiricalConfidence } from "../_shared/calibration.ts";
 import {
   buildUserMessage,
   gatherMarketContext,
@@ -12,7 +13,11 @@ import {
 } from "../_shared/aiContext.ts";
 import {
   appendPositionSizing,
+  applyRegimeGating,
+  buildDeterministicTradePlan,
   recomputeTradePlanRiskReward,
+  type GatingContext,
+  type SetupType,
   type TradePlan,
   type TradePlanTarget,
   validateTradePlanGeometry,
@@ -77,6 +82,7 @@ async function logAiAnalysis(
     errorMessage?: string;
     requestPayload?: Record<string, unknown> | null;
     responsePayload?: Record<string, unknown> | null;
+    setupType?: SetupType | null;
   },
 ): Promise<void> {
   const { error } = await supabase.from("ai_analysis_logs").insert({
@@ -89,8 +95,76 @@ async function logAiAnalysis(
     error_message: entry.errorMessage ?? null,
     request_payload: entry.requestPayload ?? null,
     response_payload: entry.responsePayload ?? null,
+    setup_type: entry.setupType ?? null,
   });
   if (error) console.error("[ai-analysis] failed to write ai_analysis_logs:", error.message);
+}
+
+function toGatingContext(ctx: MarketContext): GatingContext {
+  return {
+    price: ctx.price,
+    latest: ctx.latest,
+    regime: ctx.regime,
+    htfBias: ctx.htfBias,
+    mtf: ctx.mtf,
+    structure: ctx.structure,
+    confluenceScore: ctx.confluenceScore,
+    pivots: ctx.pivots,
+    nearestSupport: ctx.nearestSupport,
+    nearestResistance: ctx.nearestResistance,
+  };
+}
+
+async function fetchEmpiricalCalibration(
+  supabase: SupabaseClient,
+  setupType: SetupType,
+): Promise<{ n: number; empirical_hit_rate: number } | null> {
+  const { data, error } = await supabase
+    .from("ai_analysis_logs")
+    .select("outcome, setup_type")
+    .eq("status", "success")
+    .not("evaluated_at", "is", null)
+    .in("outcome", ["target_hit", "stop_hit", "expired"])
+    .limit(500);
+  if (error || !data?.length) return null;
+
+  const rows = data as Array<{ outcome: string | null; setup_type: string | null }>;
+  const globalWins = rows.filter((r) => r.outcome === "target_hit").length;
+  const globalDecided = rows.filter((r) => r.outcome === "target_hit" || r.outcome === "stop_hit").length;
+  const globalRate = globalDecided > 0 ? globalWins / globalDecided : 0.5;
+
+  const setupRows = rows.filter((r) => r.setup_type === setupType);
+  const hits = setupRows.filter((r) => r.outcome === "target_hit").length;
+  const n = setupRows.length;
+  if (!n) return null;
+
+  return {
+    n,
+    empirical_hit_rate: empiricalConfidence(hits, n, globalRate) / 100,
+  };
+}
+
+function attachEmpiricalConfidence(
+  analysis: Record<string, unknown>,
+  calibration: { n: number; empirical_hit_rate: number } | null,
+  setupType: SetupType,
+): void {
+  if (!calibration) return;
+  const tradePlan = analysis.trade_plan as TradePlan;
+  if (!tradePlan || typeof tradePlan !== "object") return;
+  tradePlan.empirical_confidence = Number((calibration.empirical_hit_rate * 100).toFixed(1));
+  const pct = (calibration.empirical_hit_rate * 100).toFixed(1);
+  tradePlan.rationale = `${tradePlan.rationale} This setup type has hit ${pct}% over ${calibration.n} scored instances — don't report confidence far above this without stating why.`;
+  analysis.trade_plan = tradePlan;
+  analysis._meta = {
+    ...(analysis._meta as Record<string, unknown>),
+    setup_type: setupType,
+    calibration: {
+      setup_type: setupType,
+      n: calibration.n,
+      empirical_hit_rate: calibration.empirical_hit_rate,
+    },
+  };
 }
 
 function safeFloat(value: unknown, fallback: number | null = null): number | null {
@@ -149,61 +223,8 @@ function extractJson(rawText: string): Record<string, unknown> {
 // ---------------------------------------------------------------------------
 // Deterministic trade plan — used both as the resilient fallback and as the
 // baseline the model's own trade_plan is validated against.
+// (buildDeterministicTradePlan lives in _shared/tradePlan.ts)
 // ---------------------------------------------------------------------------
-
-function buildDeterministicTradePlan(ctx: MarketContext, bias: "long" | "short" | "neutral"): TradePlan {
-  const { price, latest, pivots, confluenceScore } = ctx;
-  const atr = latest.atr14 ?? price * 0.01;
-
-  if (bias === "neutral") {
-    return {
-      bias: "wait",
-      entry_zone: null,
-      stop_loss: null,
-      targets: [],
-      risk_reward_summary: "No clear directional edge; trend, momentum, and multi-timeframe signals are not aligned.",
-      confidence: clamp(40 + Math.round(confluenceScore / 10), 20, 60),
-      rationale: "Wait for trend, momentum, and higher-timeframe confluence to align before sizing a position.",
-    };
-  }
-
-  const levels = pivots.classic.analysis.allLevels as Array<{ label: string; value: number }>;
-  const isLong = bias === "long";
-  const entryLow = isLong ? price - atr * 0.15 : price;
-  const entryHigh = isLong ? price : price + atr * 0.15;
-  const stop = isLong
-    ? Math.min(...[ctx.nearestSupport?.value, price - atr * 1.5].filter((v): v is number => v != null))
-    : Math.max(...[ctx.nearestResistance?.value, price + atr * 1.5].filter((v): v is number => v != null));
-
-  const candidateTargets = (isLong
-    ? levels.filter((l) => l.value > price).sort((a, b) => a.value - b.value)
-    : levels.filter((l) => l.value < price).sort((a, b) => b.value - a.value)
-  ).slice(0, 3);
-
-  const risk = Math.abs(price - stop);
-  const targets: TradePlanTarget[] = candidateTargets.map((lvl, i) => {
-    const reward = Math.abs(lvl.value - price);
-    return {
-      label: `T${i + 1} (${lvl.label})`,
-      price: lvl.value,
-      risk_reward: risk > 0 ? Number((reward / risk).toFixed(2)) : null,
-    };
-  });
-
-  const bestRR = targets.find((t) => t.risk_reward != null)?.risk_reward ?? null;
-
-  return {
-    bias: isLong ? "long" : "short",
-    entry_zone: { low: Number(entryLow.toFixed(6)), high: Number(entryHigh.toFixed(6)) },
-    stop_loss: Number(stop.toFixed(6)),
-    targets,
-    risk_reward_summary: bestRR != null
-      ? `Nearest target offers roughly ${bestRR}:1 reward-to-risk from the suggested entry and stop.`
-      : "Insufficient pivot levels beyond price to size a reward-to-risk target.",
-    confidence: clamp(45 + Math.round(confluenceScore / 4), 20, 90),
-    rationale: `${isLong ? "Long" : "Short"} bias from trend/momentum alignment with ${confluenceScore}% multi-timeframe agreement. Stop placed beyond ${isLong ? "nearest support" : "nearest resistance"} with an ATR buffer; targets use the next pivot levels in the trade direction.`,
-  };
-}
 
 function deterministicFallback(ctx: MarketContext, source = "local-fallback") {
   const { latest, price } = ctx;
@@ -278,7 +299,9 @@ function deterministicFallback(ctx: MarketContext, source = "local-fallback") {
   if (ctx.volatilityState === "high") anomalies.push({ type: "volume_spike", description: "Volatility (ATR) is elevated versus its recent range.", severity: "medium" });
   if (!anomalies.length) anomalies.push({ type: "none", description: "No deterministic anomaly triggered.", severity: "low" });
 
-  const tradePlan = buildDeterministicTradePlan(ctx, bias);
+  const gatingCtx = toGatingContext(ctx);
+  const gated = applyRegimeGating(bias, confidence, gatingCtx);
+  const tradePlan = buildDeterministicTradePlan(gatingCtx, gated.bias, gated.confidence);
 
   const legacy = {
     summary: {
@@ -354,7 +377,8 @@ function deterministicFallback(ctx: MarketContext, source = "local-fallback") {
       volatility: ctx.volatilityState,
       trend_strength: ctx.trendStrength,
       is_trending: ctx.trendStrength >= 50,
-      regime: ctx.trendStrength >= 50 ? "trending" : "ranging",
+      regime: ctx.regime,
+      htf_bias: ctx.htfBias,
     },
     trade_plan: tradePlan,
     _meta: {
@@ -364,6 +388,7 @@ function deterministicFallback(ctx: MarketContext, source = "local-fallback") {
       validated: true,
       confluence_score: ctx.confluenceScore,
       signal_strength: ctx.signalAgreement,
+      setup_type: gated.setupType,
       data_completeness: {
         futures_available: ctx.futures.available,
         order_book_available: ctx.orderFlow.obi != null,
@@ -410,6 +435,8 @@ Reasoning rules:
   any single indicator. State explicitly when signals conflict and lower confidence accordingly.
 - Only propose bias "long" or "short" when trend, momentum, and multi-timeframe confluence
   reasonably agree; otherwise use "wait" with entry_zone null and empty targets.
+- Regime gating: volatile_chop => wait; ranging => only fade within 0.5×ATR of S/R zones;
+  if 2+ HTF reads contradict bias => wait; if 1 contradicts => lower confidence ~15pts.
 - Base stop_loss and targets on the supplied pivot levels, swing structure, and ATR — never invent
   price levels that are not derivable from the provided data.
 - Price above the classic PP is bullish session bias; below is bearish. RSI >= 70 is overbought,
@@ -558,7 +585,7 @@ function normalizeModelOutput(parsed: Record<string, unknown>, ctx: MarketContex
     volatility: asEnum(marketRegime.volatility, new Set(["low", "medium", "high"]), baseMarketRegime.volatility as string),
     trend_strength: clamp(safeInt(marketRegime.trend_strength, baseMarketRegime.trend_strength as number), 0, 100),
     is_trending: Boolean(marketRegime.is_trending ?? baseMarketRegime.is_trending),
-    regime: asEnum(marketRegime.regime, new Set(["trending", "ranging", "breakout", "reversal"]), baseMarketRegime.regime as string),
+    regime: asEnum(marketRegime.regime, new Set(["trending", "ranging", "volatile_chop", "breakout", "reversal"]), baseMarketRegime.regime as string),
   };
 
   const rawTargets = Array.isArray(tradePlanObj.targets) ? tradePlanObj.targets : [];
@@ -604,15 +631,24 @@ function normalizeModelOutput(parsed: Record<string, unknown>, ctx: MarketContex
 
   const geometry = validateTradePlanGeometry(validatedTradePlan, ctx.price);
   let tradePlanGeometryValid = geometry.valid;
+  const gatingCtx = toGatingContext(ctx);
+  const baseSetupType = (base._meta as Record<string, unknown>)?.setup_type as SetupType ?? "wait";
   if (!geometry.valid && validatedTradePlan.bias !== "wait") {
     const fallbackBias = validatedTradePlan.bias === "long" ? "long" : validatedTradePlan.bias === "short" ? "short" : "neutral";
     const detBias = fallbackBias === "long" || fallbackBias === "short" ? fallbackBias : "neutral";
-    validatedTradePlan = buildDeterministicTradePlan(ctx, detBias as "long" | "short" | "neutral");
+    const gated = applyRegimeGating(detBias, validatedTradePlan.confidence, gatingCtx);
+    validatedTradePlan = buildDeterministicTradePlan(gatingCtx, gated.bias, gated.confidence);
     tradePlanGeometryValid = false;
   } else {
     validatedTradePlan = recomputeTradePlanRiskReward(validatedTradePlan);
     validatedTradePlan = appendPositionSizing(validatedTradePlan);
   }
+
+  const setupType = applyRegimeGating(
+    validatedTradePlan.bias === "wait" ? "neutral" : validatedTradePlan.bias,
+    validatedTradePlan.confidence,
+    gatingCtx,
+  ).setupType ?? baseSetupType;
 
   const modelFieldRatio = totalFieldCount > 0 ? modelFieldCount / totalFieldCount : 0;
   const source = modelFieldRatio >= 0.7 ? "openrouter" : modelFieldRatio > 0 ? "openrouter-partial" : "deterministic";
@@ -637,6 +673,7 @@ function normalizeModelOutput(parsed: Record<string, unknown>, ctx: MarketContex
       signal_strength: ctx.signalAgreement,
       model_field_ratio: Number(modelFieldRatio.toFixed(3)),
       trade_plan_geometry_valid: tradePlanGeometryValid,
+      setup_type: setupType,
       data_completeness: {
         futures_available: ctx.futures.available,
         order_book_available: ctx.orderFlow.obi != null,
@@ -697,13 +734,6 @@ Deno.serve(async (req) => {
     }
 
     const cacheKey = `${symbol}:${interval}`;
-    const cached = await readAnalysisCache(supabase, cacheKey);
-    if (cached) {
-      return jsonResponse(req, {
-        success: true,
-        analysis: { ...cached, _meta: { ...(cached._meta as Record<string, unknown>), cached: true } },
-      });
-    }
 
     const quota = await consumeQuota(supabase, userId, RATE_LIMIT_WINDOW_MS, RATE_LIMIT_MAX_CALLS, "ai_analysis");
     if (!quota.ok) {
@@ -712,6 +742,14 @@ Deno.serve(async (req) => {
       }
       await logAiAnalysis(supabase, { userId, symbol, timeframe: interval, model: MODEL, status: "rate_limited", latencyMs: Date.now() - started });
       return jsonResponse(req, { success: false, error: "Too many AI analysis requests. Please wait a few minutes and try again." }, 429);
+    }
+
+    const cached = await readAnalysisCache(supabase, cacheKey);
+    if (cached) {
+      return jsonResponse(req, {
+        success: true,
+        analysis: { ...cached, _meta: { ...(cached._meta as Record<string, unknown>), cached: true } },
+      });
     }
 
     const apiKey = Deno.env.get("OPENROUTER_API_KEY");
@@ -799,6 +837,9 @@ Deno.serve(async (req) => {
     const content = payload?.choices?.[0]?.message?.content ?? "";
     const parsed = extractJson(content);
     const analysis = normalizeModelOutput(parsed, ctx);
+    const setupType = (analysis._meta as Record<string, unknown>)?.setup_type as SetupType ?? "wait";
+    const calibration = await fetchEmpiricalCalibration(supabase, setupType);
+    attachEmpiricalConfidence(analysis as Record<string, unknown>, calibration, setupType);
     const latencyMs = Date.now() - started;
     analysis._meta = { ...analysis._meta, latency_ms: latencyMs };
 
@@ -812,6 +853,7 @@ Deno.serve(async (req) => {
       latencyMs,
       requestPayload,
       responsePayload: analysis as Record<string, unknown>,
+      setupType,
     });
 
     return jsonResponse(req, { success: true, analysis });

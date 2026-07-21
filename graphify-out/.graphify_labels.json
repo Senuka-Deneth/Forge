@@ -26,5 +26,7 @@
   "24": "DEFAULT_PRICE_SCALE_MARGINS",
   "25": "marketStructure.test.js",
   "26": "education-app.js",
-  "27": "education-data.js"
+  "27": "education-data.js",
+  "28": "eslint.config.js",
+  "29": "20260722000000_cron_secret_fail_closed.sql"
 }

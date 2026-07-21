@@ -7,10 +7,11 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint": "eslint src"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.105.4",
+    "@supabase/supabase-js": "2.105.4",
     "framer-motion": "^12.40.0",
     "lightweight-charts": "^5.0.8",
     "react": "^18.3.1",
@@ -18,8 +19,11 @@
     "three": "^0.185.1"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.2",
     "@vitejs/plugin-react": "^4.3.4",
-    "puppeteer": "^25.1.0",
+    "eslint": "^9.39.2",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.0.1",
     "vite": "^5.4.10",
     "vitest": "^3.2.4"
   }

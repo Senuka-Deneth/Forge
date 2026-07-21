@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.105.4";
 import { handleOptions, jsonResponse } from "../_shared/cors.ts";
 import { safeError } from "../_shared/http.ts";
 import { requireAuthenticatedUser, tryServiceClient } from "../_shared/auth.ts";
@@ -118,12 +118,12 @@ Deno.serve(async (req) => {
     const interval = String(body.interval ?? url.searchParams.get("interval") ?? "4h").trim();
     const limitRaw = body.limit ?? url.searchParams.get("limit") ?? "300";
     const parsedLimit = Number.parseInt(String(limitRaw), 10);
-    const limit = Math.min(MAX_LIMIT, parsedLimit);
-
     if (!SYMBOL_REGEX.test(symbol)) return jsonResponse(req, { error: "Invalid symbol format." }, 400);
     if (!ALLOWED_INTERVALS.has(interval)) return jsonResponse(req, { error: "Invalid interval." }, 400);
     if (!Number.isInteger(parsedLimit)) return jsonResponse(req, { error: "Limit must be an integer." }, 400);
     if (parsedLimit < 50 || parsedLimit > 10000) return jsonResponse(req, { error: "Limit must be between 50 and 10000." }, 400);
+    if (parsedLimit > MAX_LIMIT) return jsonResponse(req, { error: `Limit must not exceed ${MAX_LIMIT}.` }, 400);
+    const limit = parsedLimit;
 
     const ttlSeconds = parseCacheTtlSeconds();
 

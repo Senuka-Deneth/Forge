@@ -11,6 +11,36 @@ function StatCard({ label, value, hint }) {
   )
 }
 
+function ReliabilityChart({ deciles }) {
+  if (!deciles || !Object.keys(deciles).length) return null
+  const rows = Object.entries(deciles)
+    .map(([key, d]) => ({ key: Number(key), ...d }))
+    .sort((a, b) => a.key - b.key)
+
+  return (
+    <div className="panel-card" style={{ padding: '16px', marginTop: '16px' }}>
+      <div className="summary-label" style={{ marginBottom: '12px' }}>Reliability curve (predicted vs realized)</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        {rows.map((row) => {
+          const predictedPct = row.avg_predicted != null ? row.avg_predicted * 100 : (row.key * 10 + 5)
+          const realizedPct = row.hitRate != null ? row.hitRate * 100 : 0
+          return (
+            <div key={row.key} style={{ display: 'grid', gridTemplateColumns: '48px 1fr 1fr', gap: '8px', alignItems: 'center' }}>
+              <span className="ai-signal-note">{row.key * 10}–{row.key * 10 + 9}%</span>
+              <div title={`Predicted ~${predictedPct.toFixed(0)}%`} style={{ background: 'var(--bg-overlay)', borderRadius: '4px', height: '8px', overflow: 'hidden' }}>
+                <div style={{ width: `${Math.min(100, predictedPct)}%`, height: '100%', background: 'var(--accent-primary)' }} />
+              </div>
+              <div title={`Realized ${realizedPct.toFixed(0)}% (n=${row.count})`} style={{ background: 'var(--bg-overlay)', borderRadius: '4px', height: '8px', overflow: 'hidden' }}>
+                <div style={{ width: `${Math.min(100, realizedPct)}%`, height: '100%', background: 'var(--bull)' }} />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 export default function AccuracyPanel() {
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -55,6 +85,7 @@ export default function AccuracyPanel() {
   }
 
   const hitPct = stats.hit_rate != null ? `${(stats.hit_rate * 100).toFixed(1)}%` : '—'
+  const setupEntries = Object.entries(stats.setup_stats ?? {})
 
   return (
     <section className="accuracy-panel" aria-label="AI prediction accuracy">
@@ -66,8 +97,33 @@ export default function AccuracyPanel() {
         <StatCard label="Hit rate" value={hitPct} hint={`${stats.wins} wins / ${stats.losses} losses`} />
         <StatCard label="Avg realized R" value={stats.avg_realized_r} />
         <StatCard label="Expectancy (R)" value={stats.expectancy} />
+        <StatCard
+          label="Brier score"
+          value={stats.brier_score}
+          hint="0.25 = coin flip on 50% calls; lower is better"
+        />
         <StatCard label="Expired" value={stats.expired} />
       </div>
+
+      <ReliabilityChart deciles={stats.confidence_deciles} />
+
+      {setupEntries.length > 0 && (
+        <div className="panel-card" style={{ padding: '16px', marginTop: '16px' }}>
+          <div className="summary-label" style={{ marginBottom: '12px' }}>Per-setup performance</div>
+          <div className="ai-rows">
+            {setupEntries.map(([setupType, row]) => (
+              <div className="ai-row" key={setupType}>
+                <span>{setupType.replace(/_/g, ' ')}</span>
+                <span>
+                  n={row.n}
+                  {row.hit_rate != null ? ` · ${(row.hit_rate * 100).toFixed(1)}% hit` : ''}
+                  {row.avg_r != null ? ` · ${row.avg_r}R` : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </section>
   )
 }

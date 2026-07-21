@@ -6,6 +6,7 @@
     "build": "npm run build --prefix frontend",
     "preview": "npm run preview --prefix frontend",
     "test": "npm run test --prefix frontend",
-    "test:functions": "deno test supabase/functions/tests --allow-read"
+    "test:functions": "deno test supabase/functions/tests --allow-read --allow-env",
+    "backtest": "deno run --allow-net --allow-write --allow-read scripts/backtest.ts"
   }
 }

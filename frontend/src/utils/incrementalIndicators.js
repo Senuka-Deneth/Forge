@@ -33,30 +33,73 @@ export function updateMacdLast(prevMacd, prevSignal, newClose, state) {
   return { macd, signal, hist, state: { ...state, ema12, ema26 } }
 }
 
-export function patchLastCandleIndicators(prevCandles, liveCandle, isBarClosed) {
-  if (!prevCandles?.length) return prevCandles
+function computeRsiState(closes, period = 14) {
+  if (closes.length < period + 1) return null
+  const gains = [0]
+  const losses = [0]
+  for (let i = 1; i < closes.length; i += 1) {
+    const change = closes[i] - closes[i - 1]
+    gains.push(Math.max(change, 0))
+    losses.push(Math.abs(Math.min(change, 0)))
+  }
+  let avgGain = gains.slice(1, period + 1).reduce((a, b) => a + b, 0) / period
+  let avgLoss = losses.slice(1, period + 1).reduce((a, b) => a + b, 0) / period
+  for (let i = period + 1; i < closes.length; i += 1) {
+    avgGain = ((avgGain * (period - 1)) + gains[i]) / period
+    avgLoss = ((avgLoss * (period - 1)) + losses[i]) / period
+  }
+  return { avgGain, avgLoss }
+}
+
+function computeMacdState(closes) {
+  const ema = (values, period) => {
+    if (values.length < period) return null
+    const k = 2 / (period + 1)
+    let seed = values.slice(0, period).reduce((a, b) => a + b, 0) / period
+    for (let i = period; i < values.length; i += 1) {
+      seed = (values[i] - seed) * k + seed
+    }
+    return seed
+  }
+  const ema12 = ema(closes, 12)
+  const ema26 = ema(closes, 26)
+  if (ema12 == null || ema26 == null) return null
+  return { ema12, ema26 }
+}
+
+/** Snapshot indicator state as of the last closed bar in a fully-recalculated series. */
+export function extractClosedIndicatorState(candles) {
+  if (!candles?.length) return null
+  const closes = candles.map((c) => c.close)
+  const last = candles[candles.length - 1]
+  return {
+    ema20: last.ema20 ?? null,
+    ema50: last.ema50 ?? null,
+    rsiState: computeRsiState(closes),
+    macdState: computeMacdState(closes),
+    macdSignal: last.macdSignal ?? null,
+    lastClose: last.close,
+  }
+}
+
+export function patchLastCandleIndicators(prevCandles, liveCandle, closedState) {
+  if (!prevCandles?.length || !closedState) return prevCandles
   const next = [...prevCandles]
   const lastIdx = next.length - 1
   const prev = next[lastIdx]
   const merged = { ...prev, ...liveCandle }
 
-  if (isBarClosed) {
-    return next
-  }
+  const prevClose = closedState.lastClose ?? (lastIdx > 0 ? next[lastIdx - 1].close : merged.open)
+  merged.ema20 = updateEmaLast(closedState.ema20, merged.close, 20)
+  merged.ema50 = updateEmaLast(closedState.ema50, merged.close, 50)
 
-  const prevClose = lastIdx > 0 ? next[lastIdx - 1].close : merged.open
-  merged.ema20 = updateEmaLast(prev.ema20, merged.close, 20)
-  merged.ema50 = updateEmaLast(prev.ema50, merged.close, 50)
-
-  const rsiPatch = updateRsiLast(prev.rsi14, prevClose, merged.close, 14, prev._rsiState)
+  const rsiPatch = updateRsiLast(prev.rsi14, prevClose, merged.close, 14, closedState.rsiState)
   merged.rsi14 = rsiPatch.rsi
-  merged._rsiState = rsiPatch.state
 
-  const macdPatch = updateMacdLast(prev.macd, prev.macdSignal, merged.close, prev._macdState)
+  const macdPatch = updateMacdLast(prev.macd, closedState.macdSignal, merged.close, closedState.macdState)
   merged.macd = macdPatch.macd
   merged.macdSignal = macdPatch.signal
   merged.macdHist = macdPatch.hist
-  merged._macdState = macdPatch.state
 
   next[lastIdx] = merged
   return next

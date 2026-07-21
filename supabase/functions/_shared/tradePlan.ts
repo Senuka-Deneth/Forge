@@ -1,3 +1,11 @@
+export type SetupType =
+  | "trend_continuation_long"
+  | "trend_continuation_short"
+  | "range_fade_long"
+  | "range_fade_short"
+  | "breakout"
+  | "wait";
+
 export type TradePlanTarget = { label: string; price: number | null; risk_reward: number | null };
 
 export type TradePlan = {
@@ -8,6 +16,7 @@ export type TradePlan = {
   risk_reward_summary: string;
   confidence: number;
   rationale: string;
+  empirical_confidence?: number | null;
   position_sizing?: {
     risk_pct: number;
     formula: string;
@@ -15,9 +24,35 @@ export type TradePlan = {
   } | null;
 };
 
+export type GatingContext = {
+  price: number;
+  latest: { atr14: number | null };
+  regime: "trending" | "ranging" | "volatile_chop";
+  htfBias: "bullish" | "bearish" | "mixed";
+  mtf: Array<{ trend: "bullish" | "bearish" | "mixed" }>;
+  structure: {
+    supportZones: Array<{ mid: number }>;
+    resistanceZones: Array<{ mid: number }>;
+  };
+  confluenceScore: number;
+  pivots: {
+    classic: {
+      analysis: {
+        allLevels: Array<{ label: string; value: number }>;
+      };
+    };
+  };
+  nearestSupport: { label: string; value: number } | null;
+  nearestResistance: { label: string; value: number } | null;
+};
+
 function finite(value: unknown): number | null {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+function clamp(value: number, low: number, high: number): number {
+  return Math.max(low, Math.min(high, value));
 }
 
 function entryMid(plan: TradePlan): number | null {
@@ -26,6 +61,118 @@ function entryMid(plan: TradePlan): number | null {
   const high = finite(plan.entry_zone.high);
   if (low == null || high == null) return null;
   return (low + high) / 2;
+}
+
+function nearZone(price: number, zones: Array<{ mid: number }>, atr: number): boolean {
+  if (!zones.length) return false;
+  const threshold = atr * 0.5;
+  return zones.some((z) => Math.abs(price - z.mid) <= threshold);
+}
+
+function htfContradictions(bias: "long" | "short", mtf: GatingContext["mtf"]): number {
+  const expected = bias === "long" ? "bullish" : "bearish";
+  return mtf.filter((r) => r.trend !== "mixed" && r.trend !== expected).length;
+}
+
+export function classifySetupType(
+  bias: "long" | "short" | "neutral",
+  regime: GatingContext["regime"],
+): SetupType {
+  if (bias === "neutral") return "wait";
+  if (regime === "trending") return bias === "long" ? "trend_continuation_long" : "trend_continuation_short";
+  if (regime === "ranging") return bias === "long" ? "range_fade_long" : "range_fade_short";
+  return "breakout";
+}
+
+export function applyRegimeGating(
+  bias: "long" | "short" | "neutral",
+  confidence: number,
+  ctx: GatingContext,
+): { bias: "long" | "short" | "neutral"; confidence: number; setupType: SetupType } {
+  let gatedBias = bias;
+  let gatedConfidence = confidence;
+
+  if (ctx.regime === "volatile_chop") {
+    return { bias: "neutral", confidence: gatedConfidence, setupType: "wait" };
+  }
+
+  if (ctx.regime === "ranging" && gatedBias !== "neutral") {
+    const atr = ctx.latest.atr14 ?? ctx.price * 0.01;
+    const zones = gatedBias === "long" ? ctx.structure.supportZones : ctx.structure.resistanceZones;
+    if (!nearZone(ctx.price, zones, atr)) {
+      gatedBias = "neutral";
+    }
+  }
+
+  if (gatedBias === "long" || gatedBias === "short") {
+    const contradictions = htfContradictions(gatedBias, ctx.mtf);
+    if (contradictions >= 2) {
+      gatedBias = "neutral";
+    } else if (contradictions === 1) {
+      gatedConfidence = clamp(gatedConfidence - 15, 0, 100);
+    }
+  }
+
+  const setupType = classifySetupType(gatedBias, ctx.regime);
+  return { bias: gatedBias, confidence: gatedConfidence, setupType };
+}
+
+export function buildDeterministicTradePlan(
+  ctx: GatingContext,
+  bias: "long" | "short" | "neutral",
+  confidence: number,
+): TradePlan {
+  const { price, latest, pivots, confluenceScore } = ctx;
+  const atr = latest.atr14 ?? price * 0.01;
+
+  if (bias === "neutral") {
+    return {
+      bias: "wait",
+      entry_zone: null,
+      stop_loss: null,
+      targets: [],
+      risk_reward_summary: "No clear directional edge; trend, momentum, and multi-timeframe signals are not aligned.",
+      confidence: clamp(confidence || 40 + Math.round(confluenceScore / 10), 20, 60),
+      rationale: "Wait for trend, momentum, and higher-timeframe confluence to align before sizing a position.",
+    };
+  }
+
+  const levels = pivots.classic.analysis.allLevels as Array<{ label: string; value: number }>;
+  const isLong = bias === "long";
+  const entryLow = isLong ? price - atr * 0.15 : price;
+  const entryHigh = isLong ? price : price + atr * 0.15;
+  const stop = isLong
+    ? Math.min(...[ctx.nearestSupport?.value, price - atr * 1.5].filter((v): v is number => v != null))
+    : Math.max(...[ctx.nearestResistance?.value, price + atr * 1.5].filter((v): v is number => v != null));
+
+  const candidateTargets = (isLong
+    ? levels.filter((l) => l.value > price).sort((a, b) => a.value - b.value)
+    : levels.filter((l) => l.value < price).sort((a, b) => b.value - a.value)
+  ).slice(0, 3);
+
+  const risk = Math.abs(price - stop);
+  const targets: TradePlanTarget[] = candidateTargets.map((lvl, i) => {
+    const reward = Math.abs(lvl.value - price);
+    return {
+      label: `T${i + 1} (${lvl.label})`,
+      price: lvl.value,
+      risk_reward: risk > 0 ? Number((reward / risk).toFixed(2)) : null,
+    };
+  });
+
+  const bestRR = targets.find((t) => t.risk_reward != null)?.risk_reward ?? null;
+
+  return {
+    bias: isLong ? "long" : "short",
+    entry_zone: { low: Number(entryLow.toFixed(6)), high: Number(entryHigh.toFixed(6)) },
+    stop_loss: Number(stop.toFixed(6)),
+    targets,
+    risk_reward_summary: bestRR != null
+      ? `Nearest target offers roughly ${bestRR}:1 reward-to-risk from the suggested entry and stop.`
+      : "Insufficient pivot levels beyond price to size a reward-to-risk target.",
+    confidence: clamp(confidence || 45 + Math.round(confluenceScore / 4), 20, 90),
+    rationale: `${isLong ? "Long" : "Short"} bias from trend/momentum alignment with ${confluenceScore}% multi-timeframe agreement. Stop placed beyond ${isLong ? "nearest support" : "nearest resistance"} with an ATR buffer; targets use the next pivot levels in the trade direction.`,
+  };
 }
 
 /** Validate directional geometry: long stop < entry < targets; short mirrored. */

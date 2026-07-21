@@ -26,6 +26,7 @@ import {
 } from "./pivotPoints.ts";
 import { gatherMarketFeatures, type MarketFeatures } from "./features.ts";
 import { enrichCandles } from "./indicators.ts";
+import { deriveRegime, type MarketRegime } from "./regime.ts";
 
 export const PRIMARY_CANDLE_LIMIT = 500;
 export const MTF_CANDLE_LIMIT = 150;
@@ -54,6 +55,8 @@ export type MarketContext = {
   ticker24h: Ticker24hr;
   volatilityState: "low" | "medium" | "high";
   trendStrength: number;
+  regime: MarketRegime;
+  htfBias: "bullish" | "bearish" | "mixed";
   vwapRelation: "above" | "below" | "at" | "unknown";
   swingHighs: Array<{ index: number; price: number; time?: number }>;
   swingLows: Array<{ index: number; price: number; time?: number }>;
@@ -78,6 +81,14 @@ export type MarketContext = {
   features: MarketFeatures;
 };
 
+export type BuildContextOptions = {
+  orderFlow?: OrderBookImbalance | null;
+  futures?: FuturesContext | null;
+  ticker24h?: Ticker24hr | null;
+  mtfDepthCandles?: Array<{ interval: string; candles: IndicatorCandle[] }>;
+  rawPrimary?: Array<{ time: number; open: number; high: number; low: number; close: number; volume: number }>;
+};
+
 function clamp(value: number, low: number, high: number): number {
   return Math.max(low, Math.min(high, value));
 }
@@ -98,6 +109,14 @@ function readTrendFromCandles(candles: IndicatorCandle[]): MtfRead["trend"] {
     else if (close < ema20 && ema20 < ema50) alignment = "bearish";
   }
   return seriesTrend(alignment, macdHist);
+}
+
+function majorityHtfBias(mtf: MtfRead[]): "bullish" | "bearish" | "mixed" {
+  const votes = { bullish: 0, bearish: 0, mixed: 0 };
+  for (const read of mtf) votes[read.trend] += 1;
+  if (votes.bullish > votes.bearish && votes.bullish > votes.mixed) return "bullish";
+  if (votes.bearish > votes.bullish && votes.bearish > votes.mixed) return "bearish";
+  return "mixed";
 }
 
 function volatilityStateFromAtr(atrPctSeries: Array<number | null>): "low" | "medium" | "high" {
@@ -138,40 +157,37 @@ function divergenceToLegacy(type: "bullish" | "bearish" | "none"): { type: strin
   return { type: "none", description: "No significant RSI divergence." };
 }
 
-export async function gatherMarketContext(symbol: string, interval: string): Promise<MarketContext> {
-  const rawPrimary = await fetchBinanceKlines(symbol, interval, PRIMARY_CANDLE_LIMIT);
-  if (!rawPrimary.length) throw new Error("No candle data returned for this symbol/interval.");
+const EMPTY_TICKER: Ticker24hr = {
+  priceChangePercent: null,
+  volume: null,
+  quoteVolume: null,
+  highPrice: null,
+  lowPrice: null,
+};
 
-  const closedPrimary = sliceClosedCandles(rawPrimary, interval);
-  const analysisCandles = closedPrimary.length ? closedPrimary : rawPrimary.slice(0, -1);
+const EMPTY_ORDER_FLOW: OrderBookImbalance = { obi: null, bidVolume: 0, askVolume: 0, midPrice: null };
+const EMPTY_FUTURES: FuturesContext = {
+  available: false,
+  fundingRate: null,
+  openInterest: null,
+  longShortRatio: null,
+};
+
+export async function buildContextFromCandles(
+  symbol: string,
+  interval: string,
+  analysisCandles: IndicatorCandle[],
+  opts: BuildContextOptions = {},
+): Promise<MarketContext> {
   if (!analysisCandles.length) throw new Error("Not enough closed candles for analysis.");
 
   const primaryCandles = enrichCandles(analysisCandles.map((c) => ({ ...c })));
   const latest = primaryCandles[primaryCandles.length - 1];
+  const rawPrimary = opts.rawPrimary ?? analysisCandles;
 
-  const [orderFlow, futures, ticker24h, mtfResults] = await Promise.all([
-    fetchOrderBookImbalance(symbol),
-    fetchFuturesContext(symbol),
-    fetchTicker24hr(symbol),
-    Promise.all(
-      getConfluenceTimeframes(interval).map(async (tf) => {
-        try {
-          const raw = await fetchBinanceKlines(symbol, tf, MTF_CANDLE_LIMIT);
-          const closed = sliceClosedCandles(raw, tf);
-          const candles = enrichCandles((closed.length ? closed : raw.slice(0, -1)).map((c) => ({ ...c })));
-          return {
-            interval: tf,
-            trend: readTrendFromCandles(candles),
-            rsi: candles[candles.length - 1]?.rsi14 ?? null,
-            candles,
-          };
-        } catch {
-          return { interval: tf, trend: "mixed" as const, rsi: null, candles: [] as IndicatorCandle[] };
-        }
-      }),
-    ),
-    gatherMarketFeatures(symbol, primaryCandles, []),
-  ]);
+  const orderFlow = opts.orderFlow ?? EMPTY_ORDER_FLOW;
+  const futures = opts.futures ?? EMPTY_FUTURES;
+  const ticker24h = opts.ticker24h ?? EMPTY_TICKER;
 
   const price = ticker24h.highPrice != null && ticker24h.lowPrice != null
     ? (rawPrimary[rawPrimary.length - 1]?.close ?? latest.close)
@@ -188,6 +204,24 @@ export async function gatherMarketContext(symbol: string, interval: string): Pro
     chartPrefs: { pivotType: "traditional", pivotsBack: 15 },
   });
   if (!pivotPayload) throw new Error("Unable to compute pivot data.");
+
+  const mtfResults = await Promise.all(
+    getConfluenceTimeframes(interval).map(async (tf) => {
+      try {
+        const raw = await fetchBinanceKlines(symbol, tf, MTF_CANDLE_LIMIT);
+        const closed = sliceClosedCandles(raw, tf);
+        const candles = enrichCandles((closed.length ? closed : raw.slice(0, -1)).map((c) => ({ ...c })));
+        return {
+          interval: tf,
+          trend: readTrendFromCandles(candles),
+          rsi: candles[candles.length - 1]?.rsi14 ?? null,
+          candles,
+        };
+      } catch {
+        return { interval: tf, trend: "mixed" as const, rsi: null, candles: [] as IndicatorCandle[] };
+      }
+    }),
+  );
 
   const mktStruct = buildMarketStructure(
     primaryCandles.map((c) => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume })),
@@ -215,6 +249,7 @@ export async function gatherMarketContext(symbol: string, interval: string): Pro
   });
 
   const mtfReads: MtfRead[] = mtfResults.map(({ interval: tf, trend, rsi }) => ({ interval: tf, trend, rsi }));
+  const htfBias = majorityHtfBias(mtfReads);
   const primaryTrendRead = readTrendFromCandles(primaryCandles);
   const agreeing = mtfReads.filter((r) => r.trend === primaryTrendRead).length;
   const mtfConfluence = mtfReads.length ? Math.round((agreeing / mtfReads.length) * 100) : 50;
@@ -228,6 +263,7 @@ export async function gatherMarketContext(symbol: string, interval: string): Pro
   const atrPctSeries = primaryCandles.map((c) => c.atrPct);
   const adxSeries = primaryCandles.map((c) => c.adx14);
   const latestAdx = adxSeries[adxSeries.length - 1] ?? null;
+  const regimeInfo = deriveRegime(primaryCandles, htfBias !== "mixed");
 
   let vwapRelation: MarketContext["vwapRelation"] = "unknown";
   if (latest.vwap != null) {
@@ -237,7 +273,7 @@ export async function gatherMarketContext(symbol: string, interval: string): Pro
 
   const rsiDiv = divergenceToLegacy(mktStruct.divergence);
 
-  const mtfDepthCandles = mtfResults
+  const mtfDepthCandles = opts.mtfDepthCandles ?? mtfResults
     .filter((r) => r.candles.length)
     .map((r) => ({ interval: r.interval, candles: r.candles }));
   const enrichedFeatures = await gatherMarketFeatures(symbol, primaryCandles, mtfDepthCandles);
@@ -259,6 +295,8 @@ export async function gatherMarketContext(symbol: string, interval: string): Pro
     ticker24h,
     volatilityState: volatilityStateFromAtr(atrPctSeries),
     trendStrength: trendStrengthFromAdx(latestAdx),
+    regime: regimeInfo.regime,
+    htfBias,
     vwapRelation,
     swingHighs: mktStruct.swingHighs.slice(-5),
     swingLows: mktStruct.swingLows.slice(-5),
@@ -284,6 +322,27 @@ export async function gatherMarketContext(symbol: string, interval: string): Pro
   };
 }
 
+export async function gatherMarketContext(symbol: string, interval: string): Promise<MarketContext> {
+  const rawPrimary = await fetchBinanceKlines(symbol, interval, PRIMARY_CANDLE_LIMIT);
+  if (!rawPrimary.length) throw new Error("No candle data returned for this symbol/interval.");
+
+  const closedPrimary = sliceClosedCandles(rawPrimary, interval);
+  const analysisCandles = closedPrimary.length ? closedPrimary : rawPrimary.slice(0, -1);
+
+  const [orderFlow, futures, ticker24h] = await Promise.all([
+    fetchOrderBookImbalance(symbol),
+    fetchFuturesContext(symbol),
+    fetchTicker24hr(symbol),
+  ]);
+
+  return buildContextFromCandles(symbol, interval, analysisCandles, {
+    orderFlow,
+    futures,
+    ticker24h,
+    rawPrimary,
+  });
+}
+
 export function buildUserMessage(ctx: MarketContext): string {
   const c = ctx.pivots.classic.pivots;
   const f = ctx.pivots.fibonacci.pivots;
@@ -299,6 +358,11 @@ MARKET:
 - 24h_volume: ${ctx.ticker24h.volume}
 - 24h_high: ${ctx.ticker24h.highPrice}
 - 24h_low: ${ctx.ticker24h.lowPrice}
+
+REGIME & GATING:
+- detected_regime: ${ctx.regime}
+- htf_bias: ${ctx.htfBias}
+- gating_rules: volatile_chop => wait; ranging => only fade within 0.5×ATR of S/R; if 2+ HTF reads contradict bias => wait; if 1 contradicts => lower confidence ~15pts.
 
 INDICATOR SERIES (last ${SERIES_WINDOW} closed candles, oldest to newest):
 - closes: ${JSON.stringify(ctx.series.closes)}

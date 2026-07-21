@@ -1,3 +1,5 @@
+// Optional screenshot helper — install puppeteer on demand:
+//   npm i --no-save puppeteer && node screenshot.cjs
 const puppeteer = require('puppeteer');
 (async () => {
   const browser = await puppeteer.launch({ headless: "new" });

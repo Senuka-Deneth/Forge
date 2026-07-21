@@ -56,9 +56,16 @@ ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 OPENROUTER_API_KEY=
 OPENROUTER_HTTP_REFERER=
 OPENROUTER_MODEL=
+CRON_SECRET=your-strong-shared-secret
 ```
 `OPENROUTER_MODEL` is optional and defaults to a free Nemotron model; a stronger model materially
 improves the quality of the generated trade plan and reasoning.
+
+**Cron secret pairing (prediction scoring):** set the same value in two places:
+1. Edge Function secret: `supabase secrets set CRON_SECRET=your-strong-shared-secret`
+2. Database setting (for `pg_cron`): `alter database postgres set app.settings.cron_secret = 'your-strong-shared-secret';`
+
+Without this pairing, `score-predictions` returns **503** (fail-closed) and the hourly scoring job will not run.
 
 Run the database migrations and serve the edge functions locally:
 ```bash

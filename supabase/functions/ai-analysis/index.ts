@@ -3,7 +3,7 @@ import { handleOptions, jsonResponse } from "../_shared/cors.ts";
 import { fetchWithTimeout, safeError } from "../_shared/http.ts";
 import { requireAuthenticatedUser, tryServiceClient } from "../_shared/auth.ts";
 import { consumeQuota } from "../_shared/rateLimit.ts";
-import { empiricalConfidence } from "../_shared/calibration.ts";
+import { empiricalConfidence, clampModelConfidence } from "../_shared/calibration.ts";
 import {
   buildUserMessage,
   gatherMarketContext,
@@ -84,8 +84,8 @@ async function logAiAnalysis(
     responsePayload?: Record<string, unknown> | null;
     setupType?: SetupType | null;
   },
-): Promise<void> {
-  const { error } = await supabase.from("ai_analysis_logs").insert({
+): Promise<string | null> {
+  const { data, error } = await supabase.from("ai_analysis_logs").insert({
     user_id: entry.userId,
     symbol: entry.symbol,
     timeframe: entry.timeframe,
@@ -96,8 +96,9 @@ async function logAiAnalysis(
     request_payload: entry.requestPayload ?? null,
     response_payload: entry.responsePayload ?? null,
     setup_type: entry.setupType ?? null,
-  });
+  }).select("id").single();
   if (error) console.error("[ai-analysis] failed to write ai_analysis_logs:", error.message);
+  return data?.id ?? null;
 }
 
 function toGatingContext(ctx: MarketContext): GatingContext {
@@ -119,28 +120,41 @@ async function fetchEmpiricalCalibration(
   supabase: SupabaseClient,
   setupType: SetupType,
 ): Promise<{ n: number; empirical_hit_rate: number } | null> {
-  const { data, error } = await supabase
+  const { data: v2data, error: v2error } = await supabase
     .from("ai_analysis_logs")
-    .select("outcome, setup_type")
+    .select("outcome, setup_type, scoring_version")
     .eq("status", "success")
     .not("evaluated_at", "is", null)
-    .in("outcome", ["target_hit", "stop_hit", "expired"])
+    .in("outcome", ["target_hit", "stop_hit", "expired", "no_fill"])
+    .eq("scoring_version", 2)
+    .limit(500);
+  const useV2 = !v2error && (v2data?.length ?? 0) >= 20;
+
+  const { data, error } = await supabase
+    .from("ai_analysis_logs")
+    .select("outcome, setup_type, scoring_version")
+    .eq("status", "success")
+    .not("evaluated_at", "is", null)
+    .in("outcome", ["target_hit", "stop_hit", "expired", "no_fill"])
+    .order("created_at", { ascending: false })
     .limit(500);
   if (error || !data?.length) return null;
 
-  const rows = data as Array<{ outcome: string | null; setup_type: string | null }>;
+  const rows = (useV2
+    ? (v2data ?? [])
+    : data) as Array<{ outcome: string | null; setup_type: string | null }>;
   const globalWins = rows.filter((r) => r.outcome === "target_hit").length;
   const globalDecided = rows.filter((r) => r.outcome === "target_hit" || r.outcome === "stop_hit").length;
   const globalRate = globalDecided > 0 ? globalWins / globalDecided : 0.5;
 
   const setupRows = rows.filter((r) => r.setup_type === setupType);
   const hits = setupRows.filter((r) => r.outcome === "target_hit").length;
-  const n = setupRows.length;
-  if (!n) return null;
+  const decided = setupRows.filter((r) => r.outcome === "target_hit" || r.outcome === "stop_hit").length;
+  if (!decided) return null;
 
   return {
-    n,
-    empirical_hit_rate: empiricalConfidence(hits, n, globalRate) / 100,
+    n: decided,
+    empirical_hit_rate: empiricalConfidence(hits, decided, globalRate) / 100,
   };
 }
 
@@ -154,7 +168,30 @@ function attachEmpiricalConfidence(
   if (!tradePlan || typeof tradePlan !== "object") return;
   tradePlan.empirical_confidence = Number((calibration.empirical_hit_rate * 100).toFixed(1));
   const pct = (calibration.empirical_hit_rate * 100).toFixed(1);
-  tradePlan.rationale = `${tradePlan.rationale} This setup type has hit ${pct}% over ${calibration.n} scored instances — don't report confidence far above this without stating why.`;
+  tradePlan.rationale = `${tradePlan.rationale} This setup type has hit ${pct}% over ${calibration.n} decided instances — don't report confidence far above this without stating why.`;
+
+  const summary = analysis.summary as Record<string, unknown> | undefined;
+  if (summary && typeof summary.confidence === "number") {
+    const { confidence, capped } = clampModelConfidence(summary.confidence as number, calibration);
+    summary.confidence = confidence;
+    if (capped) {
+      analysis._meta = {
+        ...(analysis._meta as Record<string, unknown>),
+        confidence_capped: true,
+      };
+    }
+  }
+  if (typeof tradePlan.confidence === "number") {
+    const { confidence, capped } = clampModelConfidence(tradePlan.confidence, calibration);
+    tradePlan.confidence = confidence;
+    if (capped) {
+      analysis._meta = {
+        ...(analysis._meta as Record<string, unknown>),
+        confidence_capped: true,
+      };
+    }
+  }
+
   analysis.trade_plan = tradePlan;
   analysis._meta = {
     ...(analysis._meta as Record<string, unknown>),
@@ -392,6 +429,7 @@ function deterministicFallback(ctx: MarketContext, source = "local-fallback") {
       data_completeness: {
         futures_available: ctx.futures.available,
         order_book_available: ctx.orderFlow.obi != null,
+        liquidation_available: ctx.liquidation.available,
       },
     },
   };
@@ -412,6 +450,169 @@ function deterministicFallback(ctx: MarketContext, source = "local-fallback") {
 // ---------------------------------------------------------------------------
 // Prompt construction
 // ---------------------------------------------------------------------------
+
+const enumProp = (values: string[]) => ({ type: "string", enum: values });
+
+const ANALYSIS_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    summary: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        primary_trend: enumProp(["bullish", "bearish", "sideways"]),
+        momentum: enumProp(["strong_bullish", "bullish", "neutral", "bearish", "strong_bearish"]),
+        phase: enumProp(["accumulation", "markup", "distribution", "markdown", "consolidation"]),
+        confidence: { type: "integer", minimum: 0, maximum: 100 },
+        bias: enumProp(["long", "short", "neutral"]),
+        reasoning: { type: "string" },
+      },
+      required: ["primary_trend", "momentum", "phase", "confidence", "bias", "reasoning"],
+    },
+    indicators: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        rsi: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            state: enumProp(["overbought", "bullish_zone", "neutral", "bearish_zone", "oversold"]),
+            divergence: enumProp(["bullish", "bearish", "none"]),
+            signal: { type: "string" },
+          },
+          required: ["state", "divergence", "signal"],
+        },
+        macd: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            state: enumProp(["bullish_crossover", "bearish_crossover", "bullish_momentum", "bearish_momentum"]),
+            signal: { type: "string" },
+          },
+          required: ["state", "signal"],
+        },
+        ema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            alignment: enumProp(["bullish", "bearish", "mixed"]),
+            price_vs_ema20: enumProp(["above", "below", "at"]),
+            price_vs_ema50: enumProp(["above", "below", "at"]),
+            signal: { type: "string" },
+          },
+          required: ["alignment", "price_vs_ema20", "price_vs_ema50", "signal"],
+        },
+      },
+      required: ["rsi", "macd", "ema"],
+    },
+    pivot_analysis: { type: "object", additionalProperties: false, properties: {}, required: [] },
+    structure: { type: "object", additionalProperties: false, properties: {}, required: [] },
+    order_flow: { type: "object", additionalProperties: false, properties: {}, required: [] },
+    trade_logic: { type: "object", additionalProperties: false, properties: {}, required: [] },
+    anomalies: { type: "array", items: { type: "object" } },
+    market_regime: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        volatility: enumProp(["low", "medium", "high"]),
+        trend_strength: { type: "integer", minimum: 0, maximum: 100 },
+        is_trending: { type: "boolean" },
+        regime: enumProp(["trending", "ranging", "volatile_chop", "breakout", "reversal"]),
+      },
+      required: ["volatility", "trend_strength", "is_trending", "regime"],
+    },
+    trade_plan: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        bias: enumProp(["long", "short", "wait"]),
+        entry_zone: {
+          anyOf: [
+            { type: "null" },
+            {
+              type: "object",
+              additionalProperties: false,
+              properties: { low: { type: "number" }, high: { type: "number" } },
+              required: ["low", "high"],
+            },
+          ],
+        },
+        stop_loss: { anyOf: [{ type: "null" }, { type: "number" }] },
+        targets: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              label: { type: "string" },
+              price: { type: "number" },
+              risk_reward: { anyOf: [{ type: "null" }, { type: "number" }] },
+            },
+            required: ["label", "price", "risk_reward"],
+          },
+        },
+        risk_reward_summary: { type: "string" },
+        confidence: { type: "integer", minimum: 0, maximum: 100 },
+        rationale: { type: "string" },
+      },
+      required: ["bias", "entry_zone", "stop_loss", "targets", "risk_reward_summary", "confidence", "rationale"],
+    },
+  },
+  required: ["summary", "indicators", "pivot_analysis", "structure", "order_flow", "trade_logic", "anomalies", "market_regime", "trade_plan"],
+};
+
+async function callOpenRouter(apiKey: string, ctx: MarketContext): Promise<Response> {
+  const baseBody = {
+    model: MODEL,
+    messages: [
+      { role: "system", content: buildSystemPrompt() },
+      { role: "user", content: buildUserMessage(ctx) },
+    ],
+    temperature: 0,
+    max_tokens: 3000,
+  };
+
+  const schemaBody = {
+    ...baseBody,
+    response_format: {
+      type: "json_schema",
+      json_schema: { name: "forge_analysis", strict: true, schema: ANALYSIS_JSON_SCHEMA },
+    },
+  };
+
+  let response = await fetchWithTimeout(OPENROUTER_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": Deno.env.get("OPENROUTER_HTTP_REFERER") ?? "https://supabase.com",
+      "X-Title": "Forge",
+    },
+    body: JSON.stringify(schemaBody),
+  }, { timeoutMs: 25000, retries: 1 });
+
+  if (response.status === 400) {
+    const text = await response.text();
+    if (text.includes("response_format")) {
+      response = await fetchWithTimeout(OPENROUTER_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": Deno.env.get("OPENROUTER_HTTP_REFERER") ?? "https://supabase.com",
+          "X-Title": "Forge",
+        },
+        body: JSON.stringify({ ...baseBody, response_format: { type: "json_object" } }),
+      }, { timeoutMs: 25000, retries: 1 });
+    } else {
+      return new Response(text, { status: 400 });
+    }
+  }
+
+  return response;
+}
 
 function buildSystemPrompt(): string {
   return `You are an elite quantitative trading analyst and risk manager helping a trader decide whether, and how, to enter a position.
@@ -444,6 +645,8 @@ Reasoning rules:
   bullish if price > EMA20 > EMA50, bearish if price < EMA20 < EMA50, otherwise mixed.
 - If futures or order-book data is unavailable (null), say so rather than inventing a reading, and
   do not let its absence be the sole driver of confidence.
+- Liquidation cluster data is an estimated model output (not measured on-chain). Use it as weak
+  confluence only — never as a primary driver of bias or confidence.
 - Keep every field data-grounded. Never fabricate values for inputs that were not provided.`;
 }
 
@@ -487,21 +690,21 @@ function normalizeModelOutput(parsed: Record<string, unknown>, ctx: MarketContex
 
   const validatedIndicators = {
     rsi: {
-      value: safeFloat(rsiObj.value, baseIndicators.rsi.value as number | null),
+      value: baseIndicators.rsi.value as number | null,
       state: asEnum(rsiObj.state, new Set(["overbought", "bullish_zone", "neutral", "bearish_zone", "oversold"]), baseIndicators.rsi.state as string),
       divergence: asEnum(rsiObj.divergence, new Set(["bullish", "bearish", "none"]), baseIndicators.rsi.divergence as string),
       signal: String(rsiObj.signal ?? baseIndicators.rsi.signal),
     },
     macd: {
-      macd_line: safeFloat(macdObj.macd_line, baseIndicators.macd.macd_line as number | null),
-      signal_line: safeFloat(macdObj.signal_line, baseIndicators.macd.signal_line as number | null),
-      histogram: safeFloat(macdObj.histogram, baseIndicators.macd.histogram as number | null),
+      macd_line: baseIndicators.macd.macd_line as number | null,
+      signal_line: baseIndicators.macd.signal_line as number | null,
+      histogram: baseIndicators.macd.histogram as number | null,
       state: asEnum(macdObj.state, new Set(["bullish_crossover", "bearish_crossover", "bullish_momentum", "bearish_momentum"]), baseIndicators.macd.state as string),
       signal: String(macdObj.signal ?? baseIndicators.macd.signal),
     },
     ema: {
-      ema20: safeFloat(emaObj.ema20, baseIndicators.ema.ema20 as number | null),
-      ema50: safeFloat(emaObj.ema50, baseIndicators.ema.ema50 as number | null),
+      ema20: baseIndicators.ema.ema20 as number | null,
+      ema50: baseIndicators.ema.ema50 as number | null,
       alignment: asEnum(emaObj.alignment, new Set(["bullish", "bearish", "mixed"]), baseIndicators.ema.alignment as string),
       price_vs_ema20: asEnum(emaObj.price_vs_ema20, new Set(["above", "below", "at"]), baseIndicators.ema.price_vs_ema20 as string),
       price_vs_ema50: asEnum(emaObj.price_vs_ema50, new Set(["above", "below", "at"]), baseIndicators.ema.price_vs_ema50 as string),
@@ -524,7 +727,7 @@ function normalizeModelOutput(parsed: Record<string, unknown>, ctx: MarketContex
     .filter((c) => c.price != null);
 
   const validatedPivotAnalysis = {
-    pp: safeFloat(pivotAnalysis.pp, basePivotAnalysis.pp as number | null),
+    pp: basePivotAnalysis.pp as number | null,
     current_zone: String(pivotAnalysis.current_zone ?? basePivotAnalysis.current_zone),
     session_bias: asEnum(pivotAnalysis.session_bias, new Set(["bullish", "bearish", "neutral"]), basePivotAnalysis.session_bias as string),
     nearest_pivot_resistance: nearestResistance,
@@ -677,6 +880,7 @@ function normalizeModelOutput(parsed: Record<string, unknown>, ctx: MarketContex
       data_completeness: {
         futures_available: ctx.futures.available,
         order_book_available: ctx.orderFlow.obi != null,
+        liquidation_available: ctx.liquidation.available,
       },
     },
   };
@@ -735,6 +939,14 @@ Deno.serve(async (req) => {
 
     const cacheKey = `${symbol}:${interval}`;
 
+    const cached = await readAnalysisCache(supabase, cacheKey);
+    if (cached) {
+      return jsonResponse(req, {
+        success: true,
+        analysis: { ...cached, _meta: { ...(cached._meta as Record<string, unknown>), cached: true } },
+      });
+    }
+
     const quota = await consumeQuota(supabase, userId, RATE_LIMIT_WINDOW_MS, RATE_LIMIT_MAX_CALLS, "ai_analysis");
     if (!quota.ok) {
       if (quota.reason === "unavailable") {
@@ -742,14 +954,6 @@ Deno.serve(async (req) => {
       }
       await logAiAnalysis(supabase, { userId, symbol, timeframe: interval, model: MODEL, status: "rate_limited", latencyMs: Date.now() - started });
       return jsonResponse(req, { success: false, error: "Too many AI analysis requests. Please wait a few minutes and try again." }, 429);
-    }
-
-    const cached = await readAnalysisCache(supabase, cacheKey);
-    if (cached) {
-      return jsonResponse(req, {
-        success: true,
-        analysis: { ...cached, _meta: { ...(cached._meta as Record<string, unknown>), cached: true } },
-      });
     }
 
     const apiKey = Deno.env.get("OPENROUTER_API_KEY");
@@ -773,47 +977,7 @@ Deno.serve(async (req) => {
       },
     };
 
-    const response = await fetchWithTimeout(OPENROUTER_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": Deno.env.get("OPENROUTER_HTTP_REFERER") ?? "https://supabase.com",
-        "X-Title": "Forge",
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        messages: [
-          { role: "system", content: buildSystemPrompt() },
-          { role: "user", content: buildUserMessage(ctx) },
-        ],
-        temperature: 0,
-        max_tokens: 3000,
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "forge_analysis",
-            strict: true,
-            schema: {
-              type: "object",
-              additionalProperties: true,
-              properties: {
-                summary: { type: "object" },
-                indicators: { type: "object" },
-                pivot_analysis: { type: "object" },
-                structure: { type: "object" },
-                order_flow: { type: "object" },
-                trade_logic: { type: "object" },
-                anomalies: { type: "array" },
-                market_regime: { type: "object" },
-                trade_plan: { type: "object" },
-              },
-              required: ["trade_plan", "summary", "indicators"],
-            },
-          },
-        },
-      }),
-    }, { timeoutMs: 25000, retries: 1 });
+    const response = await callOpenRouter(apiKey, ctx);
 
     if (response.status === 429) {
       await logAiAnalysis(supabase, { userId, symbol, timeframe: interval, model: MODEL, status: "error", latencyMs: Date.now() - started, errorMessage: "OpenRouter rate limit", requestPayload });
@@ -841,10 +1005,9 @@ Deno.serve(async (req) => {
     const calibration = await fetchEmpiricalCalibration(supabase, setupType);
     attachEmpiricalConfidence(analysis as Record<string, unknown>, calibration, setupType);
     const latencyMs = Date.now() - started;
-    analysis._meta = { ...analysis._meta, latency_ms: latencyMs };
 
     await writeAnalysisCache(supabase, cacheKey, analysis as Record<string, unknown>);
-    await logAiAnalysis(supabase, {
+    const analysisId = await logAiAnalysis(supabase, {
       userId,
       symbol,
       timeframe: interval,
@@ -855,12 +1018,19 @@ Deno.serve(async (req) => {
       responsePayload: analysis as Record<string, unknown>,
       setupType,
     });
+    analysis._meta = {
+      ...analysis._meta,
+      analysis_id: analysisId,
+      latency_ms: latencyMs,
+      confluence_score: ctx.confluenceScore,
+      confluence_breakdown: ctx.confluenceBreakdown,
+    };
 
     return jsonResponse(req, { success: true, analysis });
   } catch (error) {
     const latencyMs = Date.now() - started;
     const errorMessage = error instanceof Error ? error.message : String(error);
-    await logAiAnalysis(supabase, { userId, symbol: symbol || null, timeframe: interval || null, model: MODEL, status: "fallback", latencyMs, errorMessage });
+    const fallbackAnalysisId = await logAiAnalysis(supabase, { userId, symbol: symbol || null, timeframe: interval || null, model: MODEL, status: "fallback", latencyMs, errorMessage });
 
     // Reuse the context already gathered in the try block when the failure happened after that
     // point (e.g. OpenRouter/JSON parsing) instead of re-fetching all market data. Only re-fetch
@@ -868,7 +1038,9 @@ Deno.serve(async (req) => {
     try {
       const ctx = ctxForFallback ?? (symbol && interval ? await gatherMarketContext(symbol, interval) : null);
       if (ctx) {
-        return jsonResponse(req, { success: true, analysis: deterministicFallback(ctx, `fallback: ${errorMessage}`) });
+        const fallback = deterministicFallback(ctx, `fallback: ${errorMessage}`);
+        fallback._meta = { ...(fallback._meta as Record<string, unknown>), analysis_id: fallbackAnalysisId };
+        return jsonResponse(req, { success: true, analysis: fallback });
       }
     } catch { /* fall through to hard error below */ }
 

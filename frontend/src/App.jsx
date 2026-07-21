@@ -7,6 +7,7 @@ import AnalysisPanel from './components/AnalysisPanel'
 import AIAnalysisPanel from './components/AIAnalysisPanel'
 import AccuracyPanel from './components/AccuracyPanel'
 import EducationPanel from './components/EducationPanel'
+import JournalPanel from './components/JournalPanel'
 import { useAuth } from './hooks/useAuth'
 import {
   EDGE_FUNCTION_UNAVAILABLE_MESSAGE,
@@ -19,7 +20,7 @@ import {
   DEFAULT_CHART_PREFERENCES,
   sanitizePreferences,
 } from './utils/userPreferences'
-import { patchLastCandleIndicators, extractClosedIndicatorState } from './utils/incrementalIndicators'
+import { patchLastCandleIndicators, extractClosedIndicatorState, computeSeriesIndicators } from './utils/incrementalIndicators'
 
 const COMMON_QUOTES = ['USDT', 'BUSD', 'BTC', 'ETH', 'FDUSD']
 const BINANCE_KLINES_URL = 'https://api.binance.com/api/v3/klines'
@@ -75,83 +76,6 @@ function initTheme() {
   return saved
 }
 
-function round6(value) {
-  return value == null ? null : Number(value.toFixed(6))
-}
-
-function calculateEMA(values, period) {
-  if (!values.length) return []
-  if (period <= 0) return values.map(() => null)
-  if (values.length < period) return values.map(() => null)
-
-  const ema = values.map(() => null)
-  const multiplier = 2 / (period + 1)
-
-  const seed = values.slice(0, period).reduce((a, b) => a + b, 0) / period
-  ema[period - 1] = seed
-
-  for (let i = period; i < values.length; i++) {
-    ema[i] = (values[i] - ema[i - 1]) * multiplier + ema[i - 1]
-  }
-
-  return ema
-}
-
-function calculateRSI(values, period = 14) {
-  if (values.length < 2) return Array(values.length).fill(null)
-
-  const gains = [0]
-  const losses = [0]
-
-  for (let i = 1; i < values.length; i++) {
-    const change = values[i] - values[i - 1]
-    gains.push(Math.max(change, 0))
-    losses.push(Math.abs(Math.min(change, 0)))
-  }
-
-  const rsi = Array(values.length).fill(null)
-  if (values.length <= period) return rsi
-
-  let avgGain = gains.slice(1, period + 1).reduce((a, b) => a + b, 0) / period
-  let avgLoss = losses.slice(1, period + 1).reduce((a, b) => a + b, 0) / period
-
-  rsi[period] = avgLoss === 0 ? 100 : 100 - (100 / (1 + avgGain / avgLoss))
-
-  for (let i = period + 1; i < values.length; i++) {
-    avgGain = ((avgGain * (period - 1)) + gains[i]) / period
-    avgLoss = ((avgLoss * (period - 1)) + losses[i]) / period
-    rsi[i] = avgLoss === 0 ? 100 : 100 - (100 / (1 + avgGain / avgLoss))
-  }
-
-  return rsi
-}
-
-function calculateMACD(values, fast = 12, slow = 26, signal = 9) {
-  const fastEma = calculateEMA(values, fast)
-  const slowEma = calculateEMA(values, slow)
-
-  const macd = values.map((_, i) => (
-    fastEma[i] != null && slowEma[i] != null ? fastEma[i] - slowEma[i] : null
-  ))
-
-  const compactMacd = macd.filter((v) => v != null)
-  const compactSignal = calculateEMA(compactMacd, signal)
-
-  const signalLine = values.map(() => null)
-  const hist = values.map(() => null)
-  let compactIdx = 0
-
-  for (let i = 0; i < macd.length; i++) {
-    if (macd[i] == null) continue
-    const sig = compactSignal[compactIdx]
-    signalLine[i] = sig
-    hist[i] = sig != null ? macd[i] - sig : null
-    compactIdx += 1
-  }
-
-  return { macd, signalLine, hist }
-}
-
 function validateBinanceSymbol(input) {
   const cleaned = input.trim().toUpperCase()
 
@@ -165,24 +89,6 @@ function validateBinanceSymbol(input) {
   }
 
   return ''
-}
-
-function enrichCandles(candles) {
-  const closes = candles.map((c) => c.close)
-  const ema20 = calculateEMA(closes, 20)
-  const ema50 = calculateEMA(closes, 50)
-  const rsi14 = calculateRSI(closes, 14)
-  const { macd, signalLine, hist } = calculateMACD(closes)
-
-  return candles.map((c, i) => ({
-    ...c,
-    ema20: round6(ema20[i]),
-    ema50: round6(ema50[i]),
-    rsi14: round6(rsi14[i]),
-    macd: round6(macd[i]),
-    macdSignal: round6(signalLine[i]),
-    macdHist: round6(hist[i]),
-  }))
 }
 
 async function fetchBinanceCandles(symbol, interval, limit) {
@@ -234,7 +140,7 @@ async function fetchBinanceCandles(symbol, interval, limit) {
     )).slice(-limit)
 
     if (!candles.length) throw new Error('No candle data returned for this symbol and interval.')
-    return enrichCandles(candles)
+    return computeSeriesIndicators(candles)
   } catch (err) {
     if (err?.name === 'AbortError') {
       throw new Error('Binance request timed out')
@@ -410,7 +316,7 @@ export default function App() {
   const currentUserId = user?.id || 'guest'
   const [symbolInput, setSymbolInput] = useState('BTCUSDT')
   const [symbol, setSymbol] = useState('BTCUSDT')
-  const [interval, setInterval] = useState('4h')
+  const [chartInterval, setChartInterval] = useState('4h')
 
   const [candles, setCandles] = useState([])
   const [loading, setLoading] = useState(false)
@@ -421,7 +327,7 @@ export default function App() {
   const getInitialTab = () => {
     const params = new URLSearchParams(window.location.search);
     const tabName = params.get('tab');
-    return tabName && ['dashboard', 'analysis', 'learning'].includes(tabName) ? tabName : 'dashboard';
+    return tabName && ['dashboard', 'analysis', 'learning', 'journal'].includes(tabName) ? tabName : 'dashboard';
   };
   const [activeTab, setActiveTabState] = useState(getInitialTab);
 
@@ -442,6 +348,7 @@ export default function App() {
   const [aiLoading, setAILoading] = useState(false)
   const [aiError, setAIError] = useState('')
   const lastAICallRef = useRef(0)
+  const loadIdRef = useRef(0)
   const skipIntervalReloadRef = useRef(true)
   const intervalReloadTimerRef = useRef(null)
   const lastClosedIndicatorStateRef = useRef(null)
@@ -457,16 +364,28 @@ export default function App() {
   const reconnectAttemptsRef = useRef(0)
   const reconnectTimeoutRef = useRef(null)
   const watchdogTimeoutRef = useRef(null)
-  const wsParamsRef = useRef({ symbol: null, interval: null })
+  const wsParamsRef = useRef({ symbol: null, chartInterval: null })
 
   const latestCandle = candles.length ? candles[candles.length - 1] : null
   const latestPrice = latestCandle?.close ?? null
-  const previousPrice = candles.length > 1 ? candles[candles.length - 2].close : null
 
   const priceChange = useMemo(() => {
-    if (latestPrice == null || previousPrice == null || previousPrice === 0) return null
-    return ((latestPrice - previousPrice) / previousPrice) * 100
-  }, [latestPrice, previousPrice])
+    if (!candles.length || latestPrice == null) return null
+    const latest = candles[candles.length - 1]
+    const targetTime = latest.time - 86400
+    let closest = candles[0]
+    let minDiff = Math.abs(closest.time - targetTime)
+    for (const candle of candles) {
+      const diff = Math.abs(candle.time - targetTime)
+      if (diff < minDiff) {
+        minDiff = diff
+        closest = candle
+      }
+    }
+    const basePrice = closest.close
+    if (basePrice == null || basePrice === 0) return null
+    return ((latestPrice - basePrice) / basePrice) * 100
+  }, [candles, latestPrice])
 
   const clearReconnectTimer = () => {
     if (reconnectTimeoutRef.current) {
@@ -483,7 +402,7 @@ export default function App() {
   }
 
   const closeSocket = () => {
-    wsParamsRef.current = { symbol: null, interval: null }
+    wsParamsRef.current = { symbol: null, chartInterval: null }
     clearReconnectTimer()
     clearWatchdog()
 
@@ -516,8 +435,8 @@ export default function App() {
       }
     }
 
-    const { symbol: pendingSymbol, interval: pendingInterval } = wsParamsRef.current
-    if (!pendingSymbol || !pendingInterval) return
+    const { symbol: pendingSymbol, chartInterval: pendingChartInterval } = wsParamsRef.current
+    if (!pendingSymbol || !pendingChartInterval) return
 
     const attempt = reconnectAttemptsRef.current
     reconnectAttemptsRef.current = attempt + 1
@@ -528,26 +447,12 @@ export default function App() {
 
     clearReconnectTimer()
     reconnectTimeoutRef.current = setTimeout(() => {
-      startWebSocket(pendingSymbol, pendingInterval)
+      startWebSocket(pendingSymbol, pendingChartInterval)
     }, delayMs)
   }
 
   const recalculateIndicators = (data) => {
-    const closes = data.map((c) => c.close)
-    const ema20 = calculateEMA(closes, 20)
-    const ema50 = calculateEMA(closes, 50)
-    const rsi14 = calculateRSI(closes, 14)
-    const { macd, signalLine, hist } = calculateMACD(closes)
-
-    const result = data.map((c, i) => ({
-      ...c,
-      ema20: ema20[i],
-      ema50: ema50[i],
-      rsi14: rsi14[i],
-      macd: macd[i],
-      macdSignal: signalLine[i],
-      macdHist: hist[i]
-    }))
+    const result = computeSeriesIndicators(data)
     lastClosedIndicatorStateRef.current = extractClosedIndicatorState(result)
     return result
   }
@@ -567,7 +472,7 @@ export default function App() {
       }
     }
 
-    wsParamsRef.current = { symbol: selectedSymbol, interval: selectedInterval }
+    wsParamsRef.current = { symbol: selectedSymbol, chartInterval: selectedInterval }
 
     const streamName = `${selectedSymbol.toLowerCase()}@kline_${selectedInterval}`
     const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${streamName}`)
@@ -749,7 +654,7 @@ export default function App() {
       try {
         const pivotResponse = await fetchPivotData(
           symbol,
-          interval,
+          chartInterval,
           candles,
           chartPreferences.pivotType || 'traditional',
           chartPreferences,
@@ -775,7 +680,7 @@ export default function App() {
     chartPreferences.pivotsBack,
     chartPreferences.showHistoricalPivots,
     symbol,
-    interval,
+    chartInterval,
   ])
 
   const runAIAnalysis = async (currentCandles = null) => {
@@ -795,7 +700,7 @@ export default function App() {
     setAIError('')
 
     try {
-      const data = await invokeFunction('ai-analysis', { symbol, interval })
+      const data = await invokeFunction('ai-analysis', { symbol, interval: chartInterval })
       if (data?.success) {
         setAIAnalysis(data.analysis)
       } else {
@@ -808,7 +713,7 @@ export default function App() {
     }
   }
 
-  const loadChart = async (selectedSymbol = symbol, selectedInterval = interval) => {
+  const loadChart = async (selectedSymbol = symbol, selectedInterval = chartInterval) => {
     const cleaned = selectedSymbol.trim().toUpperCase()
     const validationError = validateBinanceSymbol(cleaned)
 
@@ -816,6 +721,8 @@ export default function App() {
       setError(validationError)
       return
     }
+
+    const loadId = ++loadIdRef.current
 
     setLoading(true)
     setError('')
@@ -826,23 +733,22 @@ export default function App() {
 
     try {
       const data = await fetchMarketCandles(cleaned, selectedInterval, 4000)
+      if (loadId !== loadIdRef.current) return
 
       setCandles(data)
       setSymbol(cleaned)
-      setInterval(selectedInterval)
+      setChartInterval(selectedInterval)
       setStatus('Historical candles loaded')
       startWebSocket(cleaned, selectedInterval)
       setAnalysis(buildTechnicalAnalysis(data, cleaned, selectedInterval))
-      fetchPivotData(cleaned, selectedInterval, data, chartPreferences.pivotType || 'traditional', chartPreferences).then((pivotResponse) => {
-        if (pivotResponse?.success) setPivotData({ ...pivotResponse, symbol: cleaned })
-      }).catch((err) => {
-        console.error('Failed to fetch pivots:', err)
-      })
     } catch (err) {
+      if (loadId !== loadIdRef.current) return
       setError(err.message || 'Something went wrong while loading data.')
       setStatus('Load failed')
     } finally {
-      setLoading(false)
+      if (loadId === loadIdRef.current) {
+        setLoading(false)
+      }
     }
   }
 
@@ -860,10 +766,10 @@ export default function App() {
     }
     clearTimeout(intervalReloadTimerRef.current)
     intervalReloadTimerRef.current = setTimeout(() => {
-      loadChart(symbol, interval)
+      loadChart(symbol, chartInterval)
     }, 300)
     return () => clearTimeout(intervalReloadTimerRef.current)
-  }, [interval])
+  }, [chartInterval])
 
   const toggleTheme = () => {
     const currentTheme = document.body.getAttribute('data-theme') || 'dark'
@@ -913,6 +819,10 @@ export default function App() {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
             <span className="nav-item-text">Learning</span>
           </button>
+          <button type="button" className={`nav-item ${activeTab === 'journal' ? 'active' : ''}`} onClick={() => setActiveTab('journal')}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path><line x1="8" y1="7" x2="16" y2="7"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+            <span className="nav-item-text">Journal</span>
+          </button>
         </nav>
 
         <div className="sidebar-footer">
@@ -933,7 +843,7 @@ export default function App() {
       )}
 
       <div className="main-content" style={{ padding: activeTab === 'learning' ? 0 : undefined }}>
-        {activeTab !== 'learning' && !isChartMaximized && (
+        {activeTab !== 'learning' && activeTab !== 'journal' && !isChartMaximized && (
           <>
             <HeaderControls
               isLive={isLive}
@@ -960,7 +870,7 @@ export default function App() {
               <ChartPanelErrorBoundary>
                 <ChartPanel
                   symbol={symbol}
-                  interval={interval}
+                  interval={chartInterval}
                   candles={candles}
                   loading={loading}
                   error={error}
@@ -971,7 +881,7 @@ export default function App() {
                   onChartPreferencesChange={setChartPreferences}
                   symbolInput={symbolInput}
                   setSymbolInput={setSymbolInput}
-                  onIntervalChange={setInterval}
+                  onIntervalChange={setChartInterval}
                   onLoadChart={loadChart}
                   isMaximized={isChartMaximized}
                   setIsMaximized={setIsChartMaximized}
@@ -982,7 +892,7 @@ export default function App() {
             <div className="analysis-column-fullwidth">
               <AnalysisPanel
                 symbol={symbol}
-                interval={interval}
+                interval={chartInterval}
                 analysis={analysis}
                 loading={loading}
                 error={error}
@@ -1016,6 +926,21 @@ export default function App() {
             transition={{ duration: 0.22, ease: 'easeOut' }}
           >
             <EducationPanel />
+          </m.div>
+        )}
+
+        {activeTab === 'journal' && (
+          <m.div
+            className="dashboard-grid"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.22, ease: 'easeOut' }}
+          >
+            <JournalPanel
+              symbol={symbol}
+              latestPrice={latestPrice}
+              aiAnalysis={aiAnalysis}
+            />
           </m.div>
         )}
 

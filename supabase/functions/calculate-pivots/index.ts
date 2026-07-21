@@ -1,6 +1,11 @@
 import { handleOptions, jsonResponse } from "../_shared/cors.ts";
 import { safeError } from "../_shared/http.ts";
 import { requireAuthenticatedUser, tryServiceClient } from "../_shared/auth.ts";
+import { consumeQuota } from "../_shared/rateLimit.ts";
+
+const MAX_CANDLES = 6000;
+const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
+const RATE_LIMIT_MAX_CALLS = 60;
 import {
   ALLOWED_INTERVALS,
   analyzePriceVsPivots,
@@ -28,13 +33,27 @@ Deno.serve(async (req) => {
     return jsonResponse(req, { success: false, error: authResult.error, error_code: authResult.error_code }, authResult.status);
   }
 
-  try {
-    const body = await req.json();
-    const candles = body.candles;
-    const timeframe = String(body.timeframe ?? body.interval ?? "4h").trim();
+  const quota = await consumeQuota(clientResult.client, authResult.userId, RATE_LIMIT_WINDOW_MS, RATE_LIMIT_MAX_CALLS, "calculate_pivots");
+  if (!quota.ok) {
+    if (quota.reason === "unavailable") {
+      return jsonResponse(req, { success: false, error: "Rate limit check unavailable. Please try again shortly." }, 503);
+    }
+    return jsonResponse(req, { success: false, error: "Too many pivot requests. Please wait a few minutes and try again." }, 429);
+  }
 
-    if (!Array.isArray(candles) || candles.length < 2) {
+  try {
+    const body = await req.json().catch(() => null);
+    const candles = body?.candles;
+    const timeframe = String(body?.timeframe ?? body?.interval ?? "4h").trim();
+
+    if (!Array.isArray(candles)) {
       return jsonResponse(req, { success: false, error: "candles array is required." }, 400);
+    }
+    if (candles.length < 2) {
+      return jsonResponse(req, { success: false, error: "candles array is required." }, 400);
+    }
+    if (candles.length > MAX_CANDLES) {
+      return jsonResponse(req, { success: false, error: `candles array exceeds maximum of ${MAX_CANDLES}.` }, 400);
     }
     if (!ALLOWED_INTERVALS.has(timeframe)) {
       return jsonResponse(req, { success: false, error: "Invalid interval." }, 400);

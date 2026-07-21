@@ -44,9 +44,12 @@ function makeTrendingSeries(): Candle[] {
   return enrichCandles(candles);
 }
 
-Deno.test("deriveRegime detects trending on strong directional series", () => {
-  const regime = deriveRegime(makeTrendingSeries(), true);
-  assertEquals(regime.regime === "trending" || regime.regime === "ranging", true);
+Deno.test("deriveRegime downgrades trending without HTF alignment", () => {
+  const regimeAligned = deriveRegime(makeTrendingSeries(), true);
+  const regimeMisaligned = deriveRegime(makeTrendingSeries(), false);
+  if (regimeAligned.regime === "trending") {
+    assertEquals(regimeMisaligned.regime, "ranging");
+  }
 });
 
 Deno.test("applyRegimeGating forces wait in volatile chop", () => {

@@ -38,13 +38,13 @@ export function deriveRegime(
 
   let regime: MarketRegime = "ranging";
   if (adx != null && adx >= 25 && prevAdx != null && adx >= prevAdx) {
-    regime = "trending";
+    regime = htfAligned ? "trending" : "ranging";
   } else if (adx != null && adx < 20 && bbwPctile != null && bbwPctile < 30) {
     regime = "ranging";
   } else if (atrPctile != null && atrPctile > 80 && adx != null && adx < 25) {
     regime = "volatile_chop";
   } else if (adx != null && adx >= 25) {
-    regime = "trending";
+    regime = htfAligned ? "trending" : "ranging";
   }
 
   return { regime, adx, atrPctile, bbwPctile, htfAligned };

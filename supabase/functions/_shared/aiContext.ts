@@ -14,8 +14,10 @@ import {
   buildMarketStructure,
   computeSignalAgreement,
   derivePrimaryTrend,
+  detectMacdDivergence,
   type SrZone,
 } from "./marketStructure.ts";
+import { classifyMarketStructure } from "./indicators.ts";
 import {
   buildPivotDataFromHtf,
   fetchBinanceHtfKlines,
@@ -27,10 +29,12 @@ import {
 import { gatherMarketFeatures, type MarketFeatures } from "./features.ts";
 import { enrichCandles } from "./indicators.ts";
 import { deriveRegime, type MarketRegime } from "./regime.ts";
+import { fetchLiquidationContext, type LiquidationContext } from "./liquidation.ts";
 
 export const PRIMARY_CANDLE_LIMIT = 500;
 export const MTF_CANDLE_LIMIT = 150;
 export const SERIES_WINDOW = 12;
+const DAILY_PLUS_INTERVALS = new Set(["1d", "3d", "1w", "1M"]);
 
 export type MtfRead = {
   interval: string;
@@ -62,6 +66,7 @@ export type MarketContext = {
   swingLows: Array<{ index: number; price: number; time?: number }>;
   structure: {
     breakOfStructure: "bullish" | "bearish" | "none";
+    trendBias: "uptrend" | "downtrend" | "ranging";
     lastSwingHighLabel: string;
     lastSwingLowLabel: string;
     supportZones: SrZone[];
@@ -72,18 +77,25 @@ export type MarketContext = {
   orderFlow: OrderBookImbalance;
   cvdTrend: "buying" | "selling" | "neutral";
   futures: FuturesContext;
+  liquidation: LiquidationContext;
   pivots: PivotDataResponse;
   nearestSupport: { label: string; value: number } | null;
   nearestResistance: { label: string; value: number } | null;
   mtf: MtfRead[];
   confluenceScore: number;
   signalAgreement: number;
+  confluenceBreakdown: {
+    mtf_confluence: number;
+    mtf_sample_size: number;
+    signal_agreement: number;
+  };
   features: MarketFeatures;
 };
 
 export type BuildContextOptions = {
   orderFlow?: OrderBookImbalance | null;
   futures?: FuturesContext | null;
+  liquidation?: LiquidationContext | null;
   ticker24h?: Ticker24hr | null;
   mtfDepthCandles?: Array<{ interval: string; candles: IndicatorCandle[] }>;
   rawPrimary?: Array<{ time: number; open: number; high: number; low: number; close: number; volume: number }>;
@@ -157,6 +169,12 @@ function divergenceToLegacy(type: "bullish" | "bearish" | "none"): { type: strin
   return { type: "none", description: "No significant RSI divergence." };
 }
 
+function macdDivergenceToLegacy(type: "bullish" | "bearish" | "none"): { type: string; description: string } {
+  if (type === "bullish") return { type: "bullish", description: "Filtered MACD bullish divergence detected." };
+  if (type === "bearish") return { type: "bearish", description: "Filtered MACD bearish divergence detected." };
+  return { type: "none", description: "No significant MACD divergence." };
+}
+
 const EMPTY_TICKER: Ticker24hr = {
   priceChangePercent: null,
   volume: null,
@@ -169,8 +187,26 @@ const EMPTY_ORDER_FLOW: OrderBookImbalance = { obi: null, bidVolume: 0, askVolum
 const EMPTY_FUTURES: FuturesContext = {
   available: false,
   fundingRate: null,
+  nextFundingTime: null,
   openInterest: null,
   longShortRatio: null,
+  longAccountPct: null,
+  shortAccountPct: null,
+  markPrice: null,
+  indexPrice: null,
+  markBasisPct: null,
+};
+
+const EMPTY_LIQUIDATION: LiquidationContext = {
+  available: false,
+  oiDelta1h: null,
+  oiDelta4h: null,
+  markBasisPct: null,
+  fundingRate: null,
+  longShortRatio: null,
+  pressure: "unknown",
+  estClusters: [],
+  source: "estimate",
 };
 
 export async function buildContextFromCandles(
@@ -187,6 +223,7 @@ export async function buildContextFromCandles(
 
   const orderFlow = opts.orderFlow ?? EMPTY_ORDER_FLOW;
   const futures = opts.futures ?? EMPTY_FUTURES;
+  const liquidation = opts.liquidation ?? EMPTY_LIQUIDATION;
   const ticker24h = opts.ticker24h ?? EMPTY_TICKER;
 
   const price = ticker24h.highPrice != null && ticker24h.lowPrice != null
@@ -265,6 +302,10 @@ export async function buildContextFromCandles(
   const latestAdx = adxSeries[adxSeries.length - 1] ?? null;
   const regimeInfo = deriveRegime(primaryCandles, htfBias !== "mixed");
 
+  if (DAILY_PLUS_INTERVALS.has(interval)) {
+    latest.vwap = null;
+  }
+
   let vwapRelation: MarketContext["vwapRelation"] = "unknown";
   if (latest.vwap != null) {
     const tol = Math.abs(price) * 0.0005;
@@ -272,6 +313,17 @@ export async function buildContextFromCandles(
   }
 
   const rsiDiv = divergenceToLegacy(mktStruct.divergence);
+  const macdDivType = detectMacdDivergence(
+    primaryCandles,
+    primaryCandles.map((c) => c.macd),
+  );
+  const macdDiv = macdDivergenceToLegacy(macdDivType);
+
+  const classified = classifyMarketStructure(
+    primaryCandles,
+    mktStruct.swingHighs.map((s) => ({ index: s.index, time: s.time ?? 0, price: s.price })),
+    mktStruct.swingLows.map((s) => ({ index: s.index, time: s.time ?? 0, price: s.price })),
+  );
 
   const mtfDepthCandles = opts.mtfDepthCandles ?? mtfResults
     .filter((r) => r.candles.length)
@@ -301,23 +353,30 @@ export async function buildContextFromCandles(
     swingHighs: mktStruct.swingHighs.slice(-5),
     swingLows: mktStruct.swingLows.slice(-5),
     structure: {
-      breakOfStructure: "none",
-      lastSwingHighLabel: labelSwing(mktStruct.swingHighs, "high"),
-      lastSwingLowLabel: labelSwing(mktStruct.swingLows, "low"),
+      breakOfStructure: classified.breakOfStructure,
+      trendBias: classified.trendBias,
+      lastSwingHighLabel: classified.lastSwingHighLabel ?? labelSwing(mktStruct.swingHighs, "high"),
+      lastSwingLowLabel: classified.lastSwingLowLabel ?? labelSwing(mktStruct.swingLows, "low"),
       supportZones,
       resistanceZones,
     },
     rsiDivergence: rsiDiv,
-    macdDivergence: { type: "none", description: "MACD divergence not separately filtered in this pipeline." },
+    macdDivergence: macdDiv,
     orderFlow,
     cvdTrend,
     futures,
+    liquidation,
     pivots: pivotPayload,
     nearestSupport: classicAnalysis.nearestSupport,
     nearestResistance: classicAnalysis.nearestResistance,
     mtf: mtfReads,
     confluenceScore,
     signalAgreement,
+    confluenceBreakdown: {
+      mtf_confluence: mtfConfluence,
+      mtf_sample_size: mtfReads.length,
+      signal_agreement: signalAgreement,
+    },
     features: enrichedFeatures,
   };
 }
@@ -335,18 +394,28 @@ export async function gatherMarketContext(symbol: string, interval: string): Pro
     fetchTicker24hr(symbol),
   ]);
 
-  return buildContextFromCandles(symbol, interval, analysisCandles, {
+  const ctx = await buildContextFromCandles(symbol, interval, analysisCandles, {
     orderFlow,
     futures,
     ticker24h,
     rawPrimary,
   });
+
+  const latestSwingHigh = ctx.swingHighs[ctx.swingHighs.length - 1]?.price ?? null;
+  const latestSwingLow = ctx.swingLows[ctx.swingLows.length - 1]?.price ?? null;
+  const liquidation = await fetchLiquidationContext(symbol, futures, latestSwingHigh, latestSwingLow);
+
+  return { ...ctx, liquidation };
 }
 
 export function buildUserMessage(ctx: MarketContext): string {
   const c = ctx.pivots.classic.pivots;
   const f = ctx.pivots.fibonacci.pivots;
   const t = ctx.pivots.traditional.pivots;
+
+  const vwapLine = ctx.latest.vwap != null
+    ? `- vwap: ${ctx.latest.vwap} (price is ${ctx.vwapRelation} VWAP)`
+    : "";
 
   return `Analyze this market context and return strict JSON only.
 
@@ -378,8 +447,7 @@ LATEST INDICATORS (last closed candle):
 - ema50: ${ctx.latest.ema50}
 - macd: ${JSON.stringify({ macd: ctx.latest.macd, signal: ctx.latest.macdSignal, histogram: ctx.latest.macdHist })}
 - bollinger: ${JSON.stringify({ upper: ctx.latest.bbUpper, middle: ctx.latest.bbMiddle, lower: ctx.latest.bbLower, percentB: ctx.latest.bbPercentB, bandwidth: ctx.latest.bbBandwidth })}
-- vwap: ${ctx.latest.vwap} (price is ${ctx.vwapRelation} VWAP)
-- adx14: ${ctx.latest.adx14} (+DI ${ctx.latest.plusDI14} / -DI ${ctx.latest.minusDI14})
+${vwapLine ? `${vwapLine}\n` : ""}- adx14: ${ctx.latest.adx14} (+DI ${ctx.latest.plusDI14} / -DI ${ctx.latest.minusDI14})
 - relative_volume: ${ctx.latest.relativeVolume}
 - volatility_state (ATR vs its recent median): ${ctx.volatilityState}
 - adx_trend_strength_score: ${ctx.trendStrength}
@@ -391,7 +459,10 @@ MARKET STRUCTURE (prominence-filtered swings + ATR-clustered zones):
 - nearest_resistance_zones: ${JSON.stringify(ctx.structure.resistanceZones)}
 - last_swing_high_label: ${ctx.structure.lastSwingHighLabel}
 - last_swing_low_label: ${ctx.structure.lastSwingLowLabel}
+- break_of_structure: ${ctx.structure.breakOfStructure}
+- trend_bias: ${ctx.structure.trendBias}
 - rsi_divergence: ${JSON.stringify(ctx.rsiDivergence)}
+- macd_divergence: ${JSON.stringify(ctx.macdDivergence)}
 - nearest_support: ${JSON.stringify(ctx.nearestSupport)}
 - nearest_resistance: ${JSON.stringify(ctx.nearestResistance)}
 
@@ -404,9 +475,23 @@ FUTURES POSITIONING (null fields mean no futures market / unavailable):
 - funding_rate: ${ctx.futures.fundingRate}
 - open_interest: ${ctx.futures.openInterest}
 - long_short_account_ratio: ${ctx.futures.longShortRatio}
+- mark_price: ${ctx.futures.markPrice}
+- index_price: ${ctx.futures.indexPrice}
+- mark_basis_pct: ${ctx.futures.markBasisPct}
 - oi_history: ${JSON.stringify(ctx.features.oi)}
 - funding_signal: ${JSON.stringify(ctx.features.funding)}
 - taker_buy_sell_ratio: ${JSON.stringify(ctx.features.takerRatio)}
+
+LIQUIDATION PRESSURE (estimated model output — not measured on-chain; do not over-weight):
+- available: ${ctx.liquidation.available}
+- source: ${ctx.liquidation.source}
+- oi_delta_1h_pct: ${ctx.liquidation.oiDelta1h}
+- oi_delta_4h_pct: ${ctx.liquidation.oiDelta4h}
+- mark_basis_pct: ${ctx.liquidation.markBasisPct}
+- funding_rate: ${ctx.liquidation.fundingRate}
+- long_short_ratio: ${ctx.liquidation.longShortRatio}
+- pressure: ${ctx.liquidation.pressure}
+- estimated_clusters: ${JSON.stringify(ctx.liquidation.estClusters)}
 
 VOLUME PROFILE (from last ${PRIMARY_CANDLE_LIMIT} closed candles):
 ${JSON.stringify(ctx.features.volumeProfile)}
@@ -414,7 +499,8 @@ ${JSON.stringify(ctx.features.volumeProfile)}
 MULTI-TIMEFRAME:
 - reads: ${JSON.stringify(ctx.mtf)}
 - mtf_depth (last 5 closed RSI/MACD-hist per HTF): ${JSON.stringify(ctx.features.mtfDepth)}
-- confluence_score_pct: ${ctx.confluenceScore}
+- confluence_score_pct (MTF+signal blend, NOT a probability): ${ctx.confluenceScore}
+- confluence_breakdown: ${JSON.stringify(ctx.confluenceBreakdown)}
 - signal_agreement_score (deterministic, not probability): ${ctx.signalAgreement}
 
 PIVOTS (native HTF — classic / fibonacci / traditional):

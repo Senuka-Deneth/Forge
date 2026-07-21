@@ -18,7 +18,14 @@ export default defineConfig({
       input: {
         main: path.resolve(__dirname, 'index.html'),
         welcome: path.resolve(__dirname, 'welcome.html'),
-        education: path.resolve(__dirname, 'education.html'),
+      },
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom'],
+          'lightweight-charts': ['lightweight-charts'],
+          three: ['three'],
+          'framer-motion': ['framer-motion'],
+        },
       },
     },
   },

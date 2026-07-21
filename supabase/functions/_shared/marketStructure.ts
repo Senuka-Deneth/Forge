@@ -4,6 +4,7 @@
  */
 
 import type { Candle } from "./pivotPoints.ts";
+import { calculateATR } from "./atr.ts";
 
 export type SwingPoint = {
   index: number;
@@ -25,6 +26,8 @@ export type AtrResult = {
   value: number | null;
   series: (number | null)[];
 };
+
+export { calculateATR } from "./atr.ts";
 
 export type DivergenceResult = "bullish" | "bearish" | "none";
 
@@ -55,37 +58,6 @@ export type MarketStructureResult = {
 
 function clamp(value: number, low: number, high: number): number {
   return Math.max(low, Math.min(high, value));
-}
-
-/** Wilder-smoothed ATR(14) from OHLC candles. */
-export function calculateATR(candles: Pick<Candle, "high" | "low" | "close">[], period = 14): AtrResult {
-  const series: (number | null)[] = candles.map(() => null);
-  if (candles.length < period + 1) return { value: null, series };
-
-  const tr: number[] = [];
-  for (let i = 0; i < candles.length; i++) {
-    if (i === 0) {
-      tr.push(candles[i].high - candles[i].low);
-    } else {
-      const prevClose = candles[i - 1].close;
-      tr.push(Math.max(
-        candles[i].high - candles[i].low,
-        Math.abs(candles[i].high - prevClose),
-        Math.abs(candles[i].low - prevClose),
-      ));
-    }
-  }
-
-  let atr = tr.slice(1, period + 1).reduce((a, b) => a + b, 0) / period;
-  series[period] = atr;
-
-  for (let i = period + 1; i < candles.length; i++) {
-    atr = ((atr * (period - 1)) + tr[i]) / period;
-    series[i] = atr;
-  }
-
-  const last = series[candles.length - 1];
-  return { value: last ?? null, series };
 }
 
 /** Volatility-adaptive inflection proximity threshold (fractional distance). */
@@ -268,6 +240,43 @@ export function detectRsiDivergence(
       const rsiPrev = rsi[prev.index];
       const rsiCurr = rsi[curr.index];
       if (rsiCurr != null && rsiPrev != null && rsiCurr - rsiPrev >= minRsiDelta) {
+        return "bullish";
+      }
+    }
+  }
+
+  return "none";
+}
+
+/** Detect MACD line divergence from price swing highs/lows vs MACD at those bars. */
+export function detectMacdDivergence(
+  candles: Pick<Candle, "high" | "low">[],
+  macdLine: (number | null)[],
+  opts: DivergenceOptions = {},
+): DivergenceResult {
+  const lookback = opts.lookback ?? 2;
+  const minBarGap = opts.minBarGap ?? 5;
+  const minMacdDelta = opts.minRsiDelta ?? 0; // reuse min delta threshold (absolute MACD units)
+
+  const { swingHighs, swingLows } = findFractalSwings(candles as Candle[], lookback);
+
+  if (swingHighs.length >= 2) {
+    const [prev, curr] = swingHighs.slice(-2);
+    if (curr.index - prev.index >= minBarGap && curr.price > prev.price) {
+      const macdPrev = macdLine[prev.index];
+      const macdCurr = macdLine[curr.index];
+      if (macdPrev != null && macdCurr != null && macdPrev - macdCurr >= minMacdDelta) {
+        return "bearish";
+      }
+    }
+  }
+
+  if (swingLows.length >= 2) {
+    const [prev, curr] = swingLows.slice(-2);
+    if (curr.index - prev.index >= minBarGap && curr.price < prev.price) {
+      const macdPrev = macdLine[prev.index];
+      const macdCurr = macdLine[curr.index];
+      if (macdCurr != null && macdPrev != null && macdCurr - macdPrev >= minMacdDelta) {
         return "bullish";
       }
     }

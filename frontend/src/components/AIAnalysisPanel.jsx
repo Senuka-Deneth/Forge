@@ -335,8 +335,12 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
                 <div id="ai-volatility"><StatusPill value={a.market_regime?.volatility} /></div>
               </div>
               <div className="ai-kpi">
-                <label>MTF Confluence</label>
-                <div id="ai-confluence">{a._meta?.confluence_score != null ? `${a._meta.confluence_score}%` : '—'}</div>
+                <label title="MTF alignment blended with signal agreement — not a probability">MTF+signal blend</label>
+                <div id="ai-confluence">
+                  {a._meta?.confluence_breakdown
+                    ? `${a._meta.confluence_breakdown.mtf_confluence}% MTF (${a._meta.confluence_breakdown.mtf_sample_size} TFs) + ${a._meta.confluence_breakdown.signal_agreement}% signals`
+                    : a._meta?.confluence_score != null ? `${a._meta.confluence_score}%` : '—'}
+                </div>
               </div>
               <div className="ai-kpi wide-kpi">
                 <label>Signal strength</label>

@@ -1,12 +1,16 @@
 import { handleOptions, jsonResponse } from "../_shared/cors.ts";
 import { safeError } from "../_shared/http.ts";
 import { requireAuthenticatedUser, tryServiceClient } from "../_shared/auth.ts";
+import { consumeQuota } from "../_shared/rateLimit.ts";
 import {
   computeBrierScore,
   computeReliabilityCurve,
   computeSetupStats,
   empiricalConfidence,
 } from "../_shared/calibration.ts";
+
+const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
+const RATE_LIMIT_MAX_CALLS = 30;
 
 type ScoredRow = {
   outcome: string | null;
@@ -32,6 +36,14 @@ Deno.serve(async (req) => {
     return jsonResponse(req, { success: false, error: authResult.error }, authResult.status);
   }
 
+  const quota = await consumeQuota(supabase, authResult.userId, RATE_LIMIT_WINDOW_MS, RATE_LIMIT_MAX_CALLS, "analysis_stats");
+  if (!quota.ok) {
+    if (quota.reason === "unavailable") {
+      return jsonResponse(req, { success: false, error: "Rate limit check unavailable. Please try again shortly." }, 503);
+    }
+    return jsonResponse(req, { success: false, error: "Too many stats requests. Please wait a few minutes and try again." }, 429);
+  }
+
   try {
     const { data, error } = await supabase
       .from("ai_analysis_logs")
@@ -39,7 +51,7 @@ Deno.serve(async (req) => {
       .eq("status", "success")
       .not("evaluated_at", "is", null)
       .not("outcome", "is", null)
-      .in("outcome", ["target_hit", "stop_hit", "expired"])
+      .in("outcome", ["target_hit", "stop_hit", "expired", "no_fill"])
       .order("created_at", { ascending: false })
       .limit(500);
 
@@ -69,24 +81,34 @@ Deno.serve(async (req) => {
       realized_r: r.realized_r,
     })));
 
+    const expiredCount = rows.filter((r) => r.outcome === "expired").length;
+    const noFillCount = rows.filter((r) => r.outcome === "no_fill").length;
+    const totalScored = rows.length;
+
     const globalRate = hitRate ?? 0.5;
     const empiricalBySetup: Record<string, number> = {};
     for (const [setupType, stats] of Object.entries(setupStats)) {
-      const hits = Math.round((stats.hit_rate ?? 0) * stats.n);
-      empiricalBySetup[setupType] = empiricalConfidence(hits, stats.n, globalRate);
+      const hits = stats.hit_rate != null && stats.decided > 0
+        ? Math.round(stats.hit_rate * stats.decided)
+        : 0;
+      empiricalBySetup[setupType] = empiricalConfidence(hits, stats.decided, globalRate);
     }
 
     return jsonResponse(req, {
       success: true,
       stats: {
-        total_scored: rows.length,
+        total_scored: totalScored,
         hit_rate: hitRate != null ? Number(hitRate.toFixed(3)) : null,
+        expiry_rate: totalScored > 0 ? Number((expiredCount / totalScored).toFixed(3)) : null,
+        no_fill_rate: totalScored > 0 ? Number((noFillCount / totalScored).toFixed(3)) : null,
         avg_realized_r: avgRealizedR != null ? Number(avgRealizedR.toFixed(3)) : null,
         expectancy: expectancy != null ? Number(expectancy.toFixed(3)) : null,
         brier_score: brierScore,
         wins,
         losses,
-        expired: rows.filter((r) => r.outcome === "expired").length,
+        expired: expiredCount,
+        no_fill: noFillCount,
+        decided,
         confidence_deciles: deciles,
         setup_stats: setupStats,
         empirical_confidence_by_setup: empiricalBySetup,

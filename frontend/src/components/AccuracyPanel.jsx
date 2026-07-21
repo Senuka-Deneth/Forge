@@ -94,7 +94,17 @@ export default function AccuracyPanel() {
         <span className="panel-badge ready">{stats.total_scored} scored</span>
       </div>
       <div className="summary-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
-        <StatCard label="Hit rate" value={hitPct} hint={`${stats.wins} wins / ${stats.losses} losses`} />
+        <StatCard label="Decided hit rate" value={hitPct} hint={`${stats.wins}W / ${stats.losses}L (target vs stop only)`} />
+        <StatCard
+          label="Expiry rate"
+          value={stats.expiry_rate != null ? `${(stats.expiry_rate * 100).toFixed(1)}%` : '—'}
+          hint={`${stats.expired ?? 0} plans expired without target/stop`}
+        />
+        <StatCard
+          label="No-fill rate"
+          value={stats.no_fill_rate != null ? `${(stats.no_fill_rate * 100).toFixed(1)}%` : '—'}
+          hint={`${stats.no_fill ?? 0} limit entries never filled`}
+        />
         <StatCard label="Avg realized R" value={stats.avg_realized_r} />
         <StatCard label="Expectancy (R)" value={stats.expectancy} />
         <StatCard

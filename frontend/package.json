@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "2.105.4",
+    "dompurify": "^3.4.12",
     "framer-motion": "^12.40.0",
     "lightweight-charts": "^5.0.8",
     "react": "^18.3.1",

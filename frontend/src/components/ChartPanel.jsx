@@ -1164,8 +1164,8 @@ export default function ChartPanel({
                   border: '1px solid var(--border-medium)',
                   borderRadius: '16px',
                   padding: '18px',
-                  width: '440px',
-                  boxShadow: '0 24px 60px rgba(0,0,0,0.7)',
+                  width: 'min(440px, calc(100vw - 32px))',
+                  boxShadow: 'var(--shadow-popover)',
                   animation: 'fadeIn 0.15s ease-out',
                   backdropFilter: 'blur(20px)',
                   fontFamily: 'var(--font-ui), sans-serif'
@@ -1593,6 +1593,7 @@ export default function ChartPanel({
                         }}
                         title={isHidden ? 'Show' : 'Hide'}
                         aria-label={isHidden ? `Show ${ind.label}` : `Hide ${ind.label}`}
+                        aria-pressed={!isHidden}
                       >
                         {isHidden ? (
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"></path><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
@@ -1678,10 +1679,10 @@ export default function ChartPanel({
             border: '1px solid var(--border-medium)',
             borderRadius: '16px',
             padding: '20px',
-            width: '340px',
+            width: 'min(340px, calc(100vw - 32px))',
             maxHeight: 'min(80vh, 640px)',
             overflowY: 'auto',
-            boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
+            boxShadow: 'var(--shadow-popover)',
             animation: 'fadeIn 0.2s ease-in-out',
             color: 'var(--text-primary)',
             fontFamily: 'var(--font-ui), ui-sans-serif, system-ui, sans-serif',
@@ -1689,7 +1690,7 @@ export default function ChartPanel({
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '8px' }}>
               <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)' }}>Standard Pivots Settings</span>
-              <button onClick={() => setShowPivotSettings(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '16px' }}>&times;</button>
+              <button type="button" onClick={() => setShowPivotSettings(false)} aria-label="Close pivot settings" style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '16px' }}>&times;</button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { educationData, getIcon } from '../data/educationData';
+import { educationData } from '../data/educationData';
+import EducationIcon from './EducationIcon';
 import '../education.css';
 
 export default function EducationPanel() {
@@ -116,7 +117,7 @@ export default function EducationPanel() {
                       className={`edu-nav-link ${activeSection === item.id ? 'active' : ''}`}
                       onClick={(e) => scrollToSection(e, item.id)}
                     >
-                      <div dangerouslySetInnerHTML={{ __html: getIcon(item.id) }} style={{ display: 'flex', alignItems: 'center' }} />
+                      <EducationIcon id={item.id} />
                       <span className="edu-nav-link-text">{item.title}</span>
                     </a>
                   ))}
@@ -191,6 +192,7 @@ export default function EducationPanel() {
                         <div className="edu-block-label">How to read it</div>
                         <p className="edu-block-text">{item.howToRead}</p>
                         {item.visualHtml && (
+                          // SAFETY: compile-time static content
                           <div dangerouslySetInnerHTML={{ __html: item.visualHtml }} />
                         )}
                       </div>

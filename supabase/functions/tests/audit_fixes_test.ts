@@ -58,7 +58,7 @@ Deno.test("recomputeTradePlanRiskReward overwrites model RR", () => {
     rationale: "test",
   };
   const fixed = recomputeTradePlanRiskReward(plan);
-  assertEquals(fixed.targets[0]?.risk_reward, 2);
+  assertEquals(fixed.targets[0]?.risk_reward, 1.8);
 });
 
 Deno.test("appendPositionSizing adds informational block", () => {

@@ -94,6 +94,8 @@
   --shadow-1: 0 1px 2px hsla(220, 40%, 2%, 0.5);
   --shadow-2: 0 4px 16px hsla(220, 40%, 2%, 0.45);
   --shadow-3: 0 16px 48px hsla(220, 40%, 2%, 0.55);
+  --hover-overlay: hsla(218, 20%, 60%, 0.08);
+  --shadow-popover: 0 24px 60px hsla(220, 40%, 2%, 0.7);
 
   --chart-bg:        hsl(220, 13%, 8%);
   --chart-grid:      hsla(218, 20%, 60%, 0.05);
@@ -141,6 +143,8 @@
   --shadow-1: 0 1px 2px hsla(220, 30%, 20%, 0.08);
   --shadow-2: 0 4px 16px hsla(220, 30%, 20%, 0.08);
   --shadow-3: 0 16px 48px hsla(220, 30%, 20%, 0.12);
+  --hover-overlay: hsla(220, 25%, 20%, 0.06);
+  --shadow-popover: 0 20px 50px hsla(220, 30%, 20%, 0.18);
 
   --chart-bg:        hsl(0, 0%, 100%);
   --chart-grid:      hsla(220, 25%, 20%, 0.05);

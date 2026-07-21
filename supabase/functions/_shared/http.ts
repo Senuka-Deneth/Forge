@@ -1,3 +1,12 @@
+function parseRetryAfterMs(header: string | null): number | null {
+  if (!header) return null;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const dateMs = Date.parse(header);
+  if (Number.isFinite(dateMs)) return Math.max(0, dateMs - Date.now());
+  return null;
+}
+
 export async function fetchWithTimeout(
   input: string | URL,
   init: RequestInit = {},
@@ -13,11 +22,20 @@ export async function fetchWithTimeout(
     try {
       const response = await fetch(input, { ...init, signal: controller.signal });
       clearTimeout(timer);
-      if (!response.ok && response.status >= 500 && attempt < retries) {
+
+      const shouldRetry = attempt < retries && (
+        (response.status >= 500) || response.status === 429
+      );
+      if (shouldRetry) {
+        const retryAfterMs = response.status === 429
+          ? parseRetryAfterMs(response.headers.get("Retry-After"))
+          : null;
+        const backoffMs = retryAfterMs ?? 300 * (attempt + 1);
         lastError = new Error(`Upstream request failed with ${response.status}`);
-        await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
+        await new Promise((resolve) => setTimeout(resolve, Math.min(backoffMs, 5000)));
         continue;
       }
+
       return response;
     } catch (error) {
       clearTimeout(timer);

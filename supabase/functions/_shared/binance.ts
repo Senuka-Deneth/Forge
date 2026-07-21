@@ -28,7 +28,7 @@ export async function fetchBinanceKlines(
     if (currentEndTime != null) url.searchParams.set("endTime", String(currentEndTime));
     if (startTimeMs != null && currentEndTime == null) url.searchParams.set("startTime", String(startTimeMs));
 
-    const response = await fetchWithTimeout(url, {}, { timeoutMs: 10000, retries: 1 });
+    const response = await fetchWithTimeout(url, {}, { timeoutMs: 10000, retries: 2 });
     if (!response.ok) {
       const body = await response.text();
       throw new Error(`Binance request failed: ${response.status} ${body}`);

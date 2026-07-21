@@ -1,4 +1,4 @@
-import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.105.4";
 import { handleOptions, jsonResponse } from "../_shared/cors.ts";
 import { safeError } from "../_shared/http.ts";
 import { sanitizePivotTimeframe } from "../_shared/pivotPoints.ts";

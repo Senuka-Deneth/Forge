@@ -1,16 +1,19 @@
 import { handleOptions, jsonResponse } from "../_shared/cors.ts";
 import { safeError } from "../_shared/http.ts";
 import { requireAuthenticatedUser, tryServiceClient } from "../_shared/auth.ts";
+import {
+  computeBrierScore,
+  computeReliabilityCurve,
+  computeSetupStats,
+  empiricalConfidence,
+} from "../_shared/calibration.ts";
 
 type ScoredRow = {
   outcome: string | null;
   realized_r: number | null;
+  setup_type: string | null;
   response_payload: Record<string, unknown> | null;
 };
-
-function confidenceDecile(confidence: number): number {
-  return Math.min(9, Math.max(0, Math.floor(confidence / 10)));
-}
 
 Deno.serve(async (req) => {
   const options = handleOptions(req);
@@ -32,7 +35,7 @@ Deno.serve(async (req) => {
   try {
     const { data, error } = await supabase
       .from("ai_analysis_logs")
-      .select("outcome, realized_r, response_payload")
+      .select("outcome, realized_r, setup_type, response_payload")
       .eq("status", "success")
       .not("evaluated_at", "is", null)
       .not("outcome", "is", null)
@@ -52,17 +55,25 @@ Deno.serve(async (req) => {
     const avgRealizedR = realized.length ? realized.reduce((a, b) => a + b, 0) / realized.length : null;
     const expectancy = avgRealizedR;
 
-    const deciles: Record<string, { count: number; hits: number; hitRate: number | null }> = {};
-    for (const row of rows) {
-      const conf = Number((row.response_payload?.trade_plan as Record<string, unknown> | undefined)?.confidence ?? 50);
-      const key = String(confidenceDecile(conf));
-      if (!deciles[key]) deciles[key] = { count: 0, hits: 0, hitRate: null };
-      deciles[key].count += 1;
-      if (row.outcome === "target_hit") deciles[key].hits += 1;
-    }
-    for (const key of Object.keys(deciles)) {
-      const d = deciles[key];
-      d.hitRate = d.count > 0 ? d.hits / d.count : null;
+    const confidenceRows = rows.map((r) => ({
+      confidence: Number((r.response_payload?.trade_plan as Record<string, unknown> | undefined)?.confidence ?? 50),
+      outcome: r.outcome ?? "expired",
+    }));
+
+    const deciles = computeReliabilityCurve(confidenceRows);
+    const brierScore = computeBrierScore(confidenceRows);
+
+    const setupStats = computeSetupStats(rows.map((r) => ({
+      setup_type: r.setup_type ?? (r.response_payload?._meta as Record<string, unknown> | undefined)?.setup_type as string | null ?? null,
+      outcome: r.outcome ?? "expired",
+      realized_r: r.realized_r,
+    })));
+
+    const globalRate = hitRate ?? 0.5;
+    const empiricalBySetup: Record<string, number> = {};
+    for (const [setupType, stats] of Object.entries(setupStats)) {
+      const hits = Math.round((stats.hit_rate ?? 0) * stats.n);
+      empiricalBySetup[setupType] = empiricalConfidence(hits, stats.n, globalRate);
     }
 
     return jsonResponse(req, {
@@ -72,10 +83,13 @@ Deno.serve(async (req) => {
         hit_rate: hitRate != null ? Number(hitRate.toFixed(3)) : null,
         avg_realized_r: avgRealizedR != null ? Number(avgRealizedR.toFixed(3)) : null,
         expectancy: expectancy != null ? Number(expectancy.toFixed(3)) : null,
+        brier_score: brierScore,
         wins,
         losses,
         expired: rows.filter((r) => r.outcome === "expired").length,
         confidence_deciles: deciles,
+        setup_stats: setupStats,
+        empirical_confidence_by_setup: empiricalBySetup,
       },
     });
   } catch (error) {

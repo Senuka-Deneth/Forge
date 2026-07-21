@@ -178,6 +178,7 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
       }, 4500);
       return () => clearInterval(interval);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional loading message rotation while aiLoading is true
   }, [aiLoading]);
 
   const isLiveAI = a?._meta?.source === 'openrouter'
@@ -448,7 +449,18 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
                 </div>
                 <div className="ai-kpi">
                   <label>Plan signal strength</label>
-                  <span>{a.trade_plan.confidence ?? 0}%</span>
+                  <span>
+                    Model {a.trade_plan.confidence ?? 0}%
+                    {a.trade_plan.empirical_confidence != null && (
+                      <>
+                        {' · '}
+                        <span style={{ opacity: (a._meta?.calibration?.n ?? 0) < 20 ? 0.45 : 1 }}>
+                          Empirical {a.trade_plan.empirical_confidence}%
+                          {a._meta?.calibration?.n != null ? ` (n=${a._meta.calibration.n})` : ''}
+                        </span>
+                      </>
+                    )}
+                  </span>
                 </div>
               </div>
 

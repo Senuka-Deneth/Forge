@@ -263,23 +263,35 @@ function saveLocalPreferences(userKey, preferences) {
   }
 }
 
+// The edge function only needs recent candles for current price + ATR(14);
+// sending the full 4000-candle history per request is wasted bandwidth.
+const PIVOT_REQUEST_CANDLES = 200
+
+// Guards against a stale deployed calculate-pivots build: the current contract
+// always includes the in-progress period flagged isCurrent.
+function hasCurrentPivotPeriod(data) {
+  const items = data?.standardPeriods?.items
+  return Array.isArray(items) && items.some((item) => item?.isCurrent === true)
+}
+
 async function fetchPivotData(symbol, timeframe, candles, pivotType = 'traditional', chartPrefs = DEFAULT_CHART_PREFERENCES) {
   const prefs = { ...chartPrefs, pivotType }
+  const recentCandles = candles.slice(-PIVOT_REQUEST_CANDLES)
   try {
     const data = await invokeFunction('calculate-pivots', {
       symbol,
       timeframe,
-      candles,
+      candles: recentCandles,
       pivotType,
       pivotTimeframe: sanitizePivotTimeframe(chartPrefs.pivotTimeframe),
       pivotsBack: chartPrefs.pivotsBack || 15,
       showHistoricalPivots: chartPrefs.showHistoricalPivots !== false,
     })
-    if (data?.success) return { ...data, symbol }
-    throw new Error(data?.error || 'Pivot function returned no pivot data.')
+    if (data?.success && hasCurrentPivotPeriod(data)) return { ...data, symbol }
+    throw new Error(data?.error || 'Pivot function returned a stale or incomplete payload.')
   } catch (edgeError) {
     console.warn('Supabase pivot calculation failed; using local fallback:', edgeError)
-    return buildPivotData(candles, timeframe, symbol, prefs)
+    return buildPivotData(recentCandles, timeframe, symbol, prefs)
   }
 }
 
@@ -636,6 +648,10 @@ export default function App() {
     return () => clearTimeout(saveTimer)
   }, [chartPreferences, chartPrefsReady, currentUserId])
 
+  // Refresh pivots once per bar open (not on every websocket tick — intra-bar
+  // ticks cannot change pivot levels, and each refresh hits Binance server-side).
+  const lastBarTime = candles.length ? candles[candles.length - 1].time : null
+
   useEffect(() => {
     if (!candles.length) return
 
@@ -664,7 +680,7 @@ export default function App() {
       cancelled = true
     }
   }, [
-    candles,
+    lastBarTime,
     chartPreferences.pivotType,
     chartPreferences.pivotTimeframe,
     chartPreferences.pivotsBack,

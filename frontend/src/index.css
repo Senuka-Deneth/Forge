@@ -842,7 +842,9 @@ body, #root {
 }
 
 .chart-container {
-  height: 65vh; /* Takes 65% of viewport */
+  /* Price pane (~65vh) plus the RSI and MACD panes (120px each) — all panes
+     live inside one chart so their time scales stay locked together. */
+  height: calc(65vh + 240px);
   background: var(--chart-bg);
 }
 
@@ -890,17 +892,6 @@ body, #root {
   flex: 1;
   min-height: 0;
   height: 100% !important;
-}
-
-.subchart-container {
-  height: 120px;
-  background: var(--chart-bg);
-  border-top: 1px solid var(--border-subtle);
-}
-
-.chart-card.chart-card-maximized .subchart-container {
-  flex: 0 0 140px;
-  height: 140px !important;
 }
 
 @media (max-width: 900px) {

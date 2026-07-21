@@ -53,6 +53,9 @@ function buildCandleDataWithWhitespace(candles, periodEndTime, interval) {
   return data
 }
 
+const SUBPANE_HEIGHT = 120
+const PANE_SEPARATOR_HEIGHT = 1
+
 function getCurrentPivotPeriodEnd(pivotData) {
   const items = pivotData?.standardPeriods?.items
   if (!items?.length) return null
@@ -199,12 +202,8 @@ export default function ChartPanel({
   setIsMaximized,
 }) {
   const priceContainerRef = useRef(null)
-  const rsiContainerRef = useRef(null)
-  const macdContainerRef = useRef(null)
 
   const priceChartRef = useRef(null)
-  const rsiChartRef = useRef(null)
-  const macdChartRef = useRef(null)
 
   const candleSeriesRef = useRef(null)
   const volumeSeriesRef = useRef(null)
@@ -243,7 +242,8 @@ export default function ChartPanel({
   const [hiddenIndicators, setHiddenIndicators] = useState([])
   const [showPivotSettings, setShowPivotSettings] = useState(false)
   const [legendCollapsed, setLegendCollapsed] = useState(false)
-  
+  const [paneLabelTops, setPaneLabelTops] = useState({ rsi: null, macd: null })
+
   const pairSelectorRef = useRef(null)
   const [showPairDropdown, setShowPairDropdown] = useState(false)
   const [pairSearchQuery, setPairSearchQuery] = useState('')
@@ -259,6 +259,38 @@ export default function ChartPanel({
       ...prev,
       [key]: !prev[key],
     }))
+  }
+
+  const rsiVisible = chartPreferences.showRsi && !hiddenIndicators.includes('rsi')
+  const macdVisible = chartPreferences.showMacd && !hiddenIndicators.includes('macd')
+
+  // Pins every sub-pane to SUBPANE_HEIGHT (pane 0 absorbs the rest) and
+  // repositions the floating RSI/MACD pane labels.
+  const updatePaneLayout = () => {
+    const chart = priceChartRef.current
+    if (!chart) return
+
+    chart.panes().forEach((pane) => {
+      if (pane.paneIndex() > 0) pane.setHeight(SUBPANE_HEIGHT)
+    })
+
+    requestAnimationFrame(() => {
+      const currentChart = priceChartRef.current
+      if (!currentChart) return
+      const measure = (series) => {
+        if (!series) return null
+        const paneIndex = series.getPane().paneIndex()
+        let top = 0
+        for (let i = 0; i < paneIndex; i++) {
+          top += currentChart.paneSize(i).height + PANE_SEPARATOR_HEIGHT
+        }
+        return top
+      }
+      setPaneLabelTops({
+        rsi: measure(rsiSeriesRef.current),
+        macd: measure(macdSeriesRef.current),
+      })
+    })
   }
 
 
@@ -362,39 +394,41 @@ export default function ChartPanel({
   }, [])
 
   useEffect(() => {
-    if (!priceContainerRef.current || !rsiContainerRef.current || !macdContainerRef.current) return
+    if (!priceContainerRef.current) return
 
     const initialTheme = document.body.getAttribute('data-theme') || 'dark'
     const isDark = initialTheme === 'dark'
+    const borderColor = isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)'
 
-    const sharedLayout = {
-      background: { color: isDark ? '#161a1e' : '#ffffff' },
-      textColor: isDark ? '#8b8b9e' : '#6b6b7e',
-      fontFamily: 'ui-sans-serif, system-ui, sans-serif',
-    }
-
-    const sharedGrid = {
-      vertLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)' },
-      horzLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)' },
-    }
-
-    const sharedCrosshair = {
-      vertLine: { color: '#808080', width: 1, style: LineStyle.Dashed },
-      horzLine: { color: '#808080', width: 1, style: LineStyle.Dashed, labelBackgroundColor: '#808080' },
-    }
-
+    // Single chart with native panes (pane 0 = price, pane 1 = RSI, pane 2 = MACD):
+    // one shared time scale and crosshair, so the panes can never drift apart.
     const priceChart = createChart(priceContainerRef.current, {
-      width: priceContainerRef.current.clientWidth,
-      height: 420,
-      layout: sharedLayout,
-      grid: sharedGrid,
-      crosshair: { ...sharedCrosshair, mode: CrosshairMode.Normal },
+      autoSize: true,
+      layout: {
+        background: { color: isDark ? '#161a1e' : '#ffffff' },
+        textColor: isDark ? '#8b8b9e' : '#6b6b7e',
+        fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+        panes: {
+          separatorColor: borderColor,
+          separatorHoverColor: 'rgba(178, 181, 189, 0.2)',
+          enableResize: false,
+        },
+      },
+      grid: {
+        vertLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)' },
+        horzLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)' },
+      },
+      crosshair: {
+        mode: CrosshairMode.Normal,
+        vertLine: { color: '#808080', width: 1, style: LineStyle.Dashed },
+        horzLine: { color: '#808080', width: 1, style: LineStyle.Dashed, labelBackgroundColor: '#808080' },
+      },
       timeScale: {
         timeVisible: true,
         secondsVisible: false,
         shiftVisibleRangeOnNewBar: true,
         borderVisible: true,
-        borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
+        borderColor,
       },
       rightPriceScale: {
         minimumWidth: 80,
@@ -402,7 +436,7 @@ export default function ChartPanel({
         scaleMargins: marginStateRef.current,
         axisLineVisible: true,
         borderVisible: true,
-        borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
+        borderColor,
       },
       handleScale: {
         mouseWheel: true,
@@ -421,43 +455,6 @@ export default function ChartPanel({
         pressedMouseMove: true,
         horzTouchDrag: true,
         vertTouchDrag: true,
-      },
-    })
-
-    const rsiChart = createChart(rsiContainerRef.current, {
-      width: rsiContainerRef.current.clientWidth,
-      height: 120,
-      layout: sharedLayout,
-      grid: sharedGrid,
-      crosshair: { ...sharedCrosshair, mode: CrosshairMode.Normal },
-      timeScale: { 
-        visible: false,
-        borderVisible: true,
-        borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
-      },
-      rightPriceScale: { 
-        minimumWidth: 80,
-        borderVisible: true,
-        borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
-      },
-    })
-
-    const macdChart = createChart(macdContainerRef.current, {
-      width: macdContainerRef.current.clientWidth,
-      height: 120,
-      layout: sharedLayout,
-      grid: sharedGrid,
-      crosshair: { ...sharedCrosshair, mode: CrosshairMode.Normal },
-      timeScale: { 
-        timeVisible: true, 
-        secondsVisible: false,
-        borderVisible: true,
-        borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
-      },
-      rightPriceScale: { 
-        minimumWidth: 80,
-        borderVisible: true,
-        borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
       },
     })
 
@@ -506,31 +503,7 @@ export default function ChartPanel({
       lineStyle: LineStyle.Solid,
     })
 
-    const rsiSeries = rsiChart.addSeries(LineSeries, {
-      color: '#a78bfa',
-      lineWidth: 2,
-      lineStyle: LineStyle.Solid,
-    })
-
-    const macdSeries = macdChart.addSeries(LineSeries, {
-      color: '#60a5fa',
-      lineWidth: 2,
-      lineStyle: LineStyle.Solid,
-    })
-
-    const macdSignalSeries = macdChart.addSeries(LineSeries, {
-      color: '#f59e0b',
-      lineWidth: 2,
-      lineStyle: LineStyle.Solid,
-    })
-
-    const macdHistSeries = macdChart.addSeries(HistogramSeries, {
-      priceFormat: { type: 'price', precision: 4, minMove: 0.0001 },
-    })
-
     priceChartRef.current = priceChart
-    rsiChartRef.current = rsiChart
-    macdChartRef.current = macdChart
 
     candleSeriesRef.current = candleSeries
     volumeSeriesRef.current = volumeSeries
@@ -544,111 +517,39 @@ export default function ChartPanel({
     supportLineRef.current = supportLine
     resistanceLineRef.current = resistanceLine
 
-    rsiSeriesRef.current = rsiSeries
-    macdSeriesRef.current = macdSeries
-    macdSignalSeriesRef.current = macdSignalSeries
-    macdHistSeriesRef.current = macdHistSeries
-
-    let isSyncingCrosshair = false
-
-    const getSyncValue = (series, param) => {
-      if (!param.time) return 0
-      const d = param.seriesData.get(series)
-      if (!d) return 0
-      return d.value !== undefined ? d.value : (d.close !== undefined ? d.close : 0)
-    }
-
-    const syncToTargets = (sourceParam, targets) => {
-      if (isSyncingCrosshair) return
-      isSyncingCrosshair = true
-      const outOfBounds = !sourceParam.point || !sourceParam.time
-      targets.forEach(({ chart, series }) => {
-        if (outOfBounds) {
-          chart.clearCrosshairPosition()
-        } else {
-          chart.setCrosshairPosition(getSyncValue(series, sourceParam), sourceParam.time, series)
-        }
-      })
-      isSyncingCrosshair = false
-    }
-
-    priceChart.subscribeCrosshairMove((param) => {
-      syncToTargets(param, [
-        { chart: rsiChart, series: rsiSeries },
-        { chart: macdChart, series: macdSeries },
-      ])
-    })
-
-    rsiChart.subscribeCrosshairMove((param) => {
-      syncToTargets(param, [
-        { chart: priceChart, series: candleSeries },
-        { chart: macdChart, series: macdSeries },
-      ])
-    })
-
-    macdChart.subscribeCrosshairMove((param) => {
-      syncToTargets(param, [
-        { chart: priceChart, series: candleSeries },
-        { chart: rsiChart, series: rsiSeries },
-      ])
-    })
-
-    let isSyncing = false
-    const charts = [priceChart, rsiChart, macdChart]
-
-    charts.forEach((source) => {
-      source.timeScale().subscribeVisibleLogicalRangeChange((logicalRange) => {
-        if (isSyncing || logicalRange === null) return
-        isSyncing = true
-        charts.forEach((target) => {
-          if (target !== source) {
-            target.timeScale().setVisibleLogicalRange(logicalRange)
-          }
-        })
-        isSyncing = false
-      })
-    })
-
     const handleResize = () => {
-      if (priceChartRef.current && priceContainerRef.current) {
-        priceChartRef.current.applyOptions({
-          width: priceContainerRef.current.clientWidth,
-          height: priceContainerRef.current.clientHeight,
-        })
-      }
-
-      if (rsiChartRef.current && rsiContainerRef.current) {
-        rsiChartRef.current.applyOptions({
-          width: rsiContainerRef.current.clientWidth,
-          height: rsiContainerRef.current.clientHeight,
-        })
-      }
-
-      if (macdChartRef.current && macdContainerRef.current) {
-        macdChartRef.current.applyOptions({
-          width: macdContainerRef.current.clientWidth,
-          height: macdContainerRef.current.clientHeight,
-        })
-      }
+      updatePaneLayout()
     }
 
     const handleThemeChange = (e) => {
       const theme = e.detail.theme
       const darkMode = theme === 'dark'
-      const chartOptions = {
-        layout: {
-          background: { color: darkMode ? '#161a1e' : '#ffffff' },
-          textColor: darkMode ? '#8b8b9e' : '#6b6b7e',
-        },
-        grid: {
-          vertLines: { color: darkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)' },
-          horzLines: { color: darkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)' },
-        },
-      }
+      const themedBorder = darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)'
 
-      if (priceChartRef.current) priceChartRef.current.applyOptions(chartOptions)
-      if (rsiChartRef.current) rsiChartRef.current.applyOptions(chartOptions)
-      if (macdChartRef.current) macdChartRef.current.applyOptions(chartOptions)
+      if (priceChartRef.current) {
+        priceChartRef.current.applyOptions({
+          layout: {
+            background: { color: darkMode ? '#161a1e' : '#ffffff' },
+            textColor: darkMode ? '#8b8b9e' : '#6b6b7e',
+            panes: { separatorColor: themedBorder },
+          },
+          grid: {
+            vertLines: { color: darkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)' },
+            horzLines: { color: darkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)' },
+          },
+        })
+      }
+    }
+
+    // The container now spans all panes; custom price-scale zoom/pan must only
+    // engage over the main price pane (pane 0), not the RSI/MACD panes.
+    const isWithinMainPane = (clientY) => {
+      const container = priceContainerRef.current
+      const chart = priceChartRef.current
+      if (!container || !chart) return false
+      const rect = container.getBoundingClientRect()
+      const y = clientY - rect.top
+      return y >= 0 && y <= chart.paneSize(0).height
     }
 
     const handlePriceWheel = (e) => {
@@ -656,6 +557,7 @@ export default function ChartPanel({
       const candlesList = candlesRef.current
       const chart = priceChartRef.current
       if (!container || !chart || !candlesList.length) return
+      if (!isWithinMainPane(e.clientY)) return
 
       // Shift/Ctrl/Meta or horizontal-dominant wheel: time-axis zoom (library default)
       if (!shouldHandleVerticalWheel(e, container)) return
@@ -687,6 +589,7 @@ export default function ChartPanel({
     const handleDblClick = (e) => {
       const container = priceContainerRef.current
       if (!container || !priceChartRef.current || !candleSeriesRef.current) return
+      if (!isWithinMainPane(e.clientY)) return
 
       if (isOverPriceScale(container, e.clientX)) {
         e.preventDefault()
@@ -737,6 +640,7 @@ export default function ChartPanel({
       if (!container || !chart || !candlesList.length) return
 
       if (isOverPriceScale(container, e.clientX)) return
+      if (!isWithinMainPane(e.clientY)) return
 
       timeRangeAtPanStartRef.current = chart.timeScale().getVisibleLogicalRange()
 
@@ -831,11 +735,81 @@ export default function ChartPanel({
       window.removeEventListener('resize', handleResize)
       window.removeEventListener('themeChanged', handleThemeChange)
       pivotPrimitiveRef.current = null
+      priceChartRef.current = null
+      rsiSeriesRef.current = null
+      macdSeriesRef.current = null
+      macdSignalSeriesRef.current = null
+      macdHistSeriesRef.current = null
       priceChart.remove()
-      rsiChart.remove()
-      macdChart.remove()
     }
   }, [])
+
+  // Creates/removes the RSI and MACD panes to match visibility preferences.
+  // Removing a pane's last series drops the pane; pane 0 reclaims the space.
+  useEffect(() => {
+    const chart = priceChartRef.current
+    if (!chart) return
+
+    const source = candlesRef.current
+
+    if (rsiVisible && !rsiSeriesRef.current) {
+      const rsiSeries = chart.addSeries(LineSeries, {
+        color: '#a78bfa',
+        lineWidth: 2,
+        lineStyle: LineStyle.Solid,
+      }, chart.panes().length)
+      rsiSeries.setData(source.filter((c) => c.rsi14 != null).map((c) => ({ time: c.time, value: c.rsi14 })))
+
+      // Keep RSI pane above the MACD pane
+      if (macdSeriesRef.current) {
+        const macdPaneIndex = macdSeriesRef.current.getPane().paneIndex()
+        const rsiPane = rsiSeries.getPane()
+        if (rsiPane.paneIndex() > macdPaneIndex) rsiPane.moveTo(macdPaneIndex)
+      }
+      rsiSeriesRef.current = rsiSeries
+    } else if (!rsiVisible && rsiSeriesRef.current) {
+      chart.removeSeries(rsiSeriesRef.current)
+      rsiSeriesRef.current = null
+    }
+
+    if (macdVisible && !macdSeriesRef.current) {
+      const paneIndex = chart.panes().length
+      const macdSeries = chart.addSeries(LineSeries, {
+        color: '#60a5fa',
+        lineWidth: 2,
+        lineStyle: LineStyle.Solid,
+      }, paneIndex)
+      const macdSignalSeries = chart.addSeries(LineSeries, {
+        color: '#f59e0b',
+        lineWidth: 2,
+        lineStyle: LineStyle.Solid,
+      }, paneIndex)
+      const macdHistSeries = chart.addSeries(HistogramSeries, {
+        priceFormat: { type: 'price', precision: 4, minMove: 0.0001 },
+      }, paneIndex)
+
+      macdSeries.setData(source.filter((c) => c.macd != null).map((c) => ({ time: c.time, value: c.macd })))
+      macdSignalSeries.setData(source.filter((c) => c.macdSignal != null).map((c) => ({ time: c.time, value: c.macdSignal })))
+      macdHistSeries.setData(source.filter((c) => c.macdHist != null).map((c) => ({
+        time: c.time,
+        value: c.macdHist,
+        color: c.macdHist >= 0 ? 'rgba(34, 197, 94, 0.55)' : 'rgba(239, 68, 68, 0.55)',
+      })))
+
+      macdSeriesRef.current = macdSeries
+      macdSignalSeriesRef.current = macdSignalSeries
+      macdHistSeriesRef.current = macdHistSeries
+    } else if (!macdVisible && macdSeriesRef.current) {
+      chart.removeSeries(macdSeriesRef.current)
+      chart.removeSeries(macdSignalSeriesRef.current)
+      chart.removeSeries(macdHistSeriesRef.current)
+      macdSeriesRef.current = null
+      macdSignalSeriesRef.current = null
+      macdHistSeriesRef.current = null
+    }
+
+    updatePaneLayout()
+  }, [rsiVisible, macdVisible])
 
   useEffect(() => {
     if (!candles.length) return
@@ -845,11 +819,7 @@ export default function ChartPanel({
       !ema20SeriesRef.current ||
       !ema50SeriesRef.current ||
       !supportLineRef.current ||
-      !resistanceLineRef.current ||
-      !rsiSeriesRef.current ||
-      !macdSeriesRef.current ||
-      !macdSignalSeriesRef.current ||
-      !macdHistSeriesRef.current
+      !resistanceLineRef.current
     ) {
       return
     }
@@ -871,20 +841,24 @@ export default function ChartPanel({
       })))
       ema20SeriesRef.current.setData(candles.filter((c) => c.ema20 != null).map((c) => ({ time: c.time, value: c.ema20 })))
       ema50SeriesRef.current.setData(candles.filter((c) => c.ema50 != null).map((c) => ({ time: c.time, value: c.ema50 })))
-      rsiSeriesRef.current.setData(candles.filter((c) => c.rsi14 != null).map((c) => ({ time: c.time, value: c.rsi14 })))
-      macdSeriesRef.current.setData(candles.filter((c) => c.macd != null).map((c) => ({ time: c.time, value: c.macd })))
-      macdSignalSeriesRef.current.setData(candles.filter((c) => c.macdSignal != null).map((c) => ({ time: c.time, value: c.macdSignal })))
-      macdHistSeriesRef.current.setData(candles.filter((c) => c.macdHist != null).map((c) => ({
+      rsiSeriesRef.current?.setData(candles.filter((c) => c.rsi14 != null).map((c) => ({ time: c.time, value: c.rsi14 })))
+      macdSeriesRef.current?.setData(candles.filter((c) => c.macd != null).map((c) => ({ time: c.time, value: c.macd })))
+      macdSignalSeriesRef.current?.setData(candles.filter((c) => c.macdSignal != null).map((c) => ({ time: c.time, value: c.macdSignal })))
+      macdHistSeriesRef.current?.setData(candles.filter((c) => c.macdHist != null).map((c) => ({
         time: c.time,
         value: c.macdHist,
         color: c.macdHist >= 0 ? 'rgba(34, 197, 94, 0.55)' : 'rgba(239, 68, 68, 0.55)',
       })))
       isInitializedRef.current = true
-    } else if (needsFullCandleSet) {
-      candleSeriesRef.current.setData(candleData)
     } else {
       const c = candles[candles.length - 1]
-      candleSeriesRef.current.update({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close })
+      if (needsFullCandleSet) {
+        candleSeriesRef.current.setData(candleData)
+      } else {
+        candleSeriesRef.current.update({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close })
+      }
+      // Indicator/volume series always take the tick update, regardless of
+      // whether the candle series needed a full reset for pivot whitespace.
       volumeSeriesRef.current.update({
         time: c.time,
         value: c.volume,
@@ -892,11 +866,11 @@ export default function ChartPanel({
       })
       if (c.ema20 != null) ema20SeriesRef.current.update({ time: c.time, value: c.ema20 })
       if (c.ema50 != null) ema50SeriesRef.current.update({ time: c.time, value: c.ema50 })
-      if (c.rsi14 != null) rsiSeriesRef.current.update({ time: c.time, value: c.rsi14 })
-      if (c.macd != null) macdSeriesRef.current.update({ time: c.time, value: c.macd })
-      if (c.macdSignal != null) macdSignalSeriesRef.current.update({ time: c.time, value: c.macdSignal })
+      if (c.rsi14 != null) rsiSeriesRef.current?.update({ time: c.time, value: c.rsi14 })
+      if (c.macd != null) macdSeriesRef.current?.update({ time: c.time, value: c.macd })
+      if (c.macdSignal != null) macdSignalSeriesRef.current?.update({ time: c.time, value: c.macdSignal })
       if (c.macdHist != null) {
-        macdHistSeriesRef.current.update({
+        macdHistSeriesRef.current?.update({
           time: c.time,
           value: c.macdHist,
           color: c.macdHist >= 0 ? 'rgba(34, 197, 94, 0.55)' : 'rgba(239, 68, 68, 0.55)',
@@ -950,20 +924,6 @@ export default function ChartPanel({
   useEffect(() => {
     if (ema50SeriesRef.current) ema50SeriesRef.current.applyOptions({ visible: chartPreferences.showEma50 && !hiddenIndicators.includes('ema50') })
   }, [chartPreferences.showEma50, hiddenIndicators])
-
-  useEffect(() => {
-    if (rsiContainerRef.current) {
-      rsiContainerRef.current.style.display = (chartPreferences.showRsi && !hiddenIndicators.includes('rsi')) ? 'block' : 'none'
-      window.dispatchEvent(new Event('resize'))
-    }
-  }, [chartPreferences.showRsi, hiddenIndicators])
-
-  useEffect(() => {
-    if (macdContainerRef.current) {
-      macdContainerRef.current.style.display = (chartPreferences.showMacd && !hiddenIndicators.includes('macd')) ? 'block' : 'none'
-      window.dispatchEvent(new Event('resize'))
-    }
-  }, [chartPreferences.showMacd, hiddenIndicators])
 
   useEffect(() => {
     if (supportLineRef.current) supportLineRef.current.applyOptions({ visible: chartPreferences.showSupport && !hiddenIndicators.includes('support') })
@@ -1943,6 +1903,12 @@ export default function ChartPanel({
           )
         })()}
         <div id="chart-container" className="chart-container" ref={priceContainerRef}></div>
+        {paneLabelTops.rsi != null && (
+          <div style={{ position: 'absolute', top: paneLabelTops.rsi + 5, left: 10, color: '#8b8b9e', zIndex: 10, fontSize: '12px', fontWeight: 'bold', pointerEvents: 'none' }}>RSI</div>
+        )}
+        {paneLabelTops.macd != null && (
+          <div style={{ position: 'absolute', top: paneLabelTops.macd + 5, left: 10, color: '#8b8b9e', zIndex: 10, fontSize: '12px', fontWeight: 'bold', pointerEvents: 'none' }}>MACD</div>
+        )}
         {(loading || error || (!candles.length && !loading)) && (
           <div className={`chart-state-overlay ${error ? 'error' : ''}`}>
             <div className="chart-state-title">
@@ -1953,12 +1919,6 @@ export default function ChartPanel({
             </div>
           </div>
         )}
-      </div>
-      <div id="rsi-container" className="subchart-container" ref={rsiContainerRef} style={{ position: 'relative' }}>
-        <div style={{ position: 'absolute', top: 5, left: 10, color: '#8b8b9e', zIndex: 10, fontSize: '12px', fontWeight: 'bold', pointerEvents: 'none' }}>RSI</div>
-      </div>
-      <div id="macd-container" className="subchart-container" ref={macdContainerRef} style={{ position: 'relative' }}>
-        <div style={{ position: 'absolute', top: 5, left: 10, color: '#8b8b9e', zIndex: 10, fontSize: '12px', fontWeight: 'bold', pointerEvents: 'none' }}>MACD</div>
       </div>
     </div>
   )

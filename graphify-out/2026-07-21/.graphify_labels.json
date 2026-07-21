@@ -24,5 +24,7 @@
   "22": "__init__.py",
   "23": "__init__.py",
   "24": "DEFAULT_PRICE_SCALE_MARGINS",
-  "25": "marketStructure.test.js"
+  "25": "marketStructure.test.js",
+  "26": "education-app.js",
+  "27": "education-data.js"
 }

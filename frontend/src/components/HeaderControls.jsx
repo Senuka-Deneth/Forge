@@ -6,8 +6,8 @@ export default function HeaderControls({
     <div className="topbar-stack">
       <header className="topbar">
         <div className="topbar-left">
-          <div className="topbar-brand-title" style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '0.04em', fontFamily: 'var(--font-ui), sans-serif' }}>
-            MARKET OVERVIEW
+          <div className="topbar-brand-title">
+            Market overview
           </div>
         </div>
 

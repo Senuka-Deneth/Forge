@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { AnimatePresence, m } from 'framer-motion'
 import {
   createChart,
   CandlestickSeries,
@@ -30,6 +31,7 @@ import {
   getEnabledPivotLevels,
 } from '../utils/pivotChartPrefs'
 import { PivotSegmentsPrimitive } from '../utils/pivotSegmentsPrimitive'
+import { getChartTheme, getCurrentChartTheme } from '../styles/chartTheme'
 
 function buildCandleDataWithWhitespace(candles, periodEndTime, interval) {
   const data = candles.map((c) => ({
@@ -397,31 +399,31 @@ export default function ChartPanel({
     if (!priceContainerRef.current) return
 
     const initialTheme = document.body.getAttribute('data-theme') || 'dark'
-    const isDark = initialTheme === 'dark'
-    const borderColor = isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)'
+    const ct = getChartTheme(initialTheme)
+    const borderColor = ct.border
 
     // Single chart with native panes (pane 0 = price, pane 1 = RSI, pane 2 = MACD):
     // one shared time scale and crosshair, so the panes can never drift apart.
     const priceChart = createChart(priceContainerRef.current, {
       autoSize: true,
       layout: {
-        background: { color: isDark ? '#161a1e' : '#ffffff' },
-        textColor: isDark ? '#8b8b9e' : '#6b6b7e',
+        background: { color: ct.layout.background },
+        textColor: ct.layout.textColor,
         fontFamily: 'ui-sans-serif, system-ui, sans-serif',
         panes: {
-          separatorColor: borderColor,
-          separatorHoverColor: 'rgba(178, 181, 189, 0.2)',
+          separatorColor: ct.layout.paneSeparator,
+          separatorHoverColor: ct.layout.paneSeparatorHover,
           enableResize: false,
         },
       },
       grid: {
-        vertLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)' },
-        horzLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)' },
+        vertLines: { color: ct.grid },
+        horzLines: { color: ct.grid },
       },
       crosshair: {
         mode: CrosshairMode.Normal,
-        vertLine: { color: '#808080', width: 1, style: LineStyle.Dashed },
-        horzLine: { color: '#808080', width: 1, style: LineStyle.Dashed, labelBackgroundColor: '#808080' },
+        vertLine: { color: ct.crosshair.line, width: 1, style: LineStyle.Dashed },
+        horzLine: { color: ct.crosshair.line, width: 1, style: LineStyle.Dashed, labelBackgroundColor: ct.crosshair.labelBg },
       },
       timeScale: {
         timeVisible: true,
@@ -459,12 +461,12 @@ export default function ChartPanel({
     })
 
     const candleSeries = priceChart.addSeries(CandlestickSeries, {
-      upColor: '#22c55e',
-      downColor: '#ef4444',
-      borderUpColor: '#22c55e',
-      borderDownColor: '#ef4444',
-      wickUpColor: '#22c55e',
-      wickDownColor: '#ef4444',
+      upColor: ct.candles.up,
+      downColor: ct.candles.down,
+      borderUpColor: ct.candles.up,
+      borderDownColor: ct.candles.down,
+      wickUpColor: ct.candles.up,
+      wickDownColor: ct.candles.down,
     })
 
     const volumeSeries = priceChart.addSeries(HistogramSeries, {
@@ -480,25 +482,25 @@ export default function ChartPanel({
     })
 
     const ema20Series = priceChart.addSeries(LineSeries, {
-      color: '#60a5fa',
+      color: ct.ema20,
       lineWidth: 2,
       lineStyle: LineStyle.Solid,
     })
 
     const ema50Series = priceChart.addSeries(LineSeries, {
-      color: '#f59e0b',
+      color: ct.ema50,
       lineWidth: 2,
-      lineStyle: LineStyle.Solid,
+      lineStyle: LineStyle.Dotted,
     })
 
     const supportLine = priceChart.addSeries(LineSeries, {
-      color: '#22c55e',
+      color: ct.supportLine,
       lineWidth: 1,
       lineStyle: LineStyle.Solid,
     })
 
     const resistanceLine = priceChart.addSeries(LineSeries, {
-      color: '#ef4444',
+      color: ct.resistanceLine,
       lineWidth: 1,
       lineStyle: LineStyle.Solid,
     })
@@ -522,23 +524,57 @@ export default function ChartPanel({
     }
 
     const handleThemeChange = (e) => {
-      const theme = e.detail.theme
-      const darkMode = theme === 'dark'
-      const themedBorder = darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)'
+      const nextTheme = getChartTheme(e.detail.theme)
 
       if (priceChartRef.current) {
         priceChartRef.current.applyOptions({
           layout: {
-            background: { color: darkMode ? '#161a1e' : '#ffffff' },
-            textColor: darkMode ? '#8b8b9e' : '#6b6b7e',
-            panes: { separatorColor: themedBorder },
+            background: { color: nextTheme.layout.background },
+            textColor: nextTheme.layout.textColor,
+            panes: { separatorColor: nextTheme.layout.paneSeparator },
           },
           grid: {
-            vertLines: { color: darkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)' },
-            horzLines: { color: darkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)' },
+            vertLines: { color: nextTheme.grid },
+            horzLines: { color: nextTheme.grid },
           },
+          crosshair: {
+            vertLine: { color: nextTheme.crosshair.line },
+            horzLine: { color: nextTheme.crosshair.line, labelBackgroundColor: nextTheme.crosshair.labelBg },
+          },
+          timeScale: { borderColor: nextTheme.border },
+          rightPriceScale: { borderColor: nextTheme.border },
         })
       }
+
+      // Recolor every series so the chart fully follows the theme toggle.
+      candleSeriesRef.current?.applyOptions({
+        upColor: nextTheme.candles.up,
+        downColor: nextTheme.candles.down,
+        borderUpColor: nextTheme.candles.up,
+        borderDownColor: nextTheme.candles.down,
+        wickUpColor: nextTheme.candles.up,
+        wickDownColor: nextTheme.candles.down,
+      })
+      ema20SeriesRef.current?.applyOptions({ color: nextTheme.ema20 })
+      ema50SeriesRef.current?.applyOptions({ color: nextTheme.ema50 })
+      supportLineRef.current?.applyOptions({ color: nextTheme.supportLine })
+      resistanceLineRef.current?.applyOptions({ color: nextTheme.resistanceLine })
+      rsiSeriesRef.current?.applyOptions({ color: nextTheme.rsi })
+      macdSeriesRef.current?.applyOptions({ color: nextTheme.macd.line })
+      macdSignalSeriesRef.current?.applyOptions({ color: nextTheme.macd.signal })
+
+      // Per-point colored series (volume, MACD histogram) need their data re-mapped.
+      const source = candlesRef.current || []
+      volumeSeriesRef.current?.setData(source.map((c) => ({
+        time: c.time,
+        value: c.volume,
+        color: c.close >= c.open ? nextTheme.volume.up : nextTheme.volume.down,
+      })))
+      macdHistSeriesRef.current?.setData(source.filter((c) => c.macdHist != null).map((c) => ({
+        time: c.time,
+        value: c.macdHist,
+        color: c.macdHist >= 0 ? nextTheme.macd.histPos : nextTheme.macd.histNeg,
+      })))
     }
 
     // The container now spans all panes; custom price-scale zoom/pan must only
@@ -751,10 +787,11 @@ export default function ChartPanel({
     if (!chart) return
 
     const source = candlesRef.current
+    const ct = getCurrentChartTheme()
 
     if (rsiVisible && !rsiSeriesRef.current) {
       const rsiSeries = chart.addSeries(LineSeries, {
-        color: '#a78bfa',
+        color: ct.rsi,
         lineWidth: 2,
         lineStyle: LineStyle.Solid,
       }, chart.panes().length)
@@ -775,12 +812,12 @@ export default function ChartPanel({
     if (macdVisible && !macdSeriesRef.current) {
       const paneIndex = chart.panes().length
       const macdSeries = chart.addSeries(LineSeries, {
-        color: '#60a5fa',
+        color: ct.macd.line,
         lineWidth: 2,
         lineStyle: LineStyle.Solid,
       }, paneIndex)
       const macdSignalSeries = chart.addSeries(LineSeries, {
-        color: '#f59e0b',
+        color: ct.macd.signal,
         lineWidth: 2,
         lineStyle: LineStyle.Solid,
       }, paneIndex)
@@ -793,7 +830,7 @@ export default function ChartPanel({
       macdHistSeries.setData(source.filter((c) => c.macdHist != null).map((c) => ({
         time: c.time,
         value: c.macdHist,
-        color: c.macdHist >= 0 ? 'rgba(34, 197, 94, 0.55)' : 'rgba(239, 68, 68, 0.55)',
+        color: c.macdHist >= 0 ? ct.macd.histPos : ct.macd.histNeg,
       })))
 
       macdSeriesRef.current = macdSeries
@@ -832,12 +869,14 @@ export default function ChartPanel({
       : candles.map((c) => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close }))
     const needsFullCandleSet = showPivots && periodEnd && periodEnd > candles[candles.length - 1].time
 
+    const ct = getCurrentChartTheme()
+
     if (!isInitializedRef.current) {
       candleSeriesRef.current.setData(candleData)
       volumeSeriesRef.current.setData(candles.map((c) => ({
         time: c.time,
         value: c.volume,
-        color: c.close >= c.open ? 'rgba(34, 197, 94, 0.45)' : 'rgba(239, 68, 68, 0.45)',
+        color: c.close >= c.open ? ct.volume.up : ct.volume.down,
       })))
       ema20SeriesRef.current.setData(candles.filter((c) => c.ema20 != null).map((c) => ({ time: c.time, value: c.ema20 })))
       ema50SeriesRef.current.setData(candles.filter((c) => c.ema50 != null).map((c) => ({ time: c.time, value: c.ema50 })))
@@ -847,7 +886,7 @@ export default function ChartPanel({
       macdHistSeriesRef.current?.setData(candles.filter((c) => c.macdHist != null).map((c) => ({
         time: c.time,
         value: c.macdHist,
-        color: c.macdHist >= 0 ? 'rgba(34, 197, 94, 0.55)' : 'rgba(239, 68, 68, 0.55)',
+        color: c.macdHist >= 0 ? ct.macd.histPos : ct.macd.histNeg,
       })))
       isInitializedRef.current = true
     } else {
@@ -862,7 +901,7 @@ export default function ChartPanel({
       volumeSeriesRef.current.update({
         time: c.time,
         value: c.volume,
-        color: c.close >= c.open ? 'rgba(34, 197, 94, 0.45)' : 'rgba(239, 68, 68, 0.45)',
+        color: c.close >= c.open ? ct.volume.up : ct.volume.down,
       })
       if (c.ema20 != null) ema20SeriesRef.current.update({ time: c.time, value: c.ema20 })
       if (c.ema50 != null) ema50SeriesRef.current.update({ time: c.time, value: c.ema50 })
@@ -873,7 +912,7 @@ export default function ChartPanel({
         macdHistSeriesRef.current?.update({
           time: c.time,
           value: c.macdHist,
-          color: c.macdHist >= 0 ? 'rgba(34, 197, 94, 0.55)' : 'rgba(239, 68, 68, 0.55)',
+          color: c.macdHist >= 0 ? ct.macd.histPos : ct.macd.histNeg,
         })
       }
     }
@@ -1106,30 +1145,12 @@ export default function ChartPanel({
             {/* Searchable Pair Dropdown Selector */}
             <div style={{ position: 'relative' }} ref={pairSelectorRef}>
               <button
+                className="pair-selector-btn"
                 onClick={() => setShowPairDropdown(!showPairDropdown)}
-                style={{
-                  background: 'var(--bg-raised)',
-                  border: '1px solid var(--border-medium)',
-                  borderRadius: '12px',
-                  padding: '6px 12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  cursor: 'pointer',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '14px',
-                  fontWeight: 600,
-                  color: 'var(--text-primary)',
-                  transition: 'all 0.16s ease',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                  outline: 'none'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--accent-primary)'}
-                onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border-medium)'}
               >
                 {getCryptoIcon(symbol, 18)}
                 <span>{symbol}</span>
-                <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>▼</span>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
               </button>
 
               {/* Searchable Pair Dropdown Panel */}
@@ -1151,7 +1172,7 @@ export default function ChartPanel({
                 }}>
                   {/* Search Input Box */}
                   <div style={{ position: 'relative', marginBottom: '14px' }}>
-                    <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '14px' }}>🔍</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                     <input
                       type="text"
                       placeholder="Search pair..."
@@ -1225,8 +1246,6 @@ export default function ChartPanel({
                               transition: 'background 0.12s ease'
                             }}
                             className="pair-row-hover"
-                            onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)'}
-                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                           >
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                               {getCryptoIcon(p.symbol, 18)}
@@ -1282,36 +1301,12 @@ export default function ChartPanel({
               </select>
             </div>
 
-            {/* Premium Vibrant Green Pill Load Button (matching 1st image) */}
             <button
+              className="btn-primary chart-load-btn"
               onClick={() => onLoadChart(symbolInput, interval)}
               disabled={loading}
-              style={{
-                background: 'hsl(158, 64%, 52%)',
-                color: 'hsl(212, 48%, 5%)',
-                border: 'none',
-                borderRadius: '9999px',
-                padding: '6px 16px',
-                fontSize: '13px',
-                fontWeight: 700,
-                cursor: 'pointer',
-                transition: 'all 0.16s ease',
-                boxShadow: '0 4px 14px hsla(158, 64%, 52%, 0.3)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginLeft: '8px'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'hsl(158, 64%, 44%)'
-                e.currentTarget.style.boxShadow = '0 6px 20px hsla(158, 64%, 52%, 0.45)'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'hsl(158, 64%, 52%)'
-                e.currentTarget.style.boxShadow = '0 4px 14px hsla(158, 64%, 52%, 0.3)'
-              }}
             >
-              {loading ? 'Loading...' : 'Load'}
+              {loading ? 'Loading…' : 'Load'}
             </button>
           </div>
 
@@ -1333,26 +1328,7 @@ export default function ChartPanel({
               className={`toggle-btn ${isMaximized ? 'active' : ''}`}
               onClick={() => setIsMaximized((prev) => !prev)}
               title={isMaximized ? 'Exit Fullscreen' : 'Fullscreen'}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '6px',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                transition: 'all 0.16s ease',
-                border: 'none',
-                background: 'transparent',
-                color: isMaximized ? 'var(--text-primary)' : 'var(--text-muted)'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'
-                e.currentTarget.style.color = 'var(--text-primary)'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'transparent'
-                e.currentTarget.style.color = isMaximized ? 'var(--text-primary)' : 'var(--text-muted)'
-              }}
+              aria-label={isMaximized ? 'Exit fullscreen' : 'Fullscreen'}
             >
               {isMaximized ? (
                 /* Restore / Exit Fullscreen (pointing inwards) */
@@ -1371,9 +1347,24 @@ export default function ChartPanel({
         </div>
       </div>
 
+      <AnimatePresence>
       {showIndicatorPanel && (
-        <div className="indicator-modal-backdrop" onClick={() => setShowIndicatorPanel(false)}>
-          <div className="indicator-modal glass-panel" onClick={(e) => e.stopPropagation()}>
+        <m.div
+          className="indicator-modal-backdrop"
+          onClick={() => setShowIndicatorPanel(false)}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+        >
+          <m.div
+            className="indicator-modal glass-panel"
+            onClick={(e) => e.stopPropagation()}
+            initial={{ opacity: 0, scale: 0.96, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.98 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+          >
             <div className="indicator-modal-header">
               <div>
                 <div className="indicator-modal-title">Indicators</div>
@@ -1454,9 +1445,10 @@ export default function ChartPanel({
                 </div>
               ))}
             </div>
-          </div>
-        </div>
+          </m.div>
+        </m.div>
       )}
+      </AnimatePresence>
 
       <div className="chart-container-shell" style={{ position: 'relative' }}>
         {/* Dynamic Sliding Legend list */}
@@ -1600,8 +1592,13 @@ export default function ChartPanel({
                           fontSize: '11px'
                         }}
                         title={isHidden ? 'Show' : 'Hide'}
+                        aria-label={isHidden ? `Show ${ind.label}` : `Hide ${ind.label}`}
                       >
-                        {isHidden ? '👁️' : '👁️'}
+                        {isHidden ? (
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"></path><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+                        ) : (
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                        )}
                       </button>
 
                       {/* Settings Gear Button (Only for Standard Pivots) */}
@@ -1619,8 +1616,9 @@ export default function ChartPanel({
                             fontSize: '11px'
                           }}
                           title="Settings"
+                          aria-label="Pivot settings"
                         >
-                          ⚙️
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
                         </button>
                       )}
 
@@ -1865,7 +1863,7 @@ export default function ChartPanel({
                       </span>
                       <input
                         type="color"
-                        value={cfg.color?.startsWith('#') ? cfg.color : '#ff9f43'}
+                        value={cfg.color?.startsWith('#') ? cfg.color : '#748fb4'}
                         onChange={(e) => {
                           onChartPreferencesChange((prev) => ({
                             ...prev,
@@ -1886,28 +1884,23 @@ export default function ChartPanel({
               </div>
             </div>
             <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end' }}>
-              <button onClick={() => {
-                setShowPivotSettings(false)
-              }} style={{
-                background: 'var(--accent-primary)',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '8px',
-                padding: '6px 14px',
-                fontSize: '12px',
-                fontWeight: 500,
-                cursor: 'pointer'
-              }}>Apply</button>
+              <button
+                className="btn-primary"
+                style={{ height: '30px', padding: '0 14px', fontSize: '12px' }}
+                onClick={() => setShowPivotSettings(false)}
+              >
+                Apply
+              </button>
             </div>
           </div>
           )
         })()}
         <div id="chart-container" className="chart-container" ref={priceContainerRef}></div>
         {paneLabelTops.rsi != null && (
-          <div style={{ position: 'absolute', top: paneLabelTops.rsi + 5, left: 10, color: '#8b8b9e', zIndex: 10, fontSize: '12px', fontWeight: 'bold', pointerEvents: 'none' }}>RSI</div>
+          <div className="pane-label" style={{ top: paneLabelTops.rsi + 5 }}>RSI</div>
         )}
         {paneLabelTops.macd != null && (
-          <div style={{ position: 'absolute', top: paneLabelTops.macd + 5, left: 10, color: '#8b8b9e', zIndex: 10, fontSize: '12px', fontWeight: 'bold', pointerEvents: 'none' }}>MACD</div>
+          <div className="pane-label" style={{ top: paneLabelTops.macd + 5 }}>MACD</div>
         )}
         {(loading || error || (!candles.length && !loading)) && (
           <div className={`chart-state-overlay ${error ? 'error' : ''}`}>

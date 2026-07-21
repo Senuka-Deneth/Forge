@@ -13,6 +13,15 @@ export default defineConfig({
       '@forge/market-structure': path.resolve(__dirname, '../supabase/functions/_shared/marketStructure.ts'),
     },
   },
+  build: {
+    rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, 'index.html'),
+        welcome: path.resolve(__dirname, 'welcome.html'),
+        education: path.resolve(__dirname, 'education.html'),
+      },
+    },
+  },
   server: {
     port: 5173
   },

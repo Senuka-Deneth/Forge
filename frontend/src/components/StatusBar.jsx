@@ -44,7 +44,7 @@ export default function StatusBar({
       <div className="kpi-card">
         <div className="kpi-label">Volume</div>
         <div className="kpi-value format-tabular" id="kpi-volume">{formatVolume(latestCandle?.volume)}</div>
-        <div className="kpi-sub">24h Volume</div>
+        <div className="kpi-sub">Latest candle</div>
       </div>
       <div className="kpi-card">
         <div className="kpi-label" title="Indicator confluence score — not a probability">Signal agreement</div>

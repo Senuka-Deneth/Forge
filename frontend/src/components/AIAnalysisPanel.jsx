@@ -1,3 +1,80 @@
+import React, { useState, useEffect, useMemo } from 'react';
+
+const POSITION_CALC_STORAGE_KEY = 'forge_position_calc';
+
+function loadPositionCalcDefaults() {
+  try {
+    const raw = localStorage.getItem(POSITION_CALC_STORAGE_KEY);
+    if (!raw) return { accountSize: 1000, riskPct: 1 };
+    const parsed = JSON.parse(raw);
+    return {
+      accountSize: Number.isFinite(parsed.accountSize) ? parsed.accountSize : 1000,
+      riskPct: Number.isFinite(parsed.riskPct) ? parsed.riskPct : 1,
+    };
+  } catch {
+    return { accountSize: 1000, riskPct: 1 };
+  }
+}
+
+function PositionSizeCalculator({ entry, stop }) {
+  const defaults = useMemo(loadPositionCalcDefaults, []);
+  const [accountSize, setAccountSize] = useState(defaults.accountSize);
+  const [riskPct, setRiskPct] = useState(defaults.riskPct);
+
+  useEffect(() => {
+    localStorage.setItem(POSITION_CALC_STORAGE_KEY, JSON.stringify({ accountSize, riskPct }));
+  }, [accountSize, riskPct]);
+
+  const riskPerUnit = entry != null && stop != null ? Math.abs(entry - stop) : null;
+  const riskAmount = accountSize > 0 && riskPct > 0 ? accountSize * (riskPct / 100) : 0;
+  const positionSize = riskPerUnit && riskPerUnit > 0 ? riskAmount / riskPerUnit : null;
+  const positionValue = positionSize != null && entry != null ? positionSize * entry : null;
+
+  return (
+    <div className="position-calc">
+      <div className="position-calc-inputs">
+        <label>
+          Account size ($)
+          <input
+            type="number"
+            min="0"
+            value={accountSize}
+            onChange={(e) => setAccountSize(Number(e.target.value) || 0)}
+          />
+        </label>
+        <label>
+          Risk per trade (%)
+          <input
+            type="number"
+            min="0"
+            step="0.1"
+            value={riskPct}
+            onChange={(e) => setRiskPct(Number(e.target.value) || 0)}
+          />
+        </label>
+      </div>
+      {riskPerUnit == null ? (
+        <p className="ai-signal-note">Set an entry and stop to size a position.</p>
+      ) : (
+        <div className="ai-rows">
+          <div className="ai-row">
+            <span>Risk amount</span>
+            <span>${riskAmount.toFixed(2)}</span>
+          </div>
+          <div className="ai-row">
+            <span>Position size</span>
+            <span>{positionSize != null ? positionSize.toFixed(6) : '—'} units</span>
+          </div>
+          <div className="ai-row">
+            <span>Position value</span>
+            <span>{positionValue != null ? `$${positionValue.toFixed(2)}` : '—'}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const colorMap = {
   // Trends & Momentum
   bullish: 'var(--bull)',
@@ -77,33 +154,54 @@ function StatusPill({ value }) {
   )
 }
 
-function resolveSourceLabel(meta) {
-  const source = String(meta?.source ?? '').toLowerCase()
-  if (source === 'openrouter') return meta?.model ? String(meta.model) : 'LLM analysis'
-  if (!source || source === 'normalized' || source.includes('fallback') || source === 'local-fallback') {
-    return 'Deterministic analysis'
-  }
-  return 'Deterministic analysis'
-}
-
 export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefresh }) {
   const a = aiAnalysis
-  const sourceLabel = a ? resolveSourceLabel(a._meta) : null
-  const isDeterministic = sourceLabel === 'Deterministic analysis'
+
+  const [loadingMsg, setLoadingMsg] = useState('Running fast market analysis...');
+
+  useEffect(() => {
+    if (aiLoading) {
+      const messages = [
+        'Running fast market analysis...',
+        'Validating signal consistency...',
+        'Finalizing validated output...'
+      ];
+      let i = 0;
+      setLoadingMsg(messages[0]);
+      const interval = setInterval(() => {
+        i++;
+        if (i < messages.length) {
+          setLoadingMsg(messages[i]);
+        } else {
+          clearInterval(interval);
+        }
+      }, 4500);
+      return () => clearInterval(interval);
+    }
+  }, [aiLoading]);
+
+  const isLiveAI = a?._meta?.source === 'openrouter'
+  const modelLabel = a?._meta?.model ?? 'model pending'
 
   return (
     <div id="ai-analysis-section" className="ai-section">
       <div className="ai-section-header">
         <div className="ai-section-title">
           <span>AI Analysis</span>
-          <span
-            className="model-tag"
-            id="ai-model-tag"
-            style={isDeterministic ? { color: 'var(--neutral)' } : undefined}
-            title={isDeterministic ? 'Computed locally from indicators — no LLM involved' : 'Generated with LLM interpretation'}
-          >
-            {sourceLabel ?? (aiLoading ? 'Running analysis…' : 'nemotron-120b · fast validated mode')}
-          </span>
+          <span className="model-tag" id="ai-model-tag">{modelLabel}</span>
+          {a && (
+            <span
+              className="panel-badge"
+              title={isLiveAI ? 'Generated by the live AI model.' : 'AI model was unavailable; this is a rules-based fallback, not a model-generated read.'}
+              style={{
+                marginLeft: '8px',
+                backgroundColor: isLiveAI ? 'var(--bull-soft)' : 'var(--neutral-soft)',
+                color: isLiveAI ? 'var(--bull)' : 'var(--neutral)',
+              }}
+            >
+              {isLiveAI ? 'Live AI' : 'Rules-based fallback'}
+            </span>
+          )}
         </div>
         <div className="ai-section-actions">
           <span 
@@ -140,8 +238,24 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
             <div className="ai-loading-dots">
               <span></span><span></span><span></span>
             </div>
-            <span className="ai-loading-text-label" id="ai-loading-msg">Running analysis…</span>
+            <span className="ai-loading-text-label" id="ai-loading-msg">{loadingMsg}</span>
           </div>
+          {/* Step progress */}
+          <div style={{ display: 'flex', gap: '6px', margin: '4px 0 8px' }}>
+            {['Fast inference', 'Validation', 'Output'].map((step, i) => {
+              const msgIdx = ['fast market analysis', 'signal consistency', 'Finalizing'].map(m => loadingMsg.toLowerCase().includes(m.toLowerCase()) ? true : false);
+              const active = i === 0 || msgIdx[i - 1];
+              return (
+                <div key={i} style={{
+                  flex: 1, height: '2px', borderRadius: '2px',
+                  background: active ? 'var(--accent-primary)' : 'var(--border-medium)',
+                  transition: 'background 0.4s ease',
+                  opacity: active ? 1 : 0.4
+                }} />
+              );
+            })}
+          </div>
+          {/* Skeleton preview of cards */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
             <div style={{ gridColumn: 'span 2', background: 'var(--bg-raised)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', padding: '32px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div className="ai-skeleton-line w-30" style={{ height: '10px', width: '30%' }}></div>
@@ -184,14 +298,14 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
             onClick={onRefresh}
             style={{
               padding: '10px 20px',
-              background: 'var(--accent)',
+              background: 'var(--accent-primary)',
               color: '#fff',
               border: 'none',
               borderRadius: '8px',
               cursor: 'pointer',
               fontWeight: 600,
               fontSize: '14px',
-              boxShadow: 'var(--shadow-sm)'
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)'
             }}
           >
             Create AI Analysis
@@ -225,8 +339,16 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
                 <label>Bias</label>
                 <div id="ai-bias"><StatusPill value={a.summary?.bias} /></div>
               </div>
+              <div className="ai-kpi">
+                <label>Volatility</label>
+                <div id="ai-volatility"><StatusPill value={a.market_regime?.volatility} /></div>
+              </div>
+              <div className="ai-kpi">
+                <label>MTF Confluence</label>
+                <div id="ai-confluence">{a._meta?.confluence_score != null ? `${a._meta.confluence_score}%` : '—'}</div>
+              </div>
               <div className="ai-kpi wide-kpi">
-                <label title="Indicator confluence score — not a probability">Signal agreement</label>
+                <label>AI Confidence</label>
                 <div className="conf-track">
                   <div id="ai-confidence-bar" className="conf-fill" style={{
                     width: `${a.summary?.confidence ?? 0}%`,
@@ -312,6 +434,77 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
               )}
             </div>
           )}
+
+          {a.trade_plan && (
+            <div className="ai-card wide">
+              <div className="ai-card-header">Trade Plan</div>
+              <div className="ai-summary-strip">
+                <div className="ai-kpi">
+                  <label>Plan Bias</label>
+                  <div><StatusPill value={a.trade_plan.bias} /></div>
+                </div>
+                <div className="ai-kpi">
+                  <label>Entry Zone</label>
+                  <span>
+                    {a.trade_plan.entry_zone
+                      ? `${a.trade_plan.entry_zone.low ?? '—'} – ${a.trade_plan.entry_zone.high ?? '—'}`
+                      : '—'}
+                  </span>
+                </div>
+                <div className="ai-kpi">
+                  <label>Stop Loss</label>
+                  <span style={{ color: 'var(--bear)', fontWeight: 600 }}>{a.trade_plan.stop_loss ?? '—'}</span>
+                </div>
+                <div className="ai-kpi">
+                  <label>Plan Confidence</label>
+                  <span>{a.trade_plan.confidence ?? 0}%</span>
+                </div>
+              </div>
+
+              {a.trade_plan.targets?.length > 0 && (
+                <div className="ai-rows">
+                  {a.trade_plan.targets.map((t, i) => (
+                    <div className="ai-row" key={i}>
+                      <span>{t.label}</span>
+                      <span>{t.price ?? '—'}{t.risk_reward != null ? ` · ${t.risk_reward}:1 R:R` : ''}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {a.trade_plan.risk_reward_summary && (
+                <p className="ai-signal-note">{a.trade_plan.risk_reward_summary}</p>
+              )}
+              {a.trade_plan.rationale && (
+                <p id="ai-trade-plan-rationale" className="ai-reasoning-text">{a.trade_plan.rationale}</p>
+              )}
+
+              {a.trade_plan.bias !== 'wait' && (
+                <PositionSizeCalculator entry={a.trade_plan.entry_zone?.high ?? a.trade_plan.entry_zone?.low} stop={a.trade_plan.stop_loss} />
+              )}
+            </div>
+          )}
+
+          <div className="ai-card">
+            <div className="ai-card-header">Order Flow &amp; Positioning</div>
+            <div className="ai-rows">
+              <div className="ai-row">
+                <span>Order Book Imbalance</span>
+                <span>{a.order_flow?.obi != null ? `${(a.order_flow.obi * 100).toFixed(1)}%` : 'unavailable'}</span>
+              </div>
+              <div className="ai-row">
+                <span>Dominant Side</span>
+                <div><StatusPill value={a.order_flow?.dominant_side} /></div>
+              </div>
+              <div className="ai-row">
+                <span>Futures Data</span>
+                <span>{a._meta?.data_completeness?.futures_available ? 'available' : 'unavailable (spot only)'}</span>
+              </div>
+            </div>
+            {a.order_flow?.interpretation && (
+              <p className="ai-signal-note">{a.order_flow.interpretation}</p>
+            )}
+          </div>
 
           <div className="ai-card wide">
             <div className="ai-card-header">AI Trade Logic</div>

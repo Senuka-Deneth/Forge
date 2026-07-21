@@ -12,11 +12,7 @@ import {
   isEdgeFunctionUnavailableError,
 } from './supabaseClient'
 import { buildPivotData, sanitizePivotTimeframe } from '@forge/pivot'
-import {
-  buildMarketStructure,
-  computeSignalAgreement,
-  derivePrimaryTrend,
-} from '@forge/market-structure'
+import { buildMarketStructure } from '@forge/market-structure'
 import {
   DEFAULT_CHART_PREFERENCES,
   sanitizePreferences,
@@ -24,6 +20,9 @@ import {
 
 const COMMON_QUOTES = ['USDT', 'BUSD', 'BTC', 'ETH', 'FDUSD']
 const BINANCE_KLINES_URL = 'https://api.binance.com/api/v3/klines'
+const WS_MAX_RECONNECT_DELAY_MS = 30000
+const WS_WATCHDOG_TIMEOUT_MS = 30000
+const AI_COOLDOWN_MS = 8000
 const LOCAL_PREFERENCES_PREFIX = 'forge_chart_preferences'
 
 class ChartPanelErrorBoundary extends Component {
@@ -426,6 +425,7 @@ export default function App() {
   const [aiAnalysis, setAIAnalysis] = useState(null)
   const [aiLoading, setAILoading] = useState(false)
   const [aiError, setAIError] = useState('')
+  const lastAICallRef = useRef(0)
 
   const [pivotData, setPivotData] = useState(null)
   const [chartPreferences, setChartPreferences] = useState(DEFAULT_CHART_PREFERENCES)
@@ -435,6 +435,10 @@ export default function App() {
   const preferencesCloudUnavailableRef = useRef(false)
 
   const wsRef = useRef(null)
+  const reconnectAttemptsRef = useRef(0)
+  const reconnectTimeoutRef = useRef(null)
+  const watchdogTimeoutRef = useRef(null)
+  const wsParamsRef = useRef({ symbol: null, interval: null })
 
   const latestCandle = candles.length ? candles[candles.length - 1] : null
   const latestPrice = latestCandle?.close ?? null
@@ -445,7 +449,25 @@ export default function App() {
     return ((latestPrice - previousPrice) / previousPrice) * 100
   }, [latestPrice, previousPrice])
 
+  const clearReconnectTimer = () => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current)
+      reconnectTimeoutRef.current = null
+    }
+  }
+
+  const clearWatchdog = () => {
+    if (watchdogTimeoutRef.current) {
+      clearTimeout(watchdogTimeoutRef.current)
+      watchdogTimeoutRef.current = null
+    }
+  }
+
   const closeSocket = () => {
+    wsParamsRef.current = { symbol: null, interval: null }
+    clearReconnectTimer()
+    clearWatchdog()
+
     if (wsRef.current) {
       const socket = wsRef.current
       wsRef.current = null
@@ -459,6 +481,36 @@ export default function App() {
     }
 
     setIsLive(false)
+  }
+
+  const scheduleReconnect = () => {
+    clearWatchdog()
+
+    if (wsRef.current) {
+      const socket = wsRef.current
+      wsRef.current = null
+      if (
+        socket.readyState === WebSocket.OPEN ||
+        socket.readyState === WebSocket.CONNECTING
+      ) {
+        socket.close()
+      }
+    }
+
+    const { symbol: pendingSymbol, interval: pendingInterval } = wsParamsRef.current
+    if (!pendingSymbol || !pendingInterval) return
+
+    const attempt = reconnectAttemptsRef.current
+    reconnectAttemptsRef.current = attempt + 1
+    const delayMs = Math.min(1000 * 2 ** attempt, WS_MAX_RECONNECT_DELAY_MS)
+
+    setIsLive(false)
+    setStatus(`Live stream disconnected. Reconnecting in ${Math.round(delayMs / 1000)}s...`)
+
+    clearReconnectTimer()
+    reconnectTimeoutRef.current = setTimeout(() => {
+      startWebSocket(pendingSymbol, pendingInterval)
+    }, delayMs)
   }
 
   const recalculateIndicators = (data) => {
@@ -480,21 +532,48 @@ export default function App() {
   }
 
   const startWebSocket = (selectedSymbol, selectedInterval) => {
-    closeSocket()
+    clearReconnectTimer()
+    clearWatchdog()
+
+    if (wsRef.current) {
+      const previousSocket = wsRef.current
+      wsRef.current = null
+      if (
+        previousSocket.readyState === WebSocket.OPEN ||
+        previousSocket.readyState === WebSocket.CONNECTING
+      ) {
+        previousSocket.close()
+      }
+    }
+
+    wsParamsRef.current = { symbol: selectedSymbol, interval: selectedInterval }
 
     const streamName = `${selectedSymbol.toLowerCase()}@kline_${selectedInterval}`
     const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${streamName}`)
 
     wsRef.current = ws
 
+    const armWatchdog = () => {
+      if (wsRef.current !== ws) return
+      clearWatchdog()
+      watchdogTimeoutRef.current = setTimeout(() => {
+        if (wsRef.current !== ws) return
+        setStatus('Live stream stalled. Reconnecting...')
+        scheduleReconnect()
+      }, WS_WATCHDOG_TIMEOUT_MS)
+    }
+
     ws.onopen = () => {
       if (wsRef.current !== ws) return
+      reconnectAttemptsRef.current = 0
       setStatus('Live stream connected')
       setIsLive(true)
+      armWatchdog()
     }
 
     ws.onmessage = (event) => {
       if (wsRef.current !== ws) return
+      armWatchdog()
 
       try {
         const msg = JSON.parse(event.data)
@@ -544,27 +623,9 @@ export default function App() {
     ws.onclose = () => {
       if (wsRef.current === ws) {
         wsRef.current = null
-        setStatus('Live stream disconnected')
-        setIsLive(false)
+        scheduleReconnect()
       }
     }
-  }
-
-  const fetchPivots = async (selectedSymbol, selectedTimeframe) => {
-    try {
-      const sourceCandles = selectedSymbol === symbol && selectedTimeframe === interval ? candles : null
-      const marketCandles = sourceCandles?.length
-        ? sourceCandles
-        : await fetchMarketCandles(selectedSymbol, selectedTimeframe, 4000)
-      const nextPivotData = await fetchPivotData(selectedSymbol, selectedTimeframe, marketCandles, chartPreferences.pivotType || 'traditional', chartPreferences)
-      if (nextPivotData?.success) {
-        setPivotData(nextPivotData)
-        return nextPivotData
-      }
-    } catch (err) {
-      console.error('Failed to fetch pivots:', err)
-    }
-    return null
   }
 
   useEffect(() => {
@@ -693,112 +754,20 @@ export default function App() {
     const candleData = currentCandles
     if (!candleData || candleData.length < 2) return
 
+    const now = Date.now()
+    const elapsedSinceLastCall = now - lastAICallRef.current
+    if (elapsedSinceLastCall < AI_COOLDOWN_MS) {
+      const waitSeconds = Math.ceil((AI_COOLDOWN_MS - elapsedSinceLastCall) / 1000)
+      setAIError(`Please wait ${waitSeconds}s before requesting another AI analysis.`)
+      return
+    }
+    lastAICallRef.current = now
+
     setAILoading(true)
     setAIError('')
 
-    // Fetch fresh pivots if not already available
-    let currentPivotData = pivotData
-    if (!currentPivotData) {
-      currentPivotData = await fetchPivots(symbol, interval)
-    }
-
-    const latest = candleData[candleData.length - 1]
-    const prev = candleData[candleData.length - 2]
-    const priceChg =
-      prev && prev.close !== 0
-        ? (((latest.close - prev.close) / prev.close) * 100).toFixed(4)
-        : 0
-
-    const analysisSlice = candleData.slice(-100)
-    const rsiSeries = analysisSlice.map((c) => c.rsi14 ?? null)
-    const marketStructure = buildMarketStructure(analysisSlice, rsiSeries)
-    const {
-      atr,
-      divergence,
-      srZones,
-      swingHighs,
-      swingLows,
-      nearestSupport,
-      nearestResistance,
-    } = marketStructure
-
-    const last5 = candleData.slice(-5)
-
-    const pivots = currentPivotData?.classic?.pivots ?? null
-    const pivotAnalysis = currentPivotData?.classic?.analysis ?? null
-    const fibPivots = currentPivotData?.fibonacci?.pivots ?? null
-    const traditionalPivots = currentPivotData?.traditional?.pivots ?? currentPivotData?.binance?.pivots ?? null
-    const traditionalAnalysis = currentPivotData?.traditional?.analysis ?? currentPivotData?.binance?.analysis ?? null
-
-    const primaryTrend = derivePrimaryTrend(latest.close, latest.ema20, latest.ema50)
-    const pivotSessionBias = pivotAnalysis?.bias ?? 'neutral'
-    const signalAgreement = computeSignalAgreement({
-      price: latest.close,
-      ema20: latest.ema20,
-      ema50: latest.ema50,
-      rsi: latest.rsi14,
-      macdLine: latest.macd,
-      signalLine: latest.macdSignal,
-      primaryTrend,
-      pivotSessionBias,
-      hasSupportZone: Boolean(nearestSupport),
-      hasResistanceZone: Boolean(nearestResistance),
-      divergence,
-      atInflectionPoint: Boolean(pivotAnalysis?.atInflectionPoint),
-    })
-
-    const payload = {
-      symbol,
-      timeframe: interval,
-      price: latest.close,
-      change: priceChg,
-      rsi: latest.rsi14 ?? null,
-      ema20: latest.ema20 ?? null,
-      ema50: latest.ema50 ?? null,
-      macd: {
-        macd: latest.macd ?? null,
-        signal: latest.macdSignal ?? null,
-        histogram: latest.macdHist ?? null,
-      },
-      volume: latest.volume ?? null,
-      atr,
-      divergence,
-      srZones,
-      signalAgreement,
-      swingHighs: swingHighs.slice(-5).map((s) => s.price),
-      swingLows: swingLows.slice(-5).map((s) => s.price),
-      support: nearestSupport?.price ?? null,
-      resistance: nearestResistance?.price ?? null,
-      recentCloses: last5.map((c) => c.close),
-      recentVolumes: last5.map((c) => c.volume),
-      obi: null,
-      tfi: null,
-      fundingRate: null,
-      oiDelta: null,
-
-      // Pivot data for AI
-      pivots: pivots ? {
-        classic: pivots,
-        fibonacci: fibPivots,
-        traditional: traditionalPivots,
-        binance: traditionalPivots,
-        analysis: pivotAnalysis ? {
-          zone: pivotAnalysis.zone,
-          bias: pivotAnalysis.bias,
-          nearestPivotResistance: pivotAnalysis.nearestResistance,
-          nearestPivotSupport: pivotAnalysis.nearestSupport,
-          distToResistance: pivotAnalysis.distToResistance,
-          distToSupport: pivotAnalysis.distToSupport,
-          atInflectionPoint: pivotAnalysis.atInflectionPoint,
-          inflectionLevel: pivotAnalysis.inflectionLevel,
-          sessionBullish: pivotAnalysis.sessionBullish,
-        } : null,
-        binanceAnalysis: traditionalAnalysis,
-      } : null,
-    }
-
     try {
-      const data = await invokeFunction('ai-analysis', payload)
+      const data = await invokeFunction('ai-analysis', { symbol, interval })
       if (data?.success) {
         setAIAnalysis(data.analysis)
       } else {

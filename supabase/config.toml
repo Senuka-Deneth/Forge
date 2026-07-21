@@ -395,6 +395,12 @@ verify_jwt = true
 [functions.user-preferences]
 verify_jwt = true
 
+[functions.score-predictions]
+verify_jwt = false
+
+[functions.analysis-stats]
+verify_jwt = true
+
 [analytics]
 enabled = true
 port = 54327

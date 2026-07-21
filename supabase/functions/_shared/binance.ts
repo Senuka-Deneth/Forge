@@ -4,10 +4,20 @@ import { fetchWithTimeout } from "./http.ts";
 const BINANCE_SPOT_BASE = "https://api.binance.com";
 const BINANCE_FUTURES_BASE = "https://fapi.binance.com";
 
-export async function fetchBinanceKlines(symbol: string, interval: string, limit: number): Promise<Candle[]> {
+export type FetchKlinesOptions = {
+  startTime?: number;
+};
+
+export async function fetchBinanceKlines(
+  symbol: string,
+  interval: string,
+  limit: number,
+  options: FetchKlinesOptions = {},
+): Promise<Candle[]> {
   let remaining = limit;
   let currentEndTime: number | null = null;
   let allRawData: unknown[][] = [];
+  const startTimeMs = options.startTime != null ? options.startTime * 1000 : null;
 
   while (remaining > 0) {
     const fetchLimit = Math.min(remaining, 1000);
@@ -16,6 +26,7 @@ export async function fetchBinanceKlines(symbol: string, interval: string, limit
     url.searchParams.set("interval", interval);
     url.searchParams.set("limit", String(fetchLimit));
     if (currentEndTime != null) url.searchParams.set("endTime", String(currentEndTime));
+    if (startTimeMs != null && currentEndTime == null) url.searchParams.set("startTime", String(startTimeMs));
 
     const response = await fetchWithTimeout(url, {}, { timeoutMs: 10000, retries: 1 });
     if (!response.ok) {
@@ -39,7 +50,6 @@ export async function fetchBinanceKlines(symbol: string, interval: string, limit
     low: Number(item[3]),
     close: Number(item[4]),
     volume: Number(item[5]),
-    // item[9] = taker buy base asset volume; used to derive Cumulative Volume Delta.
     takerBuyVolume: Number(item[9]),
   })).slice(-limit);
 
@@ -121,10 +131,19 @@ export async function fetchFuturesContext(symbol: string): Promise<FuturesContex
     shortAccountPct: null,
   };
 
+  const premiumUrl = new URL(`${BINANCE_FUTURES_BASE}/fapi/v1/premiumIndex`);
+  premiumUrl.searchParams.set("symbol", symbol);
+  const oiUrl = new URL(`${BINANCE_FUTURES_BASE}/fapi/v1/openInterest`);
+  oiUrl.searchParams.set("symbol", symbol);
+  const ratioUrl = new URL(`${BINANCE_FUTURES_BASE}/futures/data/globalLongShortAccountRatio`);
+  ratioUrl.searchParams.set("symbol", symbol);
+  ratioUrl.searchParams.set("period", "1h");
+  ratioUrl.searchParams.set("limit", "1");
+
   const [premiumRes, oiRes, ratioRes] = await Promise.allSettled([
-    fetchWithTimeout(`${BINANCE_FUTURES_BASE}/fapi/v1/premiumIndex?symbol=${symbol}`, {}, { timeoutMs: 8000, retries: 0 }),
-    fetchWithTimeout(`${BINANCE_FUTURES_BASE}/fapi/v1/openInterest?symbol=${symbol}`, {}, { timeoutMs: 8000, retries: 0 }),
-    fetchWithTimeout(`${BINANCE_FUTURES_BASE}/futures/data/globalLongShortAccountRatio?symbol=${symbol}&period=1h&limit=1`, {}, { timeoutMs: 8000, retries: 0 }),
+    fetchWithTimeout(premiumUrl, {}, { timeoutMs: 8000, retries: 0 }),
+    fetchWithTimeout(oiUrl, {}, { timeoutMs: 8000, retries: 0 }),
+    fetchWithTimeout(ratioUrl, {}, { timeoutMs: 8000, retries: 0 }),
   ]);
 
   const result = { ...empty };

@@ -1,4 +1,5 @@
 import { handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { safeError } from "../_shared/http.ts";
 import { requireAuthenticatedUser, tryServiceClient } from "../_shared/auth.ts";
 import {
   ALLOWED_INTERVALS,
@@ -76,7 +77,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     return jsonResponse(req, {
       success: false,
-      error: error instanceof Error ? error.message : String(error),
+      error: safeError("Failed to calculate pivots.", error),
     }, 500);
   }
 });

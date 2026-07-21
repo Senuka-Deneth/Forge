@@ -1,16 +1,16 @@
-# Graph Report - Forge  (2026-07-19)
+# Graph Report - Forge  (2026-07-21)
 
 ## Corpus Check
-- 49 files · ~392,611 words
+- 61 files · ~274,809 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 367 nodes · 618 edges · 26 communities (17 shown, 9 thin omitted)
-- Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 1 edges (avg confidence: 0.8)
+- 447 nodes · 830 edges · 28 communities (21 shown, 7 thin omitted)
+- Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 1 edges (avg confidence: 0.5)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `9faffbf4`
+- Built from commit: `5723cec6`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -37,24 +37,26 @@
 - screenshot2.js
 - vite.config.js
 - 20260518000000_chart_bot_schema.sql
+- __init__.py
+- __init__.py
 - DEFAULT_PRICE_SCALE_MARGINS
 - marketStructure.test.js
+- education-app.js
+- education-data.js
 
 ## God Nodes (most connected - your core abstractions)
-1. `App()` - 17 edges
-2. `ChartPanel()` - 16 edges
-3. `buildPivotDataFromHtf()` - 12 edges
-4. `analyze()` - 11 edges
-5. `_build_deterministic_fallback()` - 10 edges
-6. `PivotSegmentsPrimitive` - 9 edges
-7. `deterministicFallback()` - 9 edges
-8. `Pivot Points Architecture` - 9 edges
-9. `_normalize_and_validate_analysis()` - 8 edges
-10. `buildPivotData()` - 8 edges
+1. `gatherMarketContext()` - 24 edges
+2. `App()` - 18 edges
+3. `ChartPanel()` - 16 edges
+4. `enrichCandles()` - 16 edges
+5. `buildPivotDataFromHtf()` - 14 edges
+6. `normalizeModelOutput()` - 12 edges
+7. `fetchWithTimeout()` - 11 edges
+8. `PivotSegmentsPrimitive` - 9 edges
+9. `buildMarketStructure()` - 9 edges
+10. `Pivot Points Architecture` - 9 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `ai_analyze()` --calls--> `analyze_market()`  [INFERRED]
-  backend/app.py → backend/services/openrouter_service.py
 - `createDefaultPivotLevelOptions()` --references--> `PIVOT_LEVEL_KEYS`  [EXTRACTED]
   frontend/src/utils/pivotChartPrefs.js → supabase/functions/_shared/pivotPoints.ts
 - `sanitizePivotLevelOptions()` --references--> `PIVOT_LEVEL_KEYS`  [EXTRACTED]
@@ -63,55 +65,57 @@
   frontend/src/App.jsx → frontend/src/hooks/useAuth.js
 - `sanitizePreferences()` --calls--> `sanitizePivotChartPrefs()`  [EXTRACTED]
   frontend/src/utils/userPreferences.js → frontend/src/utils/pivotChartPrefs.js
+- `gatherMarketContext()` --calls--> `sliceClosedCandles()`  [EXTRACTED]
+  supabase/functions/_shared/aiContext.ts → supabase/functions/_shared/candles.ts
 
 ## Import Cycles
 - None detected.
 
-## Communities (26 total, 9 thin omitted)
+## Communities (28 total, 7 thin omitted)
 
 ### Community 0 - "App.jsx"
-Cohesion: 0.10
-Nodes (33): App(), applyTheme(), buildTechnicalAnalysis(), calculateEMA(), calculateMACD(), calculateRSI(), COMMON_QUOTES, enrichCandles() (+25 more)
+Cohesion: 0.07
+Nodes (41): App(), applyTheme(), buildTechnicalAnalysis(), calculateEMA(), calculateMACD(), calculateRSI(), ChartPanelErrorBoundary, COMMON_QUOTES (+33 more)
 
 ### Community 1 - "pivotPoints.ts"
-Cohesion: 0.07
-Nodes (43): corsHeaders, handleOptions(), jsonResponse(), inflectionThreshold(), aggregateMonthlyToYearly(), ALLOWED_CHART_INTERVALS, AnalyzePivotsOptions, analyzePriceVsPivots() (+35 more)
+Cohesion: 0.09
+Nodes (26): inflectionThreshold(), aggregateMonthlyToYearly(), ALLOWED_CHART_INTERVALS, AnalyzePivotsOptions, analyzePriceVsPivots(), buildPivotDataFromHtf(), BuildPivotDataInput, calculatePivotsGeneric() (+18 more)
 
 ### Community 2 - "main.jsx"
 Cohesion: 0.17
 Nodes (17): AuthShell(), GoogleIcon(), ProtectedRoute(), PublicOnlyRoute(), AUTH_ROUTES, AuthContext, AuthProvider(), getPath() (+9 more)
 
 ### Community 3 - "package.json"
-Cohesion: 0.06
-Nodes (30): framer-motion, dependencies, framer-motion, lightweight-charts, puppeteer, react, react-dom, @supabase/supabase-js (+22 more)
+Cohesion: 0.07
+Nodes (29): framer-motion, dependencies, framer-motion, lightweight-charts, react, react-dom, @supabase/supabase-js, devDependencies (+21 more)
 
 ### Community 4 - "app.py"
-Cohesion: 0.15
-Nodes (24): ai_analyze(), analyze(), build_scenarios(), calculate_ema(), calculate_macd(), calculate_rsi(), enrich_candles(), fetch_binance_klines() (+16 more)
+Cohesion: 0.11
+Nodes (24): ALLOWED_INTERVALS, asEnum(), asObject(), buildDeterministicTradePlan(), clamp(), deterministicFallback(), normalizeLabelValue(), normalizeModelOutput() (+16 more)
 
 ### Community 5 - "ChartPanel.jsx"
 Cohesion: 0.17
 Nodes (23): buildCandleDataWithWhitespace(), ChartPanel(), getCryptoIcon(), getCurrentPivotPeriodEnd(), getPivotTypeName(), POPULAR_PAIRS, subtractFiveMonths(), applyManualPriceRange() (+15 more)
 
 ### Community 6 - "index.ts"
-Cohesion: 0.10
-Nodes (27): asEnum(), clamp(), deriveAlignment(), deriveRsiState(), deterministicFallback(), normalizeLabelValue(), normalizeModelOutput(), resolveDivergence() (+19 more)
+Cohesion: 0.16
+Nodes (18): AtrResult, buildMarketStructure(), calculateATR(), clamp(), clusterIntoZones(), computeSignalAgreement(), detectRsiDivergence(), DivergenceOptions (+10 more)
 
 ### Community 7 - "Pivot Points Architecture"
-Cohesion: 0.09
-Nodes (21): API response contract, Base data: native Binance HTF klines, Chart rendering (TradingView-equivalent), Pivot Points Architecture, Pivot types (formulas unchanged), Preferences, Serving path, Source of truth (+13 more)
+Cohesion: 0.20
+Nodes (9): API response contract, Base data: native Binance HTF klines, Chart rendering (TradingView-equivalent), Pivot Points Architecture, Pivot types (formulas unchanged), Preferences, Serving path, Source of truth (+1 more)
 
 ### Community 8 - "openrouter_service.py"
-Cohesion: 0.23
-Nodes (16): analyze_market(), _as_enum(), _build_deterministic_fallback(), build_system_prompt(), build_user_message(), _clamp(), _derive_alignment(), _derive_rsi_state() (+8 more)
+Cohesion: 0.18
+Nodes (22): clamp(), divergenceToLegacy(), gatherMarketContext(), labelSwing(), MtfRead, nearestZones(), readTrendFromCandles(), seriesTrend() (+14 more)
 
 ### Community 9 - "PivotSegmentsPrimitive"
 Cohesion: 0.14
 Nodes (4): formatPivotPrice(), PivotSegmentsPaneRenderer, PivotSegmentsPaneView, PivotSegmentsPrimitive
 
 ### Community 10 - "index.ts"
-Cohesion: 0.22
-Nodes (10): ALLOWED_INTERVALS, calculateEMA(), calculateMACD(), calculateRSI(), Candle, enrichCandles(), fetchBinanceKlines(), isCandleArray() (+2 more)
+Cohesion: 0.08
+Nodes (37): ScoredRow, ALLOWED_INTERVALS, isCandleArray(), readMarketCache(), asTradePlan(), barHitLong(), barHitShort(), LogRow (+29 more)
 
 ### Community 11 - "Forge — Prediction Accuracy Audit & Roadmap"
 Cohesion: 0.15
@@ -125,29 +129,53 @@ Nodes (5): Forge — Plan Mode Prompts, Prompt 1 — Consolidate pivot logic + T
 Cohesion: 0.53
 Nodes (4): EducationPanel(), educationData, getIcon(), ICONS
 
+### Community 14 - "ChartPanelErrorBoundary"
+Cohesion: 0.15
+Nodes (20): calculateADX(), calculateATR(), calculateBollingerBands(), calculateCVD(), calculateEMA(), calculateMACD(), calculateOBV(), calculateRelativeVolume() (+12 more)
+
+### Community 15 - "education-app.js"
+Cohesion: 0.22
+Nodes (15): buildMtfDepth(), computeVolumeProfile(), fetchFundingSignal(), fetchJson(), fetchOiHistory(), fetchTakerRatioSignal(), FundingSignal, gatherMarketFeatures() (+7 more)
+
+### Community 18 - "education-data.js"
+Cohesion: 0.17
+Nodes (11): 1. Supabase Setup, 2. Frontend Setup, Backend, 📸 Dashboard Overview, Forge 📊, Frontend, 🚀 Getting Started, ✨ Key Features (+3 more)
+
+### Community 19 - "screenshot2.js"
+Cohesion: 0.22
+Nodes (8): name, private, scripts, build, dev, preview, test, test:functions
+
+### Community 22 - "__init__.py"
+Cohesion: 0.25
+Nodes (8): buildPivotData(), fetchBinanceHtfKlines(), getBinanceIntervalForPeriod(), getHtfFetchLimit(), parseBinanceKlines(), PIVOT_TIMEFRAME_OPTIONS, sanitizePivotTimeframe(), sanitizePreferences()
+
+### Community 23 - "__init__.py"
+Cohesion: 0.40
+Nodes (3): public.ai_analysis_cache, public.ai_analysis_logs, public.ai_rate_limit_events
+
 ### Community 25 - "marketStructure.test.js"
 Cohesion: 0.83
 Nodes (3): buildHighVolSeries(), buildLowVolSeries(), makeCandle()
 
 ## Knowledge Gaps
-- **80 isolated node(s):** `ICONS`, `educationData`, `name`, `private`, `version` (+75 more)
+- **106 isolated node(s):** `name`, `private`, `version`, `type`, `dev` (+101 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **9 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **7 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `PIVOT_LEVEL_KEYS` connect `ChartPanel.jsx` to `pivotPoints.ts`?**
-  _High betweenness centrality (0.184) - this node is a cross-community bridge._
+  _High betweenness centrality (0.279) - this node is a cross-community bridge._
 - **Why does `ChartPanel()` connect `ChartPanel.jsx` to `App.jsx`?**
-  _High betweenness centrality (0.062) - this node is a cross-community bridge._
-- **What connects `Use precomputed signalAgreement from payload; fallback to legacy bonus formula.`, `ICONS`, `educationData` to the rest of the system?**
-  _81 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _High betweenness centrality (0.091) - this node is a cross-community bridge._
+- **What connects `name`, `private`, `version` to the rest of the system?**
+  _106 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `App.jsx` be split into smaller, more focused modules?**
-  _Cohesion score 0.1 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.07012987012987013 - nodes in this community are weakly interconnected._
 - **Should `pivotPoints.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.06561085972850679 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.09462365591397849 - nodes in this community are weakly interconnected._
 - **Should `package.json` be split into smaller, more focused modules?**
-  _Cohesion score 0.06451612903225806 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.06666666666666667 - nodes in this community are weakly interconnected._
 - **Should `app.py` be split into smaller, more focused modules?**
-  _Cohesion score 0.1452991452991453 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.11428571428571428 - nodes in this community are weakly interconnected._

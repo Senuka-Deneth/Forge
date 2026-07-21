@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { safeError } from "../_shared/http.ts";
 import { sanitizePivotTimeframe } from "../_shared/pivotPoints.ts";
 
 const DEFAULT_CHART_PREFERENCES = {
@@ -146,8 +147,8 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (error) {
-        return jsonResponse(req, 
-          { success: false, error: error.message, error_code: "DATABASE_ERROR", hint: "Check that migration ran and table user_preferences exists." },
+        return jsonResponse(req,
+          { success: false, error: safeError("Failed to load preferences.", error), error_code: "DATABASE_ERROR" },
           500,
         );
       }
@@ -173,8 +174,8 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (error) {
-        return jsonResponse(req, 
-          { success: false, error: error.message, error_code: "DATABASE_ERROR", hint: "Check that migration ran and table user_preferences exists." },
+        return jsonResponse(req,
+          { success: false, error: safeError("Failed to load preferences.", error), error_code: "DATABASE_ERROR" },
           500,
         );
       }
@@ -199,8 +200,8 @@ Deno.serve(async (req) => {
         .upsert({ user_id: userId, preferences }, { onConflict: "user_id" });
 
       if (error) {
-        return jsonResponse(req, 
-          { success: false, error: error.message, error_code: "DATABASE_ERROR", hint: "Upsert failed; verify RLS and service role, or migration constraints." },
+        return jsonResponse(req,
+          { success: false, error: safeError("Failed to save preferences.", error), error_code: "DATABASE_ERROR" },
           500,
         );
       }
@@ -220,7 +221,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     return jsonResponse(req, {
       success: false,
-      error: error instanceof Error ? error.message : String(error),
+      error: safeError("Unexpected preferences error.", error),
       error_code: "UNEXPECTED_ERROR",
     }, 500);
   }

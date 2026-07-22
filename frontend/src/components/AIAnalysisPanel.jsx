@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import VerdictPanel from './VerdictPanel';
+import { supabase } from '../supabaseClient';
 
 const POSITION_CALC_STORAGE_KEY = 'forge_position_calc';
 
@@ -155,32 +156,98 @@ function StatusPill({ value }) {
   )
 }
 
-export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefresh }) {
+function alertDirection(level, currentPrice) {
+  if (currentPrice == null || !Number.isFinite(currentPrice) || !Number.isFinite(level)) return 'above';
+  return level >= currentPrice ? 'above' : 'below';
+}
+
+export default function AIAnalysisPanel({
+  aiAnalysis,
+  aiLoading,
+  aiError,
+  onRefresh,
+  symbol,
+  currentPrice,
+}) {
   const a = aiAnalysis
 
   const [loadingMsg, setLoadingMsg] = useState('Running fast market analysis...');
+  const [alertStatus, setAlertStatus] = useState('');
 
   useEffect(() => {
-    if (aiLoading) {
-      const messages = [
-        'Running fast market analysis...',
-        'Validating signal consistency...',
-        'Finalizing validated output...'
-      ];
-      let i = 0;
-      setLoadingMsg(messages[0]);
-      const interval = setInterval(() => {
-        i++;
-        if (i < messages.length) {
-          setLoadingMsg(messages[i]);
-        } else {
-          clearInterval(interval);
-        }
-      }, 4500);
-      return () => clearInterval(interval);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional loading message rotation while aiLoading is true
+    if (!aiLoading) return undefined;
+    const messages = [
+      'Running fast market analysis...',
+      'Validating signal consistency...',
+      'Finalizing validated output...'
+    ];
+    let i = 0;
+    const timeoutId = setTimeout(() => setLoadingMsg(messages[0]), 0);
+    const interval = setInterval(() => {
+      i++;
+      if (i < messages.length) {
+        setLoadingMsg(messages[i]);
+      } else {
+        clearInterval(interval);
+      }
+    }, 4500);
+    return () => {
+      clearTimeout(timeoutId);
+      clearInterval(interval);
+    };
   }, [aiLoading]);
+
+  const handleOverride = async (guardrailId) => {
+    if (!supabase || !a?._meta?.analysis_id) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user?.id) return;
+      const { error } = await supabase.from('risk_overrides').insert({
+        user_id: user.id,
+        analysis_id: a._meta.analysis_id,
+        guardrail_id: guardrailId,
+      });
+      if (error) console.error('[AIAnalysisPanel] risk_overrides insert failed:', error.message);
+    } catch (err) {
+      console.error('[AIAnalysisPanel] override logging failed:', err);
+    }
+  };
+
+  const createPriceAlert = async (source, level) => {
+    const numericLevel = Number(level);
+    if (!supabase || !Number.isFinite(numericLevel) || numericLevel <= 0) {
+      setAlertStatus('No level available for alert.');
+      return;
+    }
+    const alertSymbol = String(symbol || '').toUpperCase();
+    if (!/^[A-Z0-9]{5,20}$/.test(alertSymbol)) {
+      setAlertStatus('Symbol unavailable — reload analysis and retry.');
+      return;
+    }
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user?.id) {
+        setAlertStatus('Sign in to arm price alerts.');
+        return;
+      }
+      const { error } = await supabase.from('price_alerts').insert({
+        user_id: user.id,
+        symbol: alertSymbol,
+        level: numericLevel,
+        direction: alertDirection(numericLevel, currentPrice),
+        source,
+        armed: true,
+        analysis_id: a?._meta?.analysis_id ?? null,
+      });
+      if (error) {
+        setAlertStatus(error.message || 'Failed to create alert.');
+        return;
+      }
+      setAlertStatus(`Alert armed @ ${numericLevel} (${source.replace(/_/g, ' ')})`);
+    } catch (err) {
+      setAlertStatus(err.message || 'Failed to create alert.');
+    }
+  };
 
   const isLiveAI = a?._meta?.source === 'openrouter'
   const isPartialAI = a?._meta?.source === 'openrouter-partial'
@@ -308,7 +375,7 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
       {!aiLoading && a && (
         <div id="ai-content" className="ai-content-grid fade-in">
           <div className="ai-card wide" style={{ padding: 0, background: 'transparent', border: 'none' }}>
-            <VerdictPanel analysis={a} />
+            <VerdictPanel analysis={a} onOverride={handleOverride} />
           </div>
 
           <div className="ai-card wide">
@@ -491,7 +558,39 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
               )}
 
               {a.trade_plan.bias !== 'wait' && (
-                <PositionSizeCalculator entry={a.trade_plan.entry_zone?.high ?? a.trade_plan.entry_zone?.low} stop={a.trade_plan.stop_loss} />
+                <>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      style={{ fontSize: '11px' }}
+                      onClick={() => {
+                        const mid = a.trade_plan.entry_zone
+                          ? (Number(a.trade_plan.entry_zone.low) + Number(a.trade_plan.entry_zone.high)) / 2
+                          : NaN;
+                        const level = Number.isFinite(mid)
+                          ? mid
+                          : Number(a.trade_plan.entry_zone?.high ?? a.trade_plan.entry_zone?.low);
+                        createPriceAlert('entry_zone', level);
+                      }}
+                    >
+                      Alert @ entry
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      style={{ fontSize: '11px' }}
+                      onClick={() => createPriceAlert('invalidation', a.trade_plan.stop_loss)}
+                      disabled={a.trade_plan.stop_loss == null}
+                    >
+                      Alert @ invalidation
+                    </button>
+                  </div>
+                  {alertStatus && (
+                    <p className="ai-signal-note" style={{ marginTop: '6px' }}>{alertStatus}</p>
+                  )}
+                  <PositionSizeCalculator entry={a.trade_plan.entry_zone?.high ?? a.trade_plan.entry_zone?.low} stop={a.trade_plan.stop_loss} />
+                </>
               )}
             </div>
           )}

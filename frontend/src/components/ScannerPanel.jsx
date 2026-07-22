@@ -47,7 +47,7 @@ function formatNumber(value, digits = 2) {
   return Number(value).toFixed(digits)
 }
 
-export default function ScannerPanel({ onSelectSymbol }) {
+export default function ScannerPanel({ onSelectSymbol, armedAlerts = [] }) {
   const [watchlist, setWatchlist] = useState([])
   const [results, setResults] = useState([])
   const [newSymbol, setNewSymbol] = useState('')
@@ -66,7 +66,6 @@ export default function ScannerPanel({ onSelectSymbol }) {
       return
     }
 
-    setLoadingList(true)
     setError('')
     try {
       const { data, error: listError } = await supabase
@@ -84,9 +83,30 @@ export default function ScannerPanel({ onSelectSymbol }) {
   }, [])
 
   useEffect(() => {
-    loadWatchlist()
-  }, [loadWatchlist])
-
+    let cancelled = false
+    ;(async () => {
+      if (!supabase) {
+        if (!cancelled) {
+          setError('Supabase is not configured.')
+          setLoadingList(false)
+        }
+        return
+      }
+      try {
+        const { data, error: listError } = await supabase
+          .from('watchlist')
+          .select('id, symbol, interval, enabled')
+          .order('created_at', { ascending: true })
+        if (listError) throw listError
+        if (!cancelled) setWatchlist(data ?? [])
+      } catch (err) {
+        if (!cancelled) setError(err.message || 'Unable to load watchlist.')
+      } finally {
+        if (!cancelled) setLoadingList(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [])
   const sortedResults = useMemo(() => {
     const rows = [...results]
     rows.sort((a, b) => {
@@ -204,6 +224,20 @@ export default function ScannerPanel({ onSelectSymbol }) {
         </div>
 
         {error && <p className="error-text" style={{ marginTop: '12px' }}>{error}</p>}
+
+        {armedAlerts.length > 0 && (
+          <div style={{ marginTop: '12px' }}>
+            <div className="summary-label" style={{ marginBottom: '4px' }}>Armed alerts</div>
+            <div className="ai-rows">
+              {armedAlerts.slice(0, 8).map((alert) => (
+                <div key={alert.id} className="ai-row">
+                  <span>{alert.symbol} {alert.direction} {alert.level}</span>
+                  <span style={{ opacity: 0.6 }}>{String(alert.source || '').replace(/_/g, ' ')}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <form className="ai-rows" style={{ marginTop: '16px', gap: '12px' }} onSubmit={handleAdd}>
           <label style={{ flex: 1 }}>

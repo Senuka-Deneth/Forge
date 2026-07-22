@@ -68,7 +68,7 @@ export type CalibrationRow = {
   regime: string | null;
 };
 
-export type CalibrationBucket = "setup_regime" | "setup" | "global";
+export type CalibrationBucket = "setup_regime" | "setup" | "global" | "backtest_prior";
 
 export type EmpiricalCalibration = {
   n: number;
@@ -93,15 +93,33 @@ export function decidedCounts(rows: CalibrationRow[]): { hits: number; decided: 
  * different bets, and pooling them produces a rate that describes neither. Falls back to
  * setup_type, then to the global pooled rate, whenever the narrower bucket has too few decided
  * samples to mean anything, and always reports which bucket it landed on.
+ *
+ * When there is no live decided history at all, a backtest-seeded prior (`baselineHitRate`) becomes
+ * the calibration itself under bucket `"backtest_prior"` so EV is computable from day one — honestly
+ * labeled as backtest-derived, not live.
  */
 export function selectCalibrationBucket(
   rows: CalibrationRow[],
   setupType: string,
   regime: string | null,
   minSamples = MIN_BUCKET_SAMPLES,
+  baselineHitRate: number | null = null,
+  baselineN = 0,
 ): EmpiricalCalibration | null {
   const global = decidedCounts(rows);
-  const globalRate = global.decided > 0 ? global.hits / global.decided : 0.5;
+  const liveGlobalRate = global.decided > 0 ? global.hits / global.decided : 0.5;
+  const priorRate = resolvePriorRate(baselineHitRate, liveGlobalRate);
+
+  if (global.decided === 0) {
+    if (baselineHitRate != null && Number.isFinite(baselineHitRate) && baselineHitRate >= 0 && baselineHitRate <= 1) {
+      return {
+        n: Math.max(0, baselineN),
+        empirical_hit_rate: baselineHitRate,
+        bucket: "backtest_prior",
+      };
+    }
+    return null;
+  }
 
   const setupRows = rows.filter((r) => r.setup_type === setupType);
   const regimeRows = regime ? setupRows.filter((r) => r.regime === regime) : [];
@@ -116,7 +134,7 @@ export function selectCalibrationBucket(
     if (decided >= minSamples) {
       return {
         n: decided,
-        empirical_hit_rate: empiricalConfidence(hits, decided, globalRate) / 100,
+        empirical_hit_rate: empiricalConfidence(hits, decided, priorRate) / 100,
         bucket: candidate.bucket,
       };
     }
@@ -128,12 +146,12 @@ export function selectCalibrationBucket(
   if (setupCounts.decided > 0) {
     return {
       n: setupCounts.decided,
-      empirical_hit_rate: empiricalConfidence(setupCounts.hits, setupCounts.decided, globalRate) / 100,
+      empirical_hit_rate: empiricalConfidence(setupCounts.hits, setupCounts.decided, priorRate) / 100,
       bucket: "setup",
     };
   }
   if (global.decided > 0) {
-    return { n: global.decided, empirical_hit_rate: globalRate, bucket: "global" };
+    return { n: global.decided, empirical_hit_rate: liveGlobalRate, bucket: "global" };
   }
   return null;
 }

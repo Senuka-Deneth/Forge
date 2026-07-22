@@ -5,8 +5,8 @@
     "semantic_hash": ""
   },
   "frontend/src/App.jsx": {
-    "mtime": 1784663159.5339313,
-    "ast_hash": "41af154c7f07301b3b4f3ebe31a00c6e",
+    "mtime": 1784693178.6388357,
+    "ast_hash": "42f4b1d75dd8849187cbd9fd53b2667a",
     "semantic_hash": ""
   },
   "frontend/src/components/AIAnalysisPanel.jsx": {
@@ -25,8 +25,8 @@
     "semantic_hash": ""
   },
   "frontend/src/components/ChartPanel.jsx": {
-    "mtime": 1784687679.461934,
-    "ast_hash": "0ca418973987512accfb7a319ee147d2",
+    "mtime": 1784693330.5193949,
+    "ast_hash": "ba92b2764fbafb7723e6b083f98a19ef",
     "semantic_hash": ""
   },
   "frontend/src/components/EducationPanel.jsx": {
@@ -65,7 +65,7 @@
     "semantic_hash": ""
   },
   "frontend/src/data/educationData.js": {
-    "mtime": 1784693100.3547084,
+    "mtime": 1784693130.6297317,
     "ast_hash": "09ef2eccd90e173917d34785b153287a",
     "semantic_hash": ""
   },
@@ -125,13 +125,13 @@
     "semantic_hash": ""
   },
   "frontend/src/utils/userPreferences.js": {
-    "mtime": 1784687689.5268667,
-    "ast_hash": "532c79718aa2dc4c35b0ff43279a7dac",
+    "mtime": 1784693286.0794325,
+    "ast_hash": "03fdfa32383fdada2e7c6236f71733ac",
     "semantic_hash": ""
   },
   "frontend/vite.config.js": {
-    "mtime": 1784686634.4695132,
-    "ast_hash": "a9b45aee2db34cc29f2d1adffca079ae",
+    "mtime": 1784693267.7867699,
+    "ast_hash": "23076962e03c1c4dd0283e3de06ce6c8",
     "semantic_hash": ""
   },
   "supabase/.temp/linked-project.json": {
@@ -150,8 +150,8 @@
     "semantic_hash": ""
   },
   "supabase/functions/ai-analysis/index.ts": {
-    "mtime": 1784692585.4776592,
-    "ast_hash": "42d583a5cab084d8709465d1aa9c84af",
+    "mtime": 1784693174.5098956,
+    "ast_hash": "34a31e5b959f391c066349380165cdd0",
     "semantic_hash": ""
   },
   "supabase/functions/calculate-pivots/index.ts": {
@@ -285,8 +285,8 @@
     "semantic_hash": ""
   },
   "supabase/functions/score-predictions/index.ts": {
-    "mtime": 1784649416.4336522,
-    "ast_hash": "ecd6576585b876e13bf8c5157db6617c",
+    "mtime": 1784693239.1594481,
+    "ast_hash": "ef2501014051676928a1d71ae3ef1bf9",
     "semantic_hash": ""
   },
   "supabase/functions/tests/audit_fixes_test.ts": {
@@ -360,8 +360,8 @@
     "semantic_hash": ""
   },
   "scripts/backtest.ts": {
-    "mtime": 1784649779.21979,
-    "ast_hash": "529d98c7af7749e6645b9c4d068b8ca3",
+    "mtime": 1784693230.8758821,
+    "ast_hash": "526a20060d04bcc94e31900728e0f4ab",
     "semantic_hash": ""
   },
   "supabase/functions/_shared/calibration.ts": {
@@ -555,8 +555,8 @@
     "semantic_hash": ""
   },
   "frontend/src/utils/chartIndicators.js": {
-    "mtime": 1784686663.9570029,
-    "ast_hash": "c89d3803a9a0837160e2b36527a8b7ec",
+    "mtime": 1784693336.0818737,
+    "ast_hash": "d88cdc5492aaf1e2c0ba209ff82c5ee1",
     "semantic_hash": ""
   },
   "frontend/src/utils/chartIndicators.test.js": {
@@ -692,6 +692,11 @@
   "scripts/build-education-data.mjs": {
     "mtime": 1784693126.3879936,
     "ast_hash": "8f9bf55b99cb9029f32ee88f35c2ffa7",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/EdgePanel.jsx": {
+    "mtime": 1784693230.5199516,
+    "ast_hash": "50116bf7c9eba52ce9ff1004ff0f8e6a",
     "semantic_hash": ""
   }
 }

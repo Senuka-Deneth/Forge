@@ -20,8 +20,7 @@ export const DEFAULT_CHART_PREFERENCES = {
   pivotsBack: 15,
 
   // Extended overlays (Phase 3 chart parity). All default off so an existing user's chart looks
-  // exactly as they left it; sanitizePreferences coerces unknown keys to booleans, so these
-  // round-trip through the user-preferences function without any server-side change.
+  // exactly as they left it. Server sanitizePreferences + DB allowlist must list every key here.
   showKeltner: false,
   showSqueeze: false,
   showStochRsi: false,

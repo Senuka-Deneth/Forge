@@ -161,10 +161,11 @@ export type CmeGap = {
  * CME BTC futures close Friday ~21:00 UTC and reopen Sunday ~22:00 UTC (approximating standard
  * time; the actual close/open is anchored to US market hours and shifts by an hour across the
  * March/November DST transitions, which this does not model). Spot crypto trades through the
- * weekend, so this is a genuine estimate built from the spot candle closest to each boundary, not
- * a measurement of the actual CME print — treat it as directional context, not a precise level.
- * Only meaningful on intraday timeframes; returns null on daily+ charts where a single candle
- * already spans the whole weekend.
+ * weekend, so adjacent Sat→Sun candles are contiguous and must NOT be treated as the gap —
+ * instead we take the candle nearest Friday 21:00 (close) and the candle nearest Sunday 22:00
+ * (open), skipping the weekend bars in between. This is a directional estimate from spot, not a
+ * measurement of the actual CME print. Only meaningful on intraday timeframes; returns null on
+ * daily+ charts where a single candle already spans the whole weekend.
  */
 export function findLatestCmeGap(
   candles: Array<{ time: number; open: number; high: number; low: number; close: number }>,
@@ -172,40 +173,76 @@ export function findLatestCmeGap(
 ): CmeGap | null {
   if (!candles.length || intervalSeconds > SECONDS_PER_HOUR * 6) return null;
 
-  // Walk backward to find the most recent Friday-approaching-21:00 bar and the Sunday/Monday bar
-  // that follows the weekend gap.
-  for (let i = candles.length - 1; i > 0; i -= 1) {
-    const curr = candles[i];
-    const prev = candles[i - 1];
-    const currDay = new Date(curr.time * 1000).getUTCDay(); // 0 = Sunday, 1 = Monday, 5 = Friday
-    const prevDay = new Date(prev.time * 1000).getUTCDay();
+  const firstTime = candles[0].time;
+  const lastTime = candles[candles.length - 1].time;
+  const maxDelta = Math.max(intervalSeconds * 2, SECONDS_PER_HOUR);
 
-    // The reopen bar is the first bar on Sunday or Monday after a bar on Friday or Saturday.
-    const isReopen = (currDay === 0 || currDay === 1) && (prevDay === 5 || prevDay === 6);
-    if (!isReopen) continue;
+  const findNearestIndex = (targetTime: number): number | null => {
+    let bestIdx = -1;
+    let bestDelta = Infinity;
+    for (let i = 0; i < candles.length; i += 1) {
+      const delta = Math.abs(candles[i].time - targetTime);
+      if (delta < bestDelta) {
+        bestDelta = delta;
+        bestIdx = i;
+      }
+    }
+    if (bestIdx < 0 || bestDelta > maxDelta) return null;
+    return bestIdx;
+  };
 
-    const fridayClose = prev.close;
-    const mondayOpen = curr.open;
-    if (fridayClose <= 0) return null;
+  // Walk back week by week from the latest candle, looking for a completed Friday 21:00 /
+  // Sunday 22:00 pair that both land inside the series.
+  const lastDate = new Date(lastTime * 1000);
+  for (let weekOffset = 0; weekOffset < 12; weekOffset += 1) {
+    const ref = new Date(lastDate);
+    ref.setUTCDate(ref.getUTCDate() - weekOffset * 7);
+
+    const sunday = new Date(Date.UTC(
+      ref.getUTCFullYear(),
+      ref.getUTCMonth(),
+      ref.getUTCDate() - ref.getUTCDay(), // back to Sunday of this week
+      22,
+      0,
+      0,
+      0,
+    ));
+    const friday = new Date(sunday);
+    friday.setUTCDate(sunday.getUTCDate() - 2);
+    friday.setUTCHours(21, 0, 0, 0);
+
+    const fridayTs = Math.floor(friday.getTime() / 1000);
+    const sundayTs = Math.floor(sunday.getTime() / 1000);
+
+    if (sundayTs > lastTime) continue;
+    if (fridayTs < firstTime) break;
+
+    const friIdx = findNearestIndex(fridayTs);
+    const sunIdx = findNearestIndex(sundayTs);
+    if (friIdx == null || sunIdx == null || sunIdx <= friIdx) continue;
+
+    const fridayBar = candles[friIdx];
+    const reopenBar = candles[sunIdx];
+    const fridayClose = fridayBar.close;
+    const mondayOpen = reopenBar.open;
+    if (fridayClose <= 0) continue;
 
     const gapPct = ((mondayOpen - fridayClose) / fridayClose) * 100;
     const direction: CmeGap["direction"] = Math.abs(gapPct) < 0.01 ? "none" : gapPct > 0 ? "up" : "down";
 
     // A gap is "filled" when price trades back to the pre-gap level — the standard technical-
     // analysis definition — not merely whenever a later bar's range overlaps the open-to-close
-    // span. The latter is nearly guaranteed to trigger within the first few bars after any open
-    // (price wobbles near where it opened) and would mark almost every gap "filled" immediately,
-    // which defeats the point of tracking it.
+    // span.
     let filled = false;
     if (direction === "up") {
-      for (let j = i + 1; j < candles.length; j += 1) {
+      for (let j = sunIdx + 1; j < candles.length; j += 1) {
         if (candles[j].low <= fridayClose) {
           filled = true;
           break;
         }
       }
     } else if (direction === "down") {
-      for (let j = i + 1; j < candles.length; j += 1) {
+      for (let j = sunIdx + 1; j < candles.length; j += 1) {
         if (candles[j].high >= fridayClose) {
           filled = true;
           break;
@@ -214,9 +251,9 @@ export function findLatestCmeGap(
     }
 
     return {
-      fridayCloseTime: prev.time,
+      fridayCloseTime: fridayBar.time,
       fridayClose,
-      mondayOpenTime: curr.time,
+      mondayOpenTime: reopenBar.time,
       mondayOpen,
       gapPct: Number(gapPct.toFixed(4)),
       direction,

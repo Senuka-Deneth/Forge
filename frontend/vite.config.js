@@ -18,6 +18,7 @@ export default defineConfig({
       '@forge/vwap': path.resolve(__dirname, '../supabase/functions/_shared/vwap.ts'),
       '@forge/liquidity-map': path.resolve(__dirname, '../supabase/functions/_shared/liquidityMap.ts'),
       '@forge/volume-profile': path.resolve(__dirname, '../supabase/functions/_shared/volumeProfile.ts'),
+      '@forge/confluence': path.resolve(__dirname, '../supabase/functions/_shared/confluence.ts'),
     },
   },
   build: {

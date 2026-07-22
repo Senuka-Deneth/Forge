@@ -98,6 +98,13 @@ export type OrderBookImbalance = {
   spreadPct: number | null;
   /** Largest resting orders near the market, emitted as levels. */
   walls: BookWall[];
+  /**
+   * Quote-currency cost to walk the book 1% away from mid in each direction.
+   * A real liquidity measure: thin alts show small numbers and are the ones where a retail-sized
+   * stop gets slipped. Null when the returned book does not reach 1%.
+   */
+  slopeBid: number | null;
+  slopeAsk: number | null;
 };
 
 /**
@@ -116,6 +123,8 @@ export const EMPTY_ORDER_BOOK: OrderBookImbalance = {
   bookCoverage: { bidPct: null, askPct: null },
   spreadPct: null,
   walls: [],
+  slopeBid: null,
+  slopeAsk: null,
 };
 
 /** Quote-currency value resting within `bound` on one side of the book. */
@@ -202,6 +211,16 @@ export function summarizeOrderBook(
     .sort((a, b) => b.quantity - a.quantity)
     .slice(0, 6);
 
+  // Book slope: quote cost to move mid by 1%. Walk cumulative notional until the 1% bound; if the
+  // book does not reach that far, report null rather than pretending the truncated depth is enough.
+  const slopeTarget = 0.01;
+  const slopeBid = bookCoverage.bidPct != null && bookCoverage.bidPct >= slopeTarget * 100
+    ? Number(notionalWithin(bids, midPrice * (1 - slopeTarget), "bid").toFixed(2))
+    : null;
+  const slopeAsk = bookCoverage.askPct != null && bookCoverage.askPct >= slopeTarget * 100
+    ? Number(notionalWithin(asks, midPrice * (1 + slopeTarget), "ask").toFixed(2))
+    : null;
+
   return {
     obi: obi != null ? Number(obi.toFixed(6)) : null,
     bidVolume: Number(bidVolume.toFixed(6)),
@@ -211,6 +230,8 @@ export function summarizeOrderBook(
     bookCoverage,
     spreadPct: Number((((bestAsk - bestBid) / midPrice) * 100).toFixed(6)),
     walls,
+    slopeBid,
+    slopeAsk,
   };
 }
 

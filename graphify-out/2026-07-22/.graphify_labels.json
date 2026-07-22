@@ -54,7 +54,17 @@
   "52": "confluence.ts",
   "53": "chartOverlays.js",
   "54": "userPreferences.js",
-  "55": "AIAnalysisPanel.jsx",
   "56": "ChartPanelErrorBoundary",
-  "57": "StatusBar.jsx"
+  "58": "index.ts",
+  "59": "crossMarket.ts",
+  "60": "calibration.ts",
+  "61": "liquidation.ts",
+  "62": "tradePlan.ts",
+  "63": "EducationIcon.jsx",
+  "64": "normalizeModelOutput",
+  "65": "outcome.ts",
+  "68": "scripts",
+  "69": "audit_fixes_test.ts",
+  "70": "package.json",
+  "71": "dompurify"
 }

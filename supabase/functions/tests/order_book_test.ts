@@ -103,6 +103,18 @@ Deno.test("summarizeOrderBook surfaces the largest resting orders as walls", () 
   assertEquals(book.walls.find((w) => w.side === "ask")!.distancePct > 0, true);
 });
 
+Deno.test("summarizeOrderBook returns slopeBid/slopeAsk when book covers 1%", () => {
+  // 300 levels at 0.01 step from ~100 reaches ~3% — enough for the 1% slope measurement.
+  const bids = ladder(99.99, -0.01, 100, 300);
+  const asks = ladder(100.01, 0.01, 100, 300);
+  const book = summarizeOrderBook(bids, asks);
+
+  assertEquals(book.bookCoverage.bidPct! >= 1, true);
+  assertEquals(book.bookCoverage.askPct! >= 1, true);
+  assertEquals(book.slopeBid != null && book.slopeBid > 0, true);
+  assertEquals(book.slopeAsk != null && book.slopeAsk > 0, true);
+});
+
 Deno.test("summarizeOrderBook degrades to nulls on an unusable book", () => {
   assertEquals(summarizeOrderBook([], []).obi, null);
   assertEquals(summarizeOrderBook([["abc", "1"]], [["def", "1"]]).midPrice, null);

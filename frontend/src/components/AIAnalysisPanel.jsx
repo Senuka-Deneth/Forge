@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import VerdictPanel from './VerdictPanel';
 
 const POSITION_CALC_STORAGE_KEY = 'forge_position_calc';
 
@@ -306,6 +307,9 @@ export default function AIAnalysisPanel({ aiAnalysis, aiLoading, aiError, onRefr
 
       {!aiLoading && a && (
         <div id="ai-content" className="ai-content-grid fade-in">
+          <div className="ai-card wide" style={{ padding: 0, background: 'transparent', border: 'none' }}>
+            <VerdictPanel analysis={a} />
+          </div>
 
           <div className="ai-card wide">
             <div className="ai-card-header">Market Intelligence</div>

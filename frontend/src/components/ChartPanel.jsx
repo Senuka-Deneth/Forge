@@ -26,6 +26,7 @@ import {
 } from '../utils/chartOverlays'
 import { ZoneBoxPrimitive, buildLiquidityZones } from '../utils/zoneBoxPrimitive'
 import { VolumeProfilePrimitive, buildProfileBins } from '../utils/volumeProfilePrimitive'
+import { ConfluencePrimitive } from '../utils/confluencePrimitive'
 import {
   getPivotPeriodLabel,
   resolvePivotPeriod,
@@ -275,6 +276,7 @@ export default function ChartPanel({
   const overlaySeriesRef = useRef(new Map())
   const zonePrimitiveRef = useRef(null)
   const volumeProfilePrimitiveRef = useRef(null)
+  const confluencePrimitiveRef = useRef(null)
   const stochKSeriesRef = useRef(null)
   const stochDSeriesRef = useRef(null)
   const squeezeMomSeriesRef = useRef(null)
@@ -617,6 +619,10 @@ export default function ChartPanel({
     candleSeries.attachPrimitive(zonePrimitive)
     zonePrimitiveRef.current = zonePrimitive
 
+    const confluencePrimitive = new ConfluencePrimitive()
+    candleSeries.attachPrimitive(confluencePrimitive)
+    confluencePrimitiveRef.current = confluencePrimitive
+
     // Captured for the cleanup below: reading overlaySeriesRef.current at teardown time could see
     // a different Map than the one this chart's series were registered in.
     const managedOverlays = overlaySeriesRef.current
@@ -892,6 +898,7 @@ export default function ChartPanel({
       pivotPrimitiveRef.current = null
       zonePrimitiveRef.current = null
       volumeProfilePrimitiveRef.current = null
+      confluencePrimitiveRef.current = null
       priceChartRef.current = null
       rsiSeriesRef.current = null
       macdSeriesRef.current = null
@@ -1048,6 +1055,12 @@ export default function ChartPanel({
     volumeProfilePrimitiveRef.current?.setProfile(
       showProfile ? buildProfileBins(candles, overlays.volumeProfile) : null,
       ct.volumeProfile,
+    )
+
+    const showConfluence = chartPreferences.showConfluence && !hiddenIndicators.includes('confluence')
+    confluencePrimitiveRef.current?.setClusters(
+      showConfluence ? (overlays.confluenceClusters ?? []) : [],
+      ct,
     )
 
     candleSeriesRef.current.setMarkers?.(
@@ -1491,6 +1504,15 @@ export default function ChartPanel({
       applied: chartPreferences.showOrderBlocks,
       href: '?tab=learning#order-blocks',
       onToggle: () => updatePreference('showOrderBlocks'),
+    },
+    {
+      id: 'confluence',
+      label: 'Confluence clusters',
+      group: 'Structure & Liquidity',
+      description: 'Where independent levels stack within an ATR',
+      applied: chartPreferences.showConfluence,
+      href: '?tab=learning#expected-value',
+      onToggle: () => updatePreference('showConfluence'),
     },
     {
       id: 'support',

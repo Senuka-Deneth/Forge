@@ -149,6 +149,20 @@ export function empiricalConfidence(
   return Number((rate * 100).toFixed(1));
 }
 
+/**
+ * Prefer a backtest-seeded prior (setup_baselines) over the pooled live global rate when available.
+ * Live results still dominate as n grows — that is the point of the Bayesian weight.
+ */
+export function resolvePriorRate(
+  baselineHitRate: number | null | undefined,
+  globalRate: number,
+): number {
+  if (baselineHitRate != null && Number.isFinite(baselineHitRate) && baselineHitRate >= 0 && baselineHitRate <= 1) {
+    return baselineHitRate;
+  }
+  return globalRate;
+}
+
 /** Clamp headline confidence to empirical hit rate + margin when enough samples exist. */
 export function clampModelConfidence(
   modelConfidence: number,

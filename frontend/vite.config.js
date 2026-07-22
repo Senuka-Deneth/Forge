@@ -19,6 +19,10 @@ export default defineConfig({
       '@forge/liquidity-map': path.resolve(__dirname, '../supabase/functions/_shared/liquidityMap.ts'),
       '@forge/volume-profile': path.resolve(__dirname, '../supabase/functions/_shared/volumeProfile.ts'),
       '@forge/confluence': path.resolve(__dirname, '../supabase/functions/_shared/confluence.ts'),
+      '@forge/position-sizing': path.resolve(__dirname, '../supabase/functions/_shared/positionSizing.ts'),
+      '@forge/expected-move': path.resolve(__dirname, '../supabase/functions/_shared/expectedMove.ts'),
+      '@forge/risk-of-ruin': path.resolve(__dirname, '../supabase/functions/_shared/riskOfRuin.ts'),
+      '@forge/trade-efficiency': path.resolve(__dirname, '../supabase/functions/_shared/tradeEfficiency.ts'),
     },
   },
   build: {

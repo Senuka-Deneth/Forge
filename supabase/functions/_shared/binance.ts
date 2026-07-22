@@ -1,5 +1,6 @@
 import { type Candle, enrichCandles } from "./indicators.ts";
 import { fetchWithTimeout } from "./http.ts";
+import { parseSymbolFilters, type SymbolFilters, UNCONSTRAINED_FILTERS } from "./positionSizing.ts";
 
 const BINANCE_SPOT_BASE = "https://api.binance.com";
 const BINANCE_FUTURES_BASE = "https://fapi.binance.com";
@@ -389,6 +390,43 @@ export async function fetchTicker24hr(symbol: string): Promise<Ticker24hr> {
     };
   } catch {
     return empty;
+  }
+}
+
+/**
+ * Trading rules for one symbol — lot step, tick size, minimum notional.
+ *
+ * The position sizer needs these to produce a quantity the exchange will actually accept. Without
+ * them it returns a mathematically correct size that gets rejected at the order endpoint, which is
+ * the least useful kind of correct.
+ *
+ * Filters change rarely (a listing-level property, not a market one), so this is cached in module
+ * memory for an hour rather than refetched per analysis. On any failure it returns unconstrained
+ * filters: the sizer then skips rounding instead of blocking the trade, which keeps a Binance
+ * outage from taking the sizer down with it.
+ */
+const filtersCache = new Map<string, { value: SymbolFilters; expiresAt: number }>();
+const FILTERS_TTL_MS = 60 * 60 * 1000;
+
+export async function fetchSymbolFilters(symbol: string): Promise<SymbolFilters> {
+  const key = String(symbol || "").toUpperCase();
+  const cached = filtersCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+
+  try {
+    const url = new URL(`${BINANCE_SPOT_BASE}/api/v3/exchangeInfo`);
+    url.searchParams.set("symbol", key);
+    const response = await fetchWithTimeout(url, {}, { timeoutMs: 8000, retries: 1 });
+    if (!response.ok) return UNCONSTRAINED_FILTERS;
+    const data = await response.json();
+    const entry = Array.isArray(data?.symbols) ? data.symbols[0] : null;
+    if (!entry) return UNCONSTRAINED_FILTERS;
+
+    const parsed = parseSymbolFilters(entry.filters);
+    filtersCache.set(key, { value: parsed, expiresAt: Date.now() + FILTERS_TTL_MS });
+    return parsed;
+  } catch {
+    return UNCONSTRAINED_FILTERS;
   }
 }
 

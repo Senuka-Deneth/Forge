@@ -74,12 +74,13 @@
   "72": "incrementalIndicators.js",
   "73": "20260722100000_user_preferences_extended_keys.sql",
   "74": "20260722110000_check_alerts_cron.sql",
-  "75": "liquidation.ts",
-  "76": "SignUp.jsx",
+  "75": "calibration.ts",
+  "76": "index.ts",
   "77": "AnalysisPanel.jsx",
   "78": "index.ts",
-  "79": "userPreferences.js",
+  "79": "SignUp.jsx",
   "80": "ChartPanelErrorBoundary",
   "81": "StatusBar.jsx",
-  "82": "fetchBinanceHtfKlines"
+  "82": "cors.ts",
+  "83": "userPreferences.js"
 }

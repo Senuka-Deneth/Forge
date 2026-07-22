@@ -130,6 +130,59 @@ export async function fetchRiskSettings(
   };
 }
 
+/**
+ * Account-level sizing inputs, kept separate from `RiskSettings` on purpose.
+ *
+ * `RiskSettings` is the set of guardrail *limits* and has a meaningful default for every field.
+ * These have no honest default: equity in particular is either known or it is not, and a guessed
+ * equity produces a guessed liquidation price — the exact kind of invented number the rest of the
+ * decision layer refuses to produce.
+ */
+export type SizingSettings = {
+  account_equity: number;
+  risk_per_trade_pct: number;
+  max_leverage: number;
+  /** Leverage selected on the exchange. Null means unknown — liquidation is then estimated at the
+   * leverage the position requires, which assumes the whole account backs it. */
+  exchange_leverage: number | null;
+};
+
+function positive(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * Sizing inputs for one user, or null when the account is unknown.
+ *
+ * Returns null rather than a default whenever equity is missing: no equity means no risk budget,
+ * which means no quantity, which means no liquidation price to gate on. Silence is the correct
+ * output there.
+ */
+export async function fetchSizingSettings(
+  supabase: JournalDbClient,
+  userId: string,
+): Promise<SizingSettings | null> {
+  const { data, error } = await supabase
+    .from("risk_settings")
+    .select("account_equity, risk_per_trade_pct, max_leverage, exchange_leverage")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error || !data) return null;
+
+  const equity = positive(data.account_equity);
+  if (equity == null) return null;
+
+  return {
+    account_equity: equity,
+    risk_per_trade_pct: positive(data.risk_per_trade_pct) ?? 1,
+    max_leverage: positive(data.max_leverage) ?? 1,
+    exchange_leverage: positive(data.exchange_leverage),
+  };
+}
+
 export async function fetchJournalSnapshot(
   supabase: JournalDbClient,
   userId: string,

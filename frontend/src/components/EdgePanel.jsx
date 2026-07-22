@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { analyzeTradeEfficiency } from '@forge/trade-efficiency'
 import { supabase } from '../supabaseClient'
 import {
   computeJournalStats,
@@ -41,7 +42,8 @@ export default function EdgePanel() {
       setError('')
       const { data, error: qError } = await supabase
         .from('trade_journal')
-        .select('id, symbol, side, status, pnl, r_multiple, plan_adherence, behavioral_tags, mae, mfe, closed_at, analysis_id')
+        // entry and stop are required to express MAE/MFE in R — see the excursion section below.
+        .select('id, symbol, side, status, entry, stop, pnl, r_multiple, plan_adherence, behavioral_tags, mae, mfe, closed_at, analysis_id')
         .order('opened_at', { ascending: false })
         .limit(500)
       if (cancelled) return
@@ -57,7 +59,12 @@ export default function EdgePanel() {
     return () => { cancelled = true }
   }, [])
 
-  const closed = entries.filter((e) => e.status === 'closed' && e.pnl != null)
+  // Memoized so it keeps a stable identity across renders — the efficiency report below depends
+  // on it, and an array rebuilt every render would defeat that memo entirely.
+  const closed = useMemo(
+    () => entries.filter((e) => e.status === 'closed' && e.pnl != null),
+    [entries],
+  )
   const stats = computeJournalStats(entries)
 
   const byAdherence = groupBy(closed, (e) => e.plan_adherence || 'untracked')
@@ -77,8 +84,20 @@ export default function EdgePanel() {
   const followedAvgR = avg(followed.map((e) => e.r_multiple))
   const deviatedAvgR = avg(deviated.map((e) => e.r_multiple))
 
-  const maeAvg = avg(closed.map((e) => e.mae))
-  const mfeAvg = avg(closed.map((e) => e.mfe))
+  // MAE/MFE are stored in absolute price units, so averaging them raw pools a $60,000 BTC trade
+  // with a $0.30 alt and produces a number governed entirely by which symbol has the bigger
+  // nominal price. analyzeTradeEfficiency normalizes each trade by its own |entry - stop| first.
+  const efficiency = useMemo(
+    () => analyzeTradeEfficiency(closed.map((entry) => ({
+      mae: entry.mae,
+      mfe: entry.mfe,
+      entry: entry.entry,
+      stop: entry.stop,
+      realized_r: entry.r_multiple,
+      outcome: entry.pnl > 0 ? 'target_hit' : 'stop_hit',
+    }))),
+    [closed],
+  )
 
   const tagCounts = {}
   for (const entry of closed) {
@@ -149,25 +168,51 @@ export default function EdgePanel() {
               )}
             </div>
 
-            {(maeAvg != null || mfeAvg != null) && (
+            {efficiency.n > 0 && (
               <div className="panel-section">
-                <div className="panel-section__title">Excursion</div>
+                <div className="panel-section__title">Stop &amp; target doctor</div>
                 <div className="stack-2">
-                  <div className="row-between">
-                    <span title="Maximum adverse excursion on your fills">Avg MAE</span>
-                    <span>{maeAvg != null ? maeAvg.toFixed(4) : '—'}</span>
-                  </div>
-                  <div className="row-between">
-                    <span title="Maximum favorable excursion on your fills">Avg MFE</span>
-                    <span>{mfeAvg != null ? mfeAvg.toFixed(4) : '—'}</span>
-                  </div>
+                  {efficiency.winner_mae_r && (
+                    <div className="row-between">
+                      <span title="How far winning trades ran against you before working, in R">
+                        Heat on winners (p50 / p90)
+                      </span>
+                      <span>
+                        {efficiency.winner_mae_r.p50.toFixed(2)}R / {efficiency.winner_mae_r.p90.toFixed(2)}R
+                      </span>
+                    </div>
+                  )}
+                  {efficiency.capture_efficiency != null && (
+                    <div className="row-between">
+                      <span title="Realized R divided by peak R on winning trades">
+                        Capture efficiency
+                      </span>
+                      <span className={efficiency.capture_efficiency < 0.5 ? 'bear' : ''}>
+                        {(efficiency.capture_efficiency * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                  )}
+                  {efficiency.shakeout_rate != null && (
+                    <div className="row-between">
+                      <span title="Share of losing trades that were already 1R in profit before stopping out">
+                        Shaken out of winners
+                      </span>
+                      <span className={efficiency.shakeout_rate > 0.35 ? 'bear' : ''}>
+                        {(efficiency.shakeout_rate * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                  )}
+                  {efficiency.suggested_stop_r != null && (
+                    <div className="row-between">
+                      <span title="Stop width that would have survived 90% of past winners, plus a buffer">
+                        Stop hypothesis
+                      </span>
+                      <span>{efficiency.suggested_stop_r.toFixed(2)}R</span>
+                    </div>
+                  )}
                 </div>
-                {mfeAvg != null && stats.avgR != null && mfeAvg > 0 && (
-                  <p className="ai-signal-note">
-                    Avg MFE {mfeAvg.toFixed(4)} vs avg realized {formatJournalR(stats.avgR)} —
-                    compare these to see whether you tend to leave winners early or hold losers too long.
-                  </p>
-                )}
+                {efficiency.stop_note && <p className="ai-signal-note">{efficiency.stop_note}</p>}
+                {efficiency.target_note && <p className="ai-signal-note">{efficiency.target_note}</p>}
               </div>
             )}
 

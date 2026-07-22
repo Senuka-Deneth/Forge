@@ -53,6 +53,10 @@ export type GatingContext = {
 };
 
 function finite(value: unknown): number | null {
+  // `Number(null)` is 0 and is finite, so an unguarded coercion turns a missing entry bound into
+  // the price level 0 and every downstream distance becomes nonsense. Match finiteLevel() in
+  // pivotPoints.ts and reject the empty cases first.
+  if (value === null || value === undefined || value === "") return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
@@ -61,12 +65,32 @@ function clamp(value: number, low: number, high: number): number {
   return Math.max(low, Math.min(high, value));
 }
 
-function entryMid(plan: TradePlan): number | null {
+/**
+ * The price a plan should be measured from — the midpoint of its entry zone.
+ *
+ * Shared because three separate things need it and each had grown its own copy: target feasibility
+ * (verdict.ts), position sizing, and the sizer preview in the browser. They must agree, or Forge
+ * flags a target as unreachable from one entry while sizing the trade off another.
+ *
+ * A half-specified zone still yields a price: `normalizeModelOutput` lets either bound come back
+ * null independently, and one bound is a better estimate of the entry than nothing at all. Bounds
+ * must be positive — a zero price level is missing data wearing a number's clothes.
+ */
+export function planEntryMid(plan: TradePlan): number | null {
   if (!plan.entry_zone) return null;
-  const low = finite(plan.entry_zone.low);
-  const high = finite(plan.entry_zone.high);
-  if (low == null || high == null) return null;
-  return (low + high) / 2;
+  const bounds = [finite(plan.entry_zone.low), finite(plan.entry_zone.high)]
+    .filter((v): v is number => v != null && v > 0);
+  if (!bounds.length) return null;
+  return bounds.reduce((a, b) => a + b, 0) / bounds.length;
+}
+
+function entryMid(plan: TradePlan): number | null {
+  // Deliberately stricter than planEntryMid: the gates below compare this against spot, and a
+  // "midpoint" taken from one side of a half-specified zone would shift the comparison by half the
+  // zone width — enough to flip a drift check.
+  if (!plan.entry_zone) return null;
+  if (finite(plan.entry_zone.low) == null || finite(plan.entry_zone.high) == null) return null;
+  return planEntryMid(plan);
 }
 
 function nearZone(price: number, zones: Array<{ mid: number }>, atr: number): boolean {

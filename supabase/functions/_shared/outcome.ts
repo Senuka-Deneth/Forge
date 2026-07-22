@@ -2,6 +2,14 @@ import type { TradePlan } from "./tradePlan.ts";
 
 export const ROUND_TRIP_COST = 0.001;
 export const FILL_WINDOW_BARS = 20;
+/**
+ * Bars a plan is given before it is scored as `expired`.
+ *
+ * Shared so the target-feasibility gate measures reachability over exactly the horizon the scorer
+ * will judge the plan on. If these two drift apart, Forge starts blocking plans for missing a
+ * deadline it does not actually enforce — or worse, stops blocking ones it does.
+ */
+export const EXPIRE_BARS = 100;
 /** v3 scores the full partial-TP ladder rather than only targets[0]. */
 export const SCORING_VERSION = 3;
 

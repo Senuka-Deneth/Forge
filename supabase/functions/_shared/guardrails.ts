@@ -6,6 +6,8 @@
 
 import type { BlackoutCheck, FundingWindow } from "./sessions.ts";
 import type { ExpectancyResult } from "./expectancy.ts";
+import type { FeasibilityAssessment } from "./expectedMove.ts";
+import type { PositionSizeResult } from "./positionSizing.ts";
 
 export type GuardrailId =
   | "negative_ev"
@@ -15,7 +17,9 @@ export type GuardrailId =
   | "max_open_r"
   | "loss_cooldown"
   | "thin_book"
-  | "correlated_exposure";
+  | "correlated_exposure"
+  | "unreachable_target"
+  | "liquidation_before_stop";
 
 export type GuardrailResult = {
   id: GuardrailId;
@@ -79,6 +83,8 @@ export function evaluateGuardrails(input: {
   journal?: JournalSnapshot | null;
   book?: BookQuality | null;
   settings?: Partial<RiskSettings>;
+  feasibility?: FeasibilityAssessment | null;
+  sizing?: PositionSizeResult | null;
 }): GuardrailResult[] {
   const settings: RiskSettings = { ...DEFAULT_RISK_SETTINGS, ...input.settings };
   const fired: GuardrailResult[] = [];
@@ -159,6 +165,32 @@ export function evaluateGuardrails(input: {
     }
   }
 
+  // A target the horizon cannot reach does not lose money directly — it wastes the slot, ties up
+  // open risk, and lands in the calibration bucket as an `expired` that looks like a scoring
+  // artifact rather than the bad plan it was. Overridable: a discretionary swing trader may
+  // genuinely intend to hold past the scoring horizon.
+  if (input.feasibility?.flagged) {
+    fired.push({
+      id: "unreachable_target",
+      blocked: true,
+      reason: input.feasibility.summary,
+      overridable: true,
+    });
+  }
+
+  // Not overridable. Every other gate here is a judgement call about edge; this one is arithmetic
+  // about the exchange's behaviour. Clicking through it does not move the liquidation price, it
+  // just means the trader stops being told about it.
+  if (input.sizing?.liquidation_before_stop) {
+    fired.push({
+      id: "liquidation_before_stop",
+      blocked: true,
+      reason: input.sizing.warnings.find((w) => w.includes("Liquidation")) ??
+        "Liquidation price sits between entry and stop — reduce leverage or widen margin.",
+      overridable: false,
+    });
+  }
+
   if (input.book) {
     const thinBySpread = input.book.spreadPct != null && input.book.spreadPct >= THIN_SPREAD_PCT;
     const thinByDepth = input.book.thinSideNotional != null &&
@@ -192,7 +224,10 @@ export function applyGuardrailVerdict(
   guardrails: GuardrailResult[],
   overriddenIds: GuardrailId[] = [],
 ): { verdict: "TAKE" | "SKIP" | "WAIT"; blocked_by: GuardrailResult[] } {
-  const active = guardrails.filter((g) => g.blocked && !overriddenIds.includes(g.id));
+  // `overridable: false` has to mean something on the server, not just "the UI hides the button".
+  // Without this check a caller could clear a non-overridable gate by naming its id, which would
+  // make the flag decorative.
+  const active = guardrails.filter((g) => g.blocked && !(g.overridable && overriddenIds.includes(g.id)));
   if (expectancy.verdict === "WAIT") {
     return { verdict: "WAIT", blocked_by: active };
   }

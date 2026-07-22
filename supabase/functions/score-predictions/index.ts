@@ -3,11 +3,10 @@ import { safeError } from "../_shared/http.ts";
 import { tryServiceClient } from "../_shared/auth.ts";
 import { isCronSecretConfigured, verifyCronSecret } from "../_shared/cronAuth.ts";
 import { fetchBinanceKlines } from "../_shared/binance.ts";
-import { scorePlanAgainstCandles, SCORING_VERSION } from "../_shared/outcome.ts";
+import { EXPIRE_BARS, scorePlanAgainstCandles, SCORING_VERSION } from "../_shared/outcome.ts";
 import type { TradePlan } from "../_shared/tradePlan.ts";
 
 const BATCH_SIZE = 50;
-const EXPIRE_BARS = 100;
 const BATCH_DEADLINE_MS = 45_000;
 
 type LogRow = {

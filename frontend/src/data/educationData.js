@@ -207,29 +207,33 @@ export const educationData = [
         id: "ai-overview",
         tag: "Intelligence",
         title: "AI Overview",
-        subtitle: "Nemotron 120B Reasoning",
-        whatIsIt: "The dashboard integrates with a state-of-the-art Large Language Model (Nemotron 120B) to interpret purely numerical chart data and translate it into human-readable analysis.",
-        howToRead: "The AI provides a synthesized view of Trend, Momentum, Invalidations, and overall Bias.",
-        howToUse: "Use the AI report as a 'second pair of eyes'. It combines multiple indicators (RSI, MACD, EMAs) and price action to give a holistic view.",
+        subtitle: "How the report is actually produced",
+        whatIsIt: "Forge sends a large structured snapshot of the market — indicators, market structure, order flow, futures positioning, pivots and multi-timeframe reads — to a language model via OpenRouter, and asks it to return one strict JSON object. The model is a narrator and a synthesiser, not the source of the numbers. The exact model is configurable (OPENROUTER_MODEL) and is shown on the AI Analysis panel next to the title.",
+        howToRead: "Every AI report carries a provenance badge. Live AI means most fields came from the model. Partial AI means the model returned some usable fields and the rest fell back to deterministic values. Baseline means the model was unavailable or ignored, and you are reading the rules-based engine alone. A Baseline report is still valid analysis — it just has no language model in it.",
+        howToUse: "Treat it as a second pair of eyes over data you can verify on the chart, not as an oracle. Where the AI's read and the chart disagree, trust the chart. The single most useful habit is to check whether the trade plan's invalidation level is somewhere you would actually place a stop.",
         visualHtml: `
+          <div class="formula-box">Market snapshot &rarr; model (single pass, strict JSON schema) &rarr; field-by-field validation against the deterministic engine &rarr; trade-plan geometry check &rarr; regime gating &rarr; calibration clamp</div>
           <div class="edu-tips">
-            <div class="edu-tip info">The AI uses a "2-turn strategy": it first analyzes the data internally, then verifies its own findings before outputting the final JSON report.</div>
+            <div class="edu-tip info">The model never gets the last word on a price level. If its trade plan fails the geometry check (stop on the wrong side of entry, targets out of order, entry far from current price), the plan is discarded and replaced with the deterministic one.</div>
+            <div class="edu-tip neutral">There is one model call per analysis. The progress steps shown while it loads are a display animation, not separate reasoning passes.</div>
           </div>
         `
       },
       {
         id: "ai-confidence",
         tag: "Score",
-        title: "Confidence Score",
-        subtitle: "AI Conviction",
-        whatIsIt: "A percentage score (0-100%) indicating how strongly aligned the technical signals are.",
-        howToRead: "A high score (>70%) means multiple indicators (trend, momentum, price action) agree. A low score (<40%) means indicators are conflicting.",
-        howToUse: "Lower your trade size or stand aside when confidence is low. Aggressively pursue setups when confidence is high and aligns with your own analysis.",
+        title: "Signal Agreement vs Calibrated Confidence",
+        subtitle: "Two different numbers — only one is a probability",
+        whatIsIt: "Forge shows two scores and they mean very different things. Signal agreement counts how many independent checks (EMA stack, RSI side, MACD, pivot session bias, presence of S/R zones, divergence, pivot inflection) point the same way. Calibrated hit rate is the measured percentage of past predictions of this setup type, in this regime, that actually reached target before stop.",
+        howToRead: "Signal agreement is shown out of 100 and is an alignment count, not a probability — 80/100 does not mean an 80% chance. The calibrated hit rate IS a probability, but only once the sample size (shown as n=) is meaningful. Below about 20 decided samples it is greyed out, because a hit rate built on five trades tells you nothing.",
+        howToUse: "Use signal agreement to decide whether the picture is coherent enough to act on at all. Use the calibrated hit rate to decide whether the setup is worth its risk: a plan needing 40% to break even, on a setup that historically hits 35%, is a losing bet no matter how aligned the signals look.",
         visualHtml: `
-           <div class="conf-visual" style="height: 12px; border-radius: 6px; overflow: hidden; background: var(--bg-input);">
-             <div style="width: 75%; background: var(--bull); height: 100%;"></div>
-           </div>
-           <div style="font-size: 11px; text-align: right; color: var(--text-primary); margin-top: 4px; font-weight: bold;">75% Confidence</div>
+          <div class="edu-tips">
+            <div class="edu-tip info"><strong>Signal agreement 80/100</strong> — the indicators tell a consistent story. Says nothing about whether that story pays.</div>
+            <div class="edu-tip bull"><strong>Calibrated 58% (n=64)</strong> — measured from 64 scored outcomes. This one you can put in an expected-value calculation.</div>
+            <div class="edu-tip neutral"><strong>Calibrated 71% (n=7)</strong> — greyed out. Seven samples is noise, not an edge.</div>
+          </div>
+          <div class="formula-box">If the model claims confidence far above the measured hit rate, Forge caps it. See "Calibration".</div>
         `
       },
       {
@@ -251,14 +255,15 @@ export const educationData = [
         id: "ai-regime",
         tag: "Market State",
         title: "Market Regime",
-        subtitle: "Trending vs Ranging",
-        whatIsIt: "Identifies the behavior of the price action: Trending, Ranging, Breakout, or Reversal.",
-        howToRead: "It relies on moving average alignment and swing point structure.",
-        howToUse: "Don't use trend-following strategies (like EMA crossovers) in a 'Ranging' regime. Don't fade moves (bet against them) in a 'Trending' regime.",
+        subtitle: "Trending, ranging, or volatile chop",
+        whatIsIt: "A three-state classification of how price is behaving, computed from ADX (trend strength, and whether it is rising), the ATR percentile against its own recent history, and the Bollinger bandwidth percentile. It is not derived from moving-average alignment — it is a separate, volatility-aware read.",
+        howToRead: "Trending means ADX is at or above 25 and rising, and the higher timeframes agree. Ranging means weak ADX with compressed bands, or a trend the higher timeframes contradict. Volatile chop means ATR sits in the top fifth of its recent range while ADX stays weak — big moves going nowhere, the most expensive condition to trade.",
+        howToUse: "The regime decides which setups Forge will even propose. In volatile chop it refuses to give a directional plan and returns wait. In ranging it only allows fading within half an ATR of a real support or resistance zone. Regime is also why the same setup can carry different confidence on different days: hit rates are tracked per setup per regime.",
         visualHtml: `
            <div class="edu-tips">
-            <div class="edu-tip info">Trending: Follow the trend.</div>
-            <div class="edu-tip neutral">Ranging: Buy support, sell resistance.</div>
+            <div class="edu-tip bull"><strong>Trending</strong> — trade continuation; stand aside on counter-trend fades.</div>
+            <div class="edu-tip neutral"><strong>Ranging</strong> — fade the edges only, and only near a real zone.</div>
+            <div class="edu-tip bear"><strong>Volatile chop</strong> — Forge returns wait. Wide stops, false breaks, worst risk-adjusted returns.</div>
           </div>
         `
       }
@@ -287,11 +292,15 @@ export const educationData = [
         tag: "Risk Management",
         title: "Invalidation Levels",
         subtitle: "When the idea is wrong",
-        whatIsIt: "The specific price level at which a trade scenario is proven incorrect.",
-        howToRead: "If your bullish target is $65,000, but the invalidation is $60,000, your thesis is broken if price drops below $60k.",
-        howToUse: "Set your Stop-Loss orders slightly beyond the invalidation level to protect your capital.",
+        whatIsIt: "The specific price level at which a trade scenario is proven incorrect. The bullish and bearish cases have different invalidation levels and Forge shows them separately: the bull case dies below support, the bear case dies above resistance.",
+        howToRead: "Each scenario card carries its own 'Invalidates if' line. If the two ever show the same level, something is wrong — they are structurally different prices on opposite sides of the current market.",
+        howToUse: "Place your stop just beyond the invalidation level for the direction you are actually trading, and size the position from that distance rather than from a round number you like. If the invalidation is so far away that a sensible position size becomes tiny, that is the trade telling you it is a bad entry — wait for price to come closer to the level.",
         visualHtml: `
-          <div class="formula-box">Always place your stop-loss at the invalidation point.</div>
+          <div class="edu-tips">
+            <div class="edu-tip bull">Long idea &rarr; invalidated by a decisive close <strong>below support</strong>.</div>
+            <div class="edu-tip bear">Short idea &rarr; invalidated by a decisive close <strong>above resistance</strong>.</div>
+          </div>
+          <div class="formula-box">Position size = (account &times; risk%) &divide; |entry &minus; invalidation|</div>
         `
       },
       {

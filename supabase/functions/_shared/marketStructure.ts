@@ -113,11 +113,17 @@ export function findFractalSwings(
   return { swingHighs, swingLows };
 }
 
-function swingProminence(
-  swings: SwingPoint[],
+/**
+ * How far a swing stands out from its neighbourhood, in price units.
+ *
+ * Measured over a wider window (±4) than fractal detection uses (±2), so a bar that is merely the
+ * local extreme of its immediate neighbours can score zero or negative — that is intentional, and
+ * is what separates a genuine pivot from a one-bar wiggle.
+ */
+export function computeSwingProminence(
   candles: Candle[],
   swing: SwingPoint,
-  windowRadius: number,
+  windowRadius = 4,
 ): number {
   const start = Math.max(0, swing.index - windowRadius);
   const end = Math.min(candles.length - 1, swing.index + windowRadius);
@@ -149,7 +155,59 @@ export function filterByProminence(
 ): SwingPoint[] {
   if (atr == null || !Number.isFinite(atr) || atr <= 0) return swings;
   const threshold = minMult * atr;
-  return swings.filter((s) => swingProminence(swings, candles, s, windowRadius) >= threshold);
+  return swings.filter((s) => computeSwingProminence(candles, s, windowRadius) >= threshold);
+}
+
+/** Default significance bar. Measured against live data, ~1 ATR of prominence sits above the 95th
+ * percentile on BTC/ETH/SOL, so the previous default of 1 discarded 97–100% of swings and left the
+ * S/R system with nothing to work with. 0.5 keeps the genuinely prominent ones. */
+export const DEFAULT_PROMINENCE_MULT = 0.5;
+
+export type SignificantSwingOptions = {
+  minMult?: number;
+  windowRadius?: number;
+  /** Never return fewer than this many swings while candidates remain. */
+  minCount?: number;
+};
+
+/**
+ * Select the significant swings, guaranteeing the downstream S/R system is never starved.
+ *
+ * A fixed ATR threshold cannot work across instruments and timeframes: prominence is a fraction of
+ * ATR whose distribution shifts with volatility regime, so any constant is simultaneously too
+ * strict somewhere and too loose elsewhere. This applies the threshold first, and when that leaves
+ * too little structure it falls back to the strongest N candidates by prominence — so a quiet
+ * market yields fewer, weaker zones rather than no zones at all.
+ *
+ * That distinction matters well beyond this function: with no zones, `applyRegimeGating` cannot
+ * find a level near price and forces every ranging-market setup to "wait", and
+ * `computeSignalAgreement` can never award its both-zones-present points.
+ */
+export function selectSignificantSwings(
+  swings: SwingPoint[],
+  candles: Candle[],
+  atr: number | null,
+  options: SignificantSwingOptions = {},
+): SwingPoint[] {
+  const minMult = options.minMult ?? DEFAULT_PROMINENCE_MULT;
+  const windowRadius = options.windowRadius ?? 4;
+  // Scale the floor with history: 500 bars should surface ~10 swings, 100 bars ~6.
+  const minCount = options.minCount ?? Math.max(6, Math.round(candles.length / 50));
+
+  if (!swings.length) return [];
+  if (atr == null || !Number.isFinite(atr) || atr <= 0) return swings;
+
+  const scored = swings
+    .map((swing) => ({ swing, prominence: computeSwingProminence(candles, swing, windowRadius) }))
+    .sort((a, b) => b.prominence - a.prominence);
+
+  const aboveThreshold = scored.filter((s) => s.prominence >= minMult * atr);
+  const selected = aboveThreshold.length >= minCount
+    ? aboveThreshold
+    : scored.slice(0, Math.min(minCount, scored.length));
+
+  // Restore chronological order — callers index into these and compare against `lastIndex`.
+  return selected.map((s) => s.swing).sort((a, b) => a.index - b.index);
 }
 
 /** Cluster swing levels within mergeMult * ATR into zones ranked by touches and recency. */
@@ -208,8 +266,34 @@ export function nearestZones(
 export type DivergenceOptions = {
   lookback?: number;
   minBarGap?: number;
+  /** Minimum RSI separation between the two swings. RSI is bounded 0–100, so a fixed value works. */
   minRsiDelta?: number;
+  /**
+   * Minimum MACD separation between the two swings, in absolute MACD units. MACD is expressed in
+   * price units, so there is no fixed value that works for both BTC and a sub-cent altcoin — when
+   * omitted this is derived from the spread of the MACD series itself (see macdDeltaThreshold).
+   */
+  minMacdDelta?: number;
 };
+
+/** Fraction of the MACD series' standard deviation a divergence must clear to count as real. */
+export const MACD_DELTA_STDEV_FACTOR = 0.15;
+
+/**
+ * Scale-aware minimum MACD separation. Without this a divergence is flagged whenever the MACD is
+ * merely *not rising* into a higher high, which is true most of the time and buries genuine
+ * divergences in noise.
+ */
+export function macdDeltaThreshold(
+  macdLine: (number | null)[],
+  factor = MACD_DELTA_STDEV_FACTOR,
+): number {
+  const values = macdLine.filter((v): v is number => v != null && Number.isFinite(v));
+  if (values.length < 2) return Infinity;
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const variance = values.reduce((acc, v) => acc + (v - mean) ** 2, 0) / values.length;
+  return Math.sqrt(variance) * factor;
+}
 
 /** Detect RSI divergence from price swing highs/lows vs RSI at those bars. */
 export function detectRsiDivergence(
@@ -256,7 +340,7 @@ export function detectMacdDivergence(
 ): DivergenceResult {
   const lookback = opts.lookback ?? 2;
   const minBarGap = opts.minBarGap ?? 5;
-  const minMacdDelta = opts.minRsiDelta ?? 0; // reuse min delta threshold (absolute MACD units)
+  const minMacdDelta = opts.minMacdDelta ?? macdDeltaThreshold(macdLine);
 
   const { swingHighs, swingLows } = findFractalSwings(candles as Candle[], lookback);
 
@@ -265,7 +349,8 @@ export function detectMacdDivergence(
     if (curr.index - prev.index >= minBarGap && curr.price > prev.price) {
       const macdPrev = macdLine[prev.index];
       const macdCurr = macdLine[curr.index];
-      if (macdPrev != null && macdCurr != null && macdPrev - macdCurr >= minMacdDelta) {
+      const delta = macdPrev != null && macdCurr != null ? macdPrev - macdCurr : null;
+      if (delta != null && delta > 0 && delta >= minMacdDelta) {
         return "bearish";
       }
     }
@@ -276,7 +361,8 @@ export function detectMacdDivergence(
     if (curr.index - prev.index >= minBarGap && curr.price < prev.price) {
       const macdPrev = macdLine[prev.index];
       const macdCurr = macdLine[curr.index];
-      if (macdCurr != null && macdPrev != null && macdCurr - macdPrev >= minMacdDelta) {
+      const delta = macdPrev != null && macdCurr != null ? macdCurr - macdPrev : null;
+      if (delta != null && delta > 0 && delta >= minMacdDelta) {
         return "bullish";
       }
     }
@@ -350,7 +436,7 @@ export function derivePrimaryTrend(
 export function buildMarketStructure(
   candles: Candle[],
   rsiSeries?: (number | null)[],
-  options: { lookback?: number; atrPeriod?: number } = {},
+  options: { lookback?: number; atrPeriod?: number } & SignificantSwingOptions = {},
 ): MarketStructureResult {
   const lookback = options.lookback ?? 2;
   const atrPeriod = options.atrPeriod ?? 14;
@@ -358,8 +444,8 @@ export function buildMarketStructure(
   const totalBars = candles.length;
 
   const raw = findFractalSwings(candles, lookback);
-  const filteredHighs = filterByProminence(raw.swingHighs, candles, atr, 1);
-  const filteredLows = filterByProminence(raw.swingLows, candles, atr, 1);
+  const filteredHighs = selectSignificantSwings(raw.swingHighs, candles, atr, options);
+  const filteredLows = selectSignificantSwings(raw.swingLows, candles, atr, options);
 
   const resistanceZones = clusterIntoZones(filteredHighs, atr, 0.5, totalBars);
   const supportZones = clusterIntoZones(filteredLows, atr, 0.5, totalBars);

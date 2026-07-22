@@ -1,5 +1,6 @@
 import type { Candle as IndicatorCandle } from "./indicators.ts";
 import {
+  EMPTY_ORDER_BOOK,
   type FuturesContext,
   type OrderBookImbalance,
   type Ticker24hr,
@@ -183,7 +184,7 @@ const EMPTY_TICKER: Ticker24hr = {
   lowPrice: null,
 };
 
-const EMPTY_ORDER_FLOW: OrderBookImbalance = { obi: null, bidVolume: 0, askVolume: 0, midPrice: null };
+const EMPTY_ORDER_FLOW: OrderBookImbalance = EMPTY_ORDER_BOOK;
 const EMPTY_FUTURES: FuturesContext = {
   available: false,
   fundingRate: null,

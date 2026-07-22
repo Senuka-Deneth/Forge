@@ -56,11 +56,48 @@ export async function fetchBinanceKlines(
   return enrichCandles(candles);
 }
 
+export type BookWall = {
+  price: number;
+  quantity: number;
+  side: "bid" | "ask";
+  /** Distance from mid, as a percentage. */
+  distancePct: number;
+};
+
 export type OrderBookImbalance = {
   obi: number | null;
   bidVolume: number;
   askVolume: number;
   midPrice: number | null;
+  /**
+   * Imbalance measured at several depths. A book that is bid-heavy at ±0.1% but ask-heavy at ±1%
+   * is a different market from one that is bid-heavy throughout — the first is short-term support
+   * under a wall of supply, the second is genuine demand. A single band cannot express that.
+   *
+   * `bidNotional`/`askNotional` are quote-currency values, which is what actually answers "can this
+   * book absorb my position?".
+   */
+  bands: Array<{
+    depthPct: number;
+    obi: number | null;
+    bidVolume: number;
+    askVolume: number;
+    bidNotional: number;
+    askNotional: number;
+  }>;
+  /**
+   * How far the returned book actually reaches from mid, as a percentage.
+   *
+   * Binance caps depth at 500 levels, which on a liquid pair covers a startlingly narrow range —
+   * around ±0.11% on BTCUSDT versus ±6.4% on SOLUSDT. Any band wider than this is measuring the
+   * whole available book rather than the depth it names, so consumers need to know the limit
+   * rather than silently treating a truncated band as complete.
+   */
+  bookCoverage: { bidPct: number | null; askPct: number | null };
+  /** Best bid/ask spread as a percentage of mid. Wide spreads make tight stops unviable. */
+  spreadPct: number | null;
+  /** Largest resting orders near the market, emitted as levels. */
+  walls: BookWall[];
 };
 
 /**
@@ -68,40 +105,138 @@ export type OrderBookImbalance = {
  * within `depthPct` of the mid price so it reflects liquidity actually near the market rather
  * than resting orders far away. Returns nulls (not a thrown error) if the book can't be read.
  */
+/** Canonical "no book data" value. Exported so callers never hand-roll the shape and drift when
+ * fields are added here. */
+export const EMPTY_ORDER_BOOK: OrderBookImbalance = {
+  obi: null,
+  bidVolume: 0,
+  askVolume: 0,
+  midPrice: null,
+  bands: [],
+  bookCoverage: { bidPct: null, askPct: null },
+  spreadPct: null,
+  walls: [],
+};
+
+/** Quote-currency value resting within `bound` on one side of the book. */
+function notionalWithin(levels: [string, string][], bound: number, side: "bid" | "ask"): number {
+  let total = 0;
+  for (const [priceStr, qtyStr] of levels) {
+    const price = Number(priceStr);
+    const qty = Number(qtyStr);
+    if (!Number.isFinite(price) || !Number.isFinite(qty)) continue;
+    if (side === "bid" ? price < bound : price > bound) continue;
+    total += price * qty;
+  }
+  return total;
+}
+
+export function summarizeOrderBook(
+  bids: [string, string][],
+  asks: [string, string][],
+  depthPct = 0.01,
+  bandDepths = [0.001, 0.005, 0.01],
+): OrderBookImbalance {
+  if (!bids.length || !asks.length) return { ...EMPTY_ORDER_BOOK };
+
+  const bestBid = Number(bids[0][0]);
+  const bestAsk = Number(asks[0][0]);
+  if (!Number.isFinite(bestBid) || !Number.isFinite(bestAsk)) return { ...EMPTY_ORDER_BOOK };
+
+  const midPrice = (bestBid + bestAsk) / 2;
+  if (midPrice <= 0) return { ...EMPTY_ORDER_BOOK };
+
+  const sumWithin = (levels: [string, string][], bound: number, side: "bid" | "ask") =>
+    levels
+      .filter(([price]) => (side === "bid" ? Number(price) >= bound : Number(price) <= bound))
+      .reduce((sum, [, qty]) => sum + Number(qty), 0);
+
+  const bands = bandDepths.map((pct) => {
+    const bidBound = midPrice * (1 - pct);
+    const askBound = midPrice * (1 + pct);
+    const bidVolume = sumWithin(bids, bidBound, "bid");
+    const askVolume = sumWithin(asks, askBound, "ask");
+    const total = bidVolume + askVolume;
+    return {
+      depthPct: pct,
+      obi: total > 0 ? Number(((bidVolume - askVolume) / total).toFixed(6)) : null,
+      bidVolume: Number(bidVolume.toFixed(6)),
+      askVolume: Number(askVolume.toFixed(6)),
+      bidNotional: Number(notionalWithin(bids, bidBound, "bid").toFixed(2)),
+      askNotional: Number(notionalWithin(asks, askBound, "ask").toFixed(2)),
+    };
+  });
+
+  // How far the book data actually extends, so a band wider than this is not mistaken for a
+  // complete measurement of that depth.
+  const lowestBid = Number(bids[bids.length - 1][0]);
+  const highestAsk = Number(asks[asks.length - 1][0]);
+  const bookCoverage = {
+    bidPct: Number.isFinite(lowestBid) ? Number((((midPrice - lowestBid) / midPrice) * 100).toFixed(4)) : null,
+    askPct: Number.isFinite(highestAsk) ? Number((((highestAsk - midPrice) / midPrice) * 100).toFixed(4)) : null,
+  };
+
+  // Headline figures stay at the original depth so existing consumers are unaffected.
+  const bidVolume = sumWithin(bids, midPrice * (1 - depthPct), "bid");
+  const askVolume = sumWithin(asks, midPrice * (1 + depthPct), "ask");
+  const total = bidVolume + askVolume;
+  const obi = total > 0 ? (bidVolume - askVolume) / total : null;
+
+  // Walls: the heaviest resting orders within the deepest band, which act as levels in their own
+  // right — price often stalls into a large wall and accelerates once it clears.
+  const nearBids = bids.filter(([p]) => Number(p) >= midPrice * (1 - depthPct));
+  const nearAsks = asks.filter(([p]) => Number(p) <= midPrice * (1 + depthPct));
+  const toWall = (level: [string, string], side: "bid" | "ask"): BookWall => {
+    const price = Number(level[0]);
+    return {
+      price,
+      quantity: Number(level[1]),
+      side,
+      distancePct: Number((((price - midPrice) / midPrice) * 100).toFixed(4)),
+    };
+  };
+  const walls = [
+    ...nearBids.map((l) => toWall(l, "bid")),
+    ...nearAsks.map((l) => toWall(l, "ask")),
+  ]
+    .sort((a, b) => b.quantity - a.quantity)
+    .slice(0, 6);
+
+  return {
+    obi: obi != null ? Number(obi.toFixed(6)) : null,
+    bidVolume: Number(bidVolume.toFixed(6)),
+    askVolume: Number(askVolume.toFixed(6)),
+    midPrice,
+    bands,
+    bookCoverage,
+    spreadPct: Number((((bestAsk - bestBid) / midPrice) * 100).toFixed(6)),
+    walls,
+  };
+}
+
+/**
+ * Order-book imbalance and liquidity quality near the market.
+ *
+ * A single imbalance ratio is easy to spoof and says nothing about whether the book can absorb a
+ * position, so this also reports imbalance and notional depth at multiple bands, how far the book
+ * data actually reaches, the spread, and the largest resting orders. Returns nulls (never throws)
+ * if the book cannot be read.
+ */
 export async function fetchOrderBookImbalance(symbol: string, depthPct = 0.01): Promise<OrderBookImbalance> {
-  const empty: OrderBookImbalance = { obi: null, bidVolume: 0, askVolume: 0, midPrice: null };
   try {
     const url = new URL(`${BINANCE_SPOT_BASE}/api/v3/depth`);
     url.searchParams.set("symbol", symbol);
     url.searchParams.set("limit", "500");
     const response = await fetchWithTimeout(url, {}, { timeoutMs: 8000, retries: 1 });
-    if (!response.ok) return empty;
+    if (!response.ok) return { ...EMPTY_ORDER_BOOK };
 
     const data = await response.json();
     const bids: [string, string][] = Array.isArray(data.bids) ? data.bids : [];
     const asks: [string, string][] = Array.isArray(data.asks) ? data.asks : [];
-    if (!bids.length || !asks.length) return empty;
 
-    const bestBid = Number(bids[0][0]);
-    const bestAsk = Number(asks[0][0]);
-    if (!Number.isFinite(bestBid) || !Number.isFinite(bestAsk)) return empty;
-    const midPrice = (bestBid + bestAsk) / 2;
-    const lowerBound = midPrice * (1 - depthPct);
-    const upperBound = midPrice * (1 + depthPct);
-
-    const bidVolume = bids
-      .filter(([price]) => Number(price) >= lowerBound)
-      .reduce((sum, [, qty]) => sum + Number(qty), 0);
-    const askVolume = asks
-      .filter(([price]) => Number(price) <= upperBound)
-      .reduce((sum, [, qty]) => sum + Number(qty), 0);
-
-    const total = bidVolume + askVolume;
-    const obi = total > 0 ? (bidVolume - askVolume) / total : null;
-
-    return { obi, bidVolume, askVolume, midPrice };
+    return summarizeOrderBook(bids, asks, depthPct);
   } catch {
-    return empty;
+    return { ...EMPTY_ORDER_BOOK };
   }
 }
 

@@ -3,7 +3,12 @@ import { handleOptions, jsonResponse } from "../_shared/cors.ts";
 import { fetchWithTimeout, safeError } from "../_shared/http.ts";
 import { requireAuthenticatedUser, tryServiceClient } from "../_shared/auth.ts";
 import { consumeQuota } from "../_shared/rateLimit.ts";
-import { empiricalConfidence, clampModelConfidence } from "../_shared/calibration.ts";
+import {
+  type CalibrationRow,
+  clampModelConfidence,
+  type EmpiricalCalibration,
+  selectCalibrationBucket,
+} from "../_shared/calibration.ts";
 import {
   buildUserMessage,
   gatherMarketContext,
@@ -83,6 +88,7 @@ async function logAiAnalysis(
     requestPayload?: Record<string, unknown> | null;
     responsePayload?: Record<string, unknown> | null;
     setupType?: SetupType | null;
+    regime?: string | null;
   },
 ): Promise<string | null> {
   const { data, error } = await supabase.from("ai_analysis_logs").insert({
@@ -96,6 +102,7 @@ async function logAiAnalysis(
     request_payload: entry.requestPayload ?? null,
     response_payload: entry.responsePayload ?? null,
     setup_type: entry.setupType ?? null,
+    regime: entry.regime ?? null,
   }).select("id").single();
   if (error) console.error("[ai-analysis] failed to write ai_analysis_logs:", error.message);
   return data?.id ?? null;
@@ -116,13 +123,16 @@ function toGatingContext(ctx: MarketContext): GatingContext {
   };
 }
 
+/** Empirical hit rate for the setup about to be recommended. Bucket selection lives in
+ * _shared/calibration.ts so it can be unit-tested without a database. */
 async function fetchEmpiricalCalibration(
   supabase: SupabaseClient,
   setupType: SetupType,
-): Promise<{ n: number; empirical_hit_rate: number } | null> {
+  regime: string | null,
+): Promise<EmpiricalCalibration | null> {
   const { data: v2data, error: v2error } = await supabase
     .from("ai_analysis_logs")
-    .select("outcome, setup_type, scoring_version")
+    .select("outcome, setup_type, regime, scoring_version")
     .eq("status", "success")
     .not("evaluated_at", "is", null)
     .in("outcome", ["target_hit", "stop_hit", "expired", "no_fill"])
@@ -132,7 +142,7 @@ async function fetchEmpiricalCalibration(
 
   const { data, error } = await supabase
     .from("ai_analysis_logs")
-    .select("outcome, setup_type, scoring_version")
+    .select("outcome, setup_type, regime, scoring_version")
     .eq("status", "success")
     .not("evaluated_at", "is", null)
     .in("outcome", ["target_hit", "stop_hit", "expired", "no_fill"])
@@ -140,27 +150,21 @@ async function fetchEmpiricalCalibration(
     .limit(500);
   if (error || !data?.length) return null;
 
-  const rows = (useV2
-    ? (v2data ?? [])
-    : data) as Array<{ outcome: string | null; setup_type: string | null }>;
-  const globalWins = rows.filter((r) => r.outcome === "target_hit").length;
-  const globalDecided = rows.filter((r) => r.outcome === "target_hit" || r.outcome === "stop_hit").length;
-  const globalRate = globalDecided > 0 ? globalWins / globalDecided : 0.5;
-
-  const setupRows = rows.filter((r) => r.setup_type === setupType);
-  const hits = setupRows.filter((r) => r.outcome === "target_hit").length;
-  const decided = setupRows.filter((r) => r.outcome === "target_hit" || r.outcome === "stop_hit").length;
-  if (!decided) return null;
-
-  return {
-    n: decided,
-    empirical_hit_rate: empiricalConfidence(hits, decided, globalRate) / 100,
-  };
+  const rows = (useV2 ? (v2data ?? []) : data) as CalibrationRow[];
+  return selectCalibrationBucket(rows, setupType, regime);
 }
+
+const CALIBRATION_BUCKET_LABEL: Record<EmpiricalCalibration["bucket"], string> = {
+  // Wording matters here: the model is told what population the rate describes so it cannot
+  // present a pooled global fallback as if it were a measurement of this specific setup.
+  setup_regime: "this setup type in this regime",
+  setup: "this setup type across all regimes",
+  global: "all setups pooled",
+};
 
 function attachEmpiricalConfidence(
   analysis: Record<string, unknown>,
-  calibration: { n: number; empirical_hit_rate: number } | null,
+  calibration: EmpiricalCalibration | null,
   setupType: SetupType,
 ): void {
   if (!calibration) return;
@@ -168,7 +172,7 @@ function attachEmpiricalConfidence(
   if (!tradePlan || typeof tradePlan !== "object") return;
   tradePlan.empirical_confidence = Number((calibration.empirical_hit_rate * 100).toFixed(1));
   const pct = (calibration.empirical_hit_rate * 100).toFixed(1);
-  tradePlan.rationale = `${tradePlan.rationale} This setup type has hit ${pct}% over ${calibration.n} decided instances — don't report confidence far above this without stating why.`;
+  tradePlan.rationale = `${tradePlan.rationale} Historically ${CALIBRATION_BUCKET_LABEL[calibration.bucket]} has hit ${pct}% over ${calibration.n} decided instances — don't report confidence far above this without stating why.`;
 
   const summary = analysis.summary as Record<string, unknown> | undefined;
   if (summary && typeof summary.confidence === "number") {
@@ -200,6 +204,7 @@ function attachEmpiricalConfidence(
       setup_type: setupType,
       n: calibration.n,
       empirical_hit_rate: calibration.empirical_hit_rate,
+      bucket: calibration.bucket,
     },
   };
 }
@@ -340,14 +345,25 @@ function deterministicFallback(ctx: MarketContext, source = "local-fallback") {
   const gated = applyRegimeGating(bias, confidence, gatingCtx);
   const tradePlan = buildDeterministicTradePlan(gatingCtx, gated.bias, gated.confidence);
 
+  // The headline summary is derived from the finished trade plan rather than from the raw
+  // pre-gating values. Previously the header read the ungated `bias`/`confidence` while the plan
+  // read the gated ones, so the card could say "bias: long, confidence: 75%" directly above a plan
+  // that said "wait". Reading both off the plan makes that contradiction unrepresentable.
+  // primary_trend/momentum/phase stay ungated: they describe what the market is doing, not what
+  // the system recommends.
+  const summaryBias = tradePlan.bias === "wait" ? "neutral" : tradePlan.bias;
+  const gatedNote = summaryBias !== bias
+    ? ` Raw signal read ${bias}; ${ctx.regime} regime gating downgraded it to ${summaryBias}.`
+    : "";
+
   const legacy = {
     summary: {
       primary_trend: primaryTrend,
       momentum,
       phase: primaryTrend === "bullish" ? "markup" : primaryTrend === "bearish" ? "markdown" : "consolidation",
-      confidence,
-      bias: bias === "neutral" ? "neutral" : bias,
-      reasoning: `Price ${price}, EMA alignment ${alignment}, RSI state ${rsiState}, MTF confluence ${ctx.confluenceScore}%, ADX-based trend strength ${ctx.trendStrength}.`,
+      confidence: tradePlan.confidence,
+      bias: summaryBias,
+      reasoning: `Price ${price}, EMA alignment ${alignment}, RSI state ${rsiState}, MTF confluence ${ctx.confluenceScore}%, ADX-based trend strength ${ctx.trendStrength}.${gatedNote}`,
     },
     indicators: {
       rsi: {
@@ -853,6 +869,19 @@ function normalizeModelOutput(parsed: Record<string, unknown>, ctx: MarketContex
     gatingCtx,
   ).setupType ?? baseSetupType;
 
+  // Reconcile the headline with the finished plan. The model can emit a summary and a trade_plan
+  // that disagree, and geometry validation above may have replaced the plan wholesale after the
+  // summary was already validated — either path leaves the header claiming a directional bias over
+  // a plan that says wait. The plan is the artifact the trader acts on, so it wins.
+  const reconciledBias = validatedTradePlan.bias === "wait" ? "neutral" : validatedTradePlan.bias;
+  const summaryContradictedPlan = validatedSummary.bias !== reconciledBias;
+  validatedSummary.bias = reconciledBias;
+  validatedSummary.confidence = validatedTradePlan.confidence;
+  if (summaryContradictedPlan) {
+    validatedSummary.reasoning =
+      `${validatedSummary.reasoning} (Headline bias aligned to the validated trade plan, which reads ${validatedTradePlan.bias}.)`;
+  }
+
   const modelFieldRatio = totalFieldCount > 0 ? modelFieldCount / totalFieldCount : 0;
   const source = modelFieldRatio >= 0.7 ? "openrouter" : modelFieldRatio > 0 ? "openrouter-partial" : "deterministic";
 
@@ -1002,7 +1031,7 @@ Deno.serve(async (req) => {
     const parsed = extractJson(content);
     const analysis = normalizeModelOutput(parsed, ctx);
     const setupType = (analysis._meta as Record<string, unknown>)?.setup_type as SetupType ?? "wait";
-    const calibration = await fetchEmpiricalCalibration(supabase, setupType);
+    const calibration = await fetchEmpiricalCalibration(supabase, setupType, ctx.regime);
     attachEmpiricalConfidence(analysis as Record<string, unknown>, calibration, setupType);
     const latencyMs = Date.now() - started;
 
@@ -1017,6 +1046,7 @@ Deno.serve(async (req) => {
       requestPayload,
       responsePayload: analysis as Record<string, unknown>,
       setupType,
+      regime: ctx.regime,
     });
     analysis._meta = {
       ...analysis._meta,

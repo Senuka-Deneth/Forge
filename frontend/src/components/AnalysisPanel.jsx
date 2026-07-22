@@ -8,6 +8,8 @@ function formatLevel(item) {
   return `${Number(item.price).toFixed(2)}`
 }
 
+import { signalAgreementLabel } from '../utils/signalAgreement'
+
 function formatSwingTime(epochSeconds) {
   if (!Number.isFinite(Number(epochSeconds))) return '—'
   const d = new Date(Number(epochSeconds) * 1000)
@@ -20,7 +22,10 @@ export default function AnalysisPanel({
   analysis,
   loading = false,
   error = '',
-  pivotData
+  pivotData,
+  signalAgreement = null,
+  empiricalConfidence = null,
+  empiricalSampleSize = null
 }) {
   // Muted bear→bull ramp matching the steel design tokens (chartTheme.js)
   const zoneColors = {
@@ -36,7 +41,7 @@ export default function AnalysisPanel({
   const pivotAnalysis = pivotData?.classic?.analysis ?? null
 
   const statusText = loading ? 'Running' : error ? 'Error' : analysis ? 'Ready' : 'Waiting'
-  const confidenceValue = analysis?.confidence ?? 0
+  const agreementScore = signalAgreement?.score ?? null
 
   return (
     <>
@@ -65,16 +70,37 @@ export default function AnalysisPanel({
             <div className="summary-value" id="summary-macd-state">{analysis?.macdState || '—'}</div>
           </div>
         </div>
-        <div className="confidence-row">
-          <span className="summary-label">Confidence</span>
+        <div
+          className="confidence-row"
+          title="How many independent checks (EMA stack, RSI, MACD, pivot bias, S/R zones, divergence, inflection) point the same way. This is an alignment count, not a probability."
+        >
+          <span className="summary-label">Signal agreement</span>
           <div className="confidence-bar-track">
             <div className="confidence-bar-fill" id="confidence-bar-fill" style={{
-              width: `${confidenceValue}%`,
-              backgroundColor: confidenceValue >= 70 ? 'var(--bull)' : confidenceValue >= 40 ? 'var(--neutral)' : 'var(--bear)'
+              width: `${agreementScore ?? 0}%`,
+              backgroundColor: (agreementScore ?? 0) >= 70 ? 'var(--bull)' : (agreementScore ?? 0) >= 45 ? 'var(--neutral)' : 'var(--bear)'
             }}></div>
           </div>
-          <span className="confidence-pct" id="confidence-pct">{analysis ? `${confidenceValue}%` : '—'}</span>
+          <span className="confidence-pct" id="confidence-pct">
+            {agreementScore != null ? `${agreementScore}/100` : '—'}
+          </span>
         </div>
+        <p className="ai-signal-note" style={{ marginTop: '8px' }}>
+          {signalAgreementLabel(agreementScore)} — an alignment count, not a probability.
+          {signalAgreement && !signalAgreement.pivotsIncluded && ' Pivot checks excluded until pivots load.'}
+        </p>
+        {empiricalConfidence != null && (
+          <div className="ai-row" style={{ marginTop: '4px' }}>
+            <span title="Realized hit rate for this setup type from scored past predictions. This is the only calibrated number on this card.">
+              Calibrated hit rate
+            </span>
+            <span style={{ opacity: (empiricalSampleSize ?? 0) < 20 ? 0.45 : 1 }}>
+              {empiricalConfidence}%
+              {empiricalSampleSize != null ? ` (n=${empiricalSampleSize})` : ''}
+              {(empiricalSampleSize ?? 0) < 20 ? ' — too few samples to trust' : ''}
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="panel-card" id="key-levels-panel">
@@ -208,7 +234,7 @@ export default function AnalysisPanel({
               borderLeft: '2px solid var(--color-bear)',
             }}>
               <span style={{ fontFamily: 'var(--font-ui)', fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-bear)', whiteSpace: 'nowrap' }}>Invalidates if</span>
-              <span id="inv-bull" style={{ fontFamily: 'var(--font-ui)', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{analysis?.invalidation || '—'}</span>
+              <span id="inv-bull" style={{ fontFamily: 'var(--font-ui)', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{analysis?.invalidationBull || '—'}</span>
             </div>
           </div>
           <div className="scenario bear-scenario">
@@ -222,7 +248,7 @@ export default function AnalysisPanel({
               borderLeft: '2px solid var(--color-bull)',
             }}>
               <span style={{ fontFamily: 'var(--font-ui)', fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-bull)', whiteSpace: 'nowrap' }}>Invalidates if</span>
-              <span id="inv-bear" style={{ fontFamily: 'var(--font-ui)', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{analysis?.invalidation || '—'}</span>
+              <span id="inv-bear" style={{ fontFamily: 'var(--font-ui)', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{analysis?.invalidationBear || '—'}</span>
             </div>
           </div>
         </div>

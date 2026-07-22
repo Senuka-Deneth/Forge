@@ -58,16 +58,16 @@ function PositionSizeCalculator({ entry, stop }) {
       {riskPerUnit == null ? (
         <p className="ai-signal-note">Set an entry and stop to size a position.</p>
       ) : (
-        <div className="ai-rows">
-          <div className="ai-row">
+        <div className="stack-2">
+          <div className="row-between">
             <span>Risk amount</span>
             <span>${riskAmount.toFixed(2)}</span>
           </div>
-          <div className="ai-row">
+          <div className="row-between">
             <span>Position size</span>
             <span>{positionSize != null ? positionSize.toFixed(6) : '—'} units</span>
           </div>
-          <div className="ai-row">
+          <div className="row-between">
             <span>Position value</span>
             <span>{positionValue != null ? `$${positionValue.toFixed(2)}` : '—'}</span>
           </div>
@@ -77,83 +77,33 @@ function PositionSizeCalculator({ entry, stop }) {
   );
 }
 
-const colorMap = {
-  // Trends & Momentum
-  bullish: 'var(--bull)',
-  strong_bullish: 'var(--bull)',
-  bearish: 'var(--bear)',
-  strong_bearish: 'var(--bear)',
-  neutral: 'var(--neutral)',
-  sideways: 'var(--neutral)',
-  long: 'var(--bull)',
-  short: 'var(--bear)',
-  wait: 'var(--neutral)',
-  
-  // RSI / Indicators
-  overbought: 'var(--bear)',
-  oversold: 'var(--bull)',
-  bullish_momentum: 'var(--bull)',
-  bearish_momentum: 'var(--bear)',
-  bullish_zone: 'var(--bull)',
-  bearish_zone: 'var(--bear)',
-  above: 'var(--bull)',
-  below: 'var(--bear)',
-  
-  // Wyckoff Phases
-  accumulation: 'var(--neutral)',
-  markup: 'var(--bull)',
-  distribution: 'var(--neutral)',
-  markdown: 'var(--bear)',
-  
-  // Significance / Severity
-  high: 'var(--bear)',
-  medium: 'var(--neutral)',
-  low: 'var(--info)',
-  
-  // Regimes
-  trending: 'var(--info)',
-  ranging: 'var(--neutral)',
-  breakout: 'var(--accent-primary)',
-  reversal: 'var(--neutral)',
-  
-  // Zones
-  between_pp_r1: 'var(--bull)',
-  between_r1_r2: 'var(--bull)',
-  between_r2_r3: 'var(--bull)',
-  above_r3: 'var(--bull)',
-  between_s1_pp: 'var(--bear)',
-  between_s2_s1: 'var(--bear)',
-  between_s3_s2: 'var(--bear)',
-  below_s3: 'var(--bear)',
-  
-  none: 'transparent',
+// Collapses the model's many status/state vocabularies down to a single tag tone.
+const BULL_STATES = new Set([
+  'bullish', 'strong_bullish', 'long', 'oversold', 'bullish_momentum', 'bullish_zone', 'above', 'markup',
+  'between_pp_r1', 'between_r1_r2', 'between_r2_r3', 'above_r3',
+]);
+const BEAR_STATES = new Set([
+  'bearish', 'strong_bearish', 'short', 'overbought', 'bearish_momentum', 'bearish_zone', 'below', 'markdown', 'high',
+  'between_s1_pp', 'between_s2_s1', 'between_s3_s2', 'below_s3',
+]);
+const ACCENT_STATES = new Set(['breakout']);
+
+function statusTone(value) {
+  if (value == null) return 'muted';
+  const key = String(value).toLowerCase();
+  if (BULL_STATES.has(key)) return 'bull';
+  if (BEAR_STATES.has(key)) return 'bear';
+  if (ACCENT_STATES.has(key)) return 'accent';
+  return 'muted';
 }
 
 function StatusPill({ value }) {
-  if (value == null) return <span className="status-pill" style={{ color: 'inherit', opacity: 0.5 }}>—</span>
-  
-  const valStr = String(value).toLowerCase()
+  if (value == null) return <span className="tag tag--muted">—</span>
+
   const display = String(value).replace(/_/g, ' ').toUpperCase()
-  const color = colorMap[valStr] ?? 'var(--text-muted)'
-  
-  const isTransparent = color === 'transparent'
-  
-  return (
-    <span className="status-pill" style={{
-      backgroundColor: isTransparent ? 'var(--bg-overlay)' : `var(--${color.replace('var(--', '').replace(')', '')}-soft, var(--bg-overlay))`,
-      color: color,
-      border: `1px solid ${isTransparent ? 'var(--border-subtle)' : color}`,
-      padding: '2px 8px',
-      borderRadius: 'var(--radius-sm)',
-      fontSize: '10px',
-      fontWeight: '700',
-      letterSpacing: '0.02em',
-      display: 'inline-flex',
-      alignItems: 'center'
-    }}>
-      {display}
-    </span>
-  )
+  const tone = statusTone(value)
+
+  return <span className={`tag tag--${tone}`}>{display}</span>
 }
 
 function alertDirection(level, currentPrice) {
@@ -252,51 +202,27 @@ export default function AIAnalysisPanel({
   const isLiveAI = a?._meta?.source === 'openrouter'
   const isPartialAI = a?._meta?.source === 'openrouter-partial'
   const provenanceLabel = isLiveAI ? 'Live AI' : isPartialAI ? 'Partial AI' : 'Baseline'
-  const provenanceColor = isLiveAI ? 'var(--bull)' : isPartialAI ? 'var(--neutral)' : 'var(--text-muted)'
-  const provenanceBg = isLiveAI ? 'var(--bull-soft)' : isPartialAI ? 'var(--neutral-soft)' : 'rgba(255,255,255,0.05)'
+  const provenanceTone = isLiveAI ? 'bull' : isPartialAI ? 'accent' : 'muted'
   const modelLabel = a?._meta?.model ?? 'model pending'
+  const statusTag = aiLoading ? 'accent' : aiError ? 'bear' : a ? 'bull' : 'muted'
 
   return (
     <div id="ai-analysis-section" className="ai-section">
       <div className="ai-section-header">
         <div className="ai-section-title">
           <span>AI Analysis</span>
-          <span className="model-tag" id="ai-model-tag">{modelLabel}</span>
+          <span className="tag" id="ai-model-tag">{modelLabel}</span>
           {a && (
             <span
-              className="panel-badge"
+              className={`tag tag--${provenanceTone}`}
               title={isLiveAI ? 'Generated primarily by the live AI model.' : isPartialAI ? 'Model returned partial output; some fields use deterministic fallbacks.' : 'Rules-based baseline — model unavailable or mostly ignored.'}
-              style={{
-                marginLeft: '8px',
-                backgroundColor: provenanceBg,
-                color: provenanceColor,
-              }}
             >
               {provenanceLabel}
             </span>
           )}
         </div>
         <div className="ai-section-actions">
-          <span 
-            id="ai-status-badge" 
-            className="panel-badge"
-            style={{
-              backgroundColor: aiLoading
-                ? 'var(--neutral-soft)'
-                : aiError
-                  ? 'var(--bear-soft)'
-                  : a
-                    ? 'var(--bull-soft)'
-                    : 'var(--bg-overlay)',
-              color: aiLoading
-                ? 'var(--neutral)'
-                : aiError
-                  ? 'var(--bear)'
-                  : a
-                    ? 'var(--bull)'
-                    : 'var(--text-muted)'
-            }}
-          >
+          <span id="ai-status-badge" className={`tag tag--${statusTag}`}>
             {aiLoading ? 'Analyzing…' : aiError ? 'Error' : a ? 'Ready' : 'Waiting'}
           </span>
           <button className="btn-ghost" id="ai-refresh-btn" onClick={onRefresh} disabled={aiLoading}>
@@ -313,59 +239,51 @@ export default function AIAnalysisPanel({
             </div>
             <span className="ai-loading-text-label" id="ai-loading-msg">{loadingMsg}</span>
           </div>
-          {/* Step progress */}
-          <div style={{ display: 'flex', gap: '6px', margin: '4px 0 8px' }}>
+
+          <div className="ai-loading-steps">
             {['Fast inference', 'Validation', 'Output'].map((step, i) => {
-              const msgIdx = ['fast market analysis', 'signal consistency', 'Finalizing'].map(m => loadingMsg.toLowerCase().includes(m.toLowerCase()) ? true : false);
+              const msgIdx = ['fast market analysis', 'signal consistency', 'finalizing'].map((m) => loadingMsg.toLowerCase().includes(m));
               const active = i === 0 || msgIdx[i - 1];
-              return (
-                <div key={i} style={{
-                  flex: 1, height: '2px', borderRadius: '2px',
-                  background: active ? 'var(--accent-primary)' : 'var(--border-medium)',
-                  transition: 'background 0.4s ease',
-                  opacity: active ? 1 : 0.4
-                }} />
-              );
+              return <div key={i} className={`ai-loading-step ${active ? 'active' : ''}`} title={step} />;
             })}
           </div>
-          {/* Skeleton preview of cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-            <div style={{ gridColumn: 'span 2', background: 'var(--bg-raised)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', padding: '32px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div className="ai-skeleton-line w-30" style={{ height: '10px', width: '30%' }}></div>
-              <div style={{ display: 'flex', gap: '12px' }}>
-                {[1,2,3,4].map(i => <div key={i} className="ai-skeleton-line" style={{ height: '34px', flex: 1, marginBottom: 0 }}></div>)}
+
+          <div className="ai-loading-skeleton">
+            <div className="ai-loading-skeleton__card ai-loading-skeleton__card--wide">
+              <span className="skeleton w-30">Loading trend summary</span>
+              <div className="row">
+                {[1, 2, 3, 4].map((i) => <span key={i} className="skeleton">Loading</span>)}
               </div>
-              <div className="ai-skeleton-line w-100"></div>
-              <div className="ai-skeleton-line w-85"></div>
+              <span className="skeleton w-100">Loading reasoning placeholder line one</span>
+              <span className="skeleton w-85">Loading reasoning placeholder line two</span>
             </div>
-            <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', padding: '32px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div className="ai-skeleton-line w-30" style={{ height: '10px', width: '40%' }}></div>
-              {[1,2,3,4,5].map(i => <div key={i} className="ai-skeleton-line w-100" style={{ height: '10px' }}></div>)}
+            <div className="ai-loading-skeleton__card">
+              <span className="skeleton w-40">Loading indicators</span>
+              {[1, 2, 3, 4, 5].map((i) => <span key={i} className="skeleton w-100">Loading indicator row</span>)}
             </div>
-            <div style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', padding: '32px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div className="ai-skeleton-line w-30" style={{ height: '10px', width: '40%' }}></div>
-              {[1,2,3,4].map(i => <div key={i} className="ai-skeleton-line w-85" style={{ height: '10px' }}></div>)}
+            <div className="ai-loading-skeleton__card">
+              <span className="skeleton w-40">Loading pivots</span>
+              {[1, 2, 3, 4].map((i) => <span key={i} className="skeleton w-85">Loading pivot row</span>)}
             </div>
           </div>
         </div>
       )}
 
       {aiError && !aiLoading && (
-        <div id="ai-error" className="ai-error-box fade-in" style={{
-          display: 'flex', alignItems: 'center', gap: '8px', 
-          color: 'var(--color-bear)', fontFamily: 'var(--font-ui)', fontSize: '14px'
-        }}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{width:'16px', height:'16px'}}>
-            <circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line>
-          </svg>
-          <span>Analysis failed. Try again.</span>
-          <button className="btn-ghost" onClick={onRefresh} style={{marginLeft: 'auto'}}>Retry</button>
+        <div id="ai-error" className="auth-error row-between fade-in">
+          <div className="row">
+            <svg className="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            <span>Analysis failed. Try again.</span>
+          </div>
+          <button className="btn-ghost" onClick={onRefresh}>Retry</button>
         </div>
       )}
 
       {!aiLoading && !aiError && !a && (
-        <div style={{ padding: '20px 0', color: 'var(--text-muted)', fontSize: 'var(--text-sm)', textAlign: 'center' }}>
-          <p style={{ marginBottom: '16px' }}>No AI analysis generated yet.</p>
+        <div className="empty-state text-center">
+          <p className="mb-4">No AI analysis generated yet.</p>
           <button className="btn-primary" onClick={onRefresh}>
             Create AI Analysis
           </button>
@@ -373,82 +291,83 @@ export default function AIAnalysisPanel({
       )}
 
       {!aiLoading && a && (
-        <div id="ai-content" className="ai-content-grid fade-in">
-          <div className="ai-card wide" style={{ padding: 0, background: 'transparent', border: 'none' }}>
+        <div id="ai-content" className="ai-grid fade-in">
+          <div className="col-span-all">
             <VerdictPanel analysis={a} onOverride={handleOverride} />
           </div>
 
           <div className="ai-card wide">
             <div className="ai-card-header">Market Intelligence</div>
-            <div className="ai-summary-strip">
-              <div className="ai-kpi">
-                <label>Trend</label>
+            <div className="ai-summary">
+              <div>
+                <div className="ai-metric__label">Trend</div>
                 <div id="ai-trend"><StatusPill value={a.summary?.primary_trend} /></div>
               </div>
-              <div className="ai-kpi">
-                <label>Momentum</label>
+              <div>
+                <div className="ai-metric__label">Momentum</div>
                 <div id="ai-momentum"><StatusPill value={a.summary?.momentum} /></div>
               </div>
-              <div className="ai-kpi">
-                <label>Phase</label>
+              <div>
+                <div className="ai-metric__label">Phase</div>
                 <div id="ai-phase"><StatusPill value={a.summary?.phase} /></div>
               </div>
-              <div className="ai-kpi">
-                <label>Regime</label>
+              <div>
+                <div className="ai-metric__label">Regime</div>
                 <div id="ai-regime"><StatusPill value={a.market_regime?.regime} /></div>
               </div>
-              <div className="ai-kpi">
-                <label>Bias</label>
+              <div>
+                <div className="ai-metric__label">Bias</div>
                 <div id="ai-bias"><StatusPill value={a.summary?.bias} /></div>
               </div>
-              <div className="ai-kpi">
-                <label>Volatility</label>
+              <div>
+                <div className="ai-metric__label">Volatility</div>
                 <div id="ai-volatility"><StatusPill value={a.market_regime?.volatility} /></div>
               </div>
-              <div className="ai-kpi">
-                <label title="MTF alignment blended with signal agreement — not a probability">MTF+signal blend</label>
+              <div>
+                <div className="ai-metric__label" title="MTF alignment blended with signal agreement — not a probability">MTF+signal blend</div>
                 <div id="ai-confluence">
                   {a._meta?.confluence_breakdown
                     ? `${a._meta.confluence_breakdown.mtf_confluence}% MTF (${a._meta.confluence_breakdown.mtf_sample_size} TFs) + ${a._meta.confluence_breakdown.signal_agreement}% signals`
                     : a._meta?.confluence_score != null ? `${a._meta.confluence_score}%` : '—'}
                 </div>
               </div>
-              <div className="ai-kpi wide-kpi">
-                <label>Signal strength</label>
-                <div className="conf-track">
-                  <div id="ai-confidence-bar" className="conf-fill" style={{
-                    width: `${a.summary?.confidence ?? 0}%`,
-                    backgroundColor: (a.summary?.confidence ?? 0) >= 70 ? 'var(--bull)' : (a.summary?.confidence ?? 0) >= 40 ? 'var(--neutral)' : 'var(--bear)'
-                  }}></div>
-                  <span id="ai-confidence-val">{a.summary?.confidence ?? 0}%</span>
+              <div className="col-span-all">
+                <div className="ai-metric__label">Signal strength</div>
+                <div className="confidence-bar-track">
+                  <div
+                    id="ai-confidence-bar"
+                    className={`confidence-bar-fill ${(a.summary?.confidence ?? 0) >= 70 ? 'confidence-bar-fill--bull' : (a.summary?.confidence ?? 0) >= 40 ? '' : 'confidence-bar-fill--bear'}`}
+                    style={{ width: `${a.summary?.confidence ?? 0}%` }}
+                  ></div>
                 </div>
+                <span id="ai-confidence-val" className="text-sm-muted">{a.summary?.confidence ?? 0}%</span>
               </div>
             </div>
             {a.summary?.reasoning && (
-              <p id="ai-reasoning" className="ai-reasoning-text">{a.summary.reasoning}</p>
+              <p id="ai-reasoning" className="ai-reasoning">{a.summary.reasoning}</p>
             )}
           </div>
 
           <div className="ai-card">
             <div className="ai-card-header">Indicator Readings</div>
-            <div className="ai-rows">
-              <div className="ai-row">
+            <div className="stack-2">
+              <div className="row-between">
                 <span>RSI State</span>
                 <div id="ai-rsi-state"><StatusPill value={a.indicators?.rsi?.state} /></div>
               </div>
-              <div className="ai-row">
+              <div className="row-between">
                 <span>RSI Divergence</span>
                 <div id="ai-rsi-div"><StatusPill value={a.indicators?.rsi?.divergence} /></div>
               </div>
-              <div className="ai-row">
+              <div className="row-between">
                 <span>MACD</span>
                 <div id="ai-macd-state"><StatusPill value={a.indicators?.macd?.state} /></div>
               </div>
-              <div className="ai-row">
+              <div className="row-between">
                 <span>EMA Alignment</span>
                 <div id="ai-ema-align"><StatusPill value={a.indicators?.ema?.alignment} /></div>
               </div>
-              <div className="ai-row">
+              <div className="row-between">
                 <span>Price vs EMA 20</span>
                 <div id="ai-price-ema20"><StatusPill value={a.indicators?.ema?.price_vs_ema20} /></div>
               </div>
@@ -462,40 +381,40 @@ export default function AIAnalysisPanel({
           {a.pivot_analysis && (
             <div className="ai-card">
               <div className="ai-card-header">Pivot Intelligence</div>
-              <div className="ai-rows">
-                <div className="ai-row">
+              <div className="stack-2">
+                <div className="row-between">
                   <span>PP Level</span>
                   <span id="ai-pp-value">{a.pivot_analysis.pp ?? '—'}</span>
                 </div>
-                <div className="ai-row">
+                <div className="row-between">
                   <span>Zone</span>
                   <div id="ai-pivot-zone"><StatusPill value={a.pivot_analysis.current_zone} /></div>
                 </div>
-                <div className="ai-row">
+                <div className="row-between">
                   <span>Session Bias</span>
                   <div id="ai-pivot-bias"><StatusPill value={a.pivot_analysis.session_bias} /></div>
                 </div>
-                <div className="ai-row">
+                <div className="row-between">
                   <span>Bull Target</span>
-                  <span id="ai-pivot-target-bull" style={{ color: 'var(--bull)', fontWeight: '600' }}>
+                  <span id="ai-pivot-target-bull" className="bull">
                     {a.pivot_analysis.pivot_target_bull ? `${a.pivot_analysis.pivot_target_bull.label} @ ${a.pivot_analysis.pivot_target_bull.value}` : '—'}
                   </span>
                 </div>
-                <div className="ai-row">
+                <div className="row-between">
                   <span>Bear Target</span>
-                  <span id="ai-pivot-target-bear" style={{ color: 'var(--bear)', fontWeight: '600' }}>
+                  <span id="ai-pivot-target-bear" className="bear">
                     {a.pivot_analysis.pivot_target_bear ? `${a.pivot_analysis.pivot_target_bear.label} @ ${a.pivot_analysis.pivot_target_bear.value}` : '—'}
                   </span>
                 </div>
               </div>
-              
+
               {a.pivot_analysis.at_inflection_point && a.pivot_analysis.inflection_level && (
                 <div id="ai-inflection-alert" className="inflection-alert">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
                   <span>At inflection: <strong id="ai-inflection-val">{a.pivot_analysis.inflection_level}</strong></span>
                 </div>
               )}
-              
+
               {a.pivot_analysis.pivot_signal && (
                 <p id="ai-pivot-signal" className="ai-signal-note">{a.pivot_analysis.pivot_signal}</p>
               )}
@@ -505,31 +424,31 @@ export default function AIAnalysisPanel({
           {a.trade_plan && (
             <div className="ai-card wide">
               <div className="ai-card-header">Trade Plan</div>
-              <div className="ai-summary-strip">
-                <div className="ai-kpi">
-                  <label>Plan Bias</label>
+              <div className="ai-summary">
+                <div>
+                  <div className="ai-metric__label">Plan Bias</div>
                   <div><StatusPill value={a.trade_plan.bias} /></div>
                 </div>
-                <div className="ai-kpi">
-                  <label>Entry Zone</label>
+                <div>
+                  <div className="ai-metric__label">Entry Zone</div>
                   <span>
                     {a.trade_plan.entry_zone
                       ? `${a.trade_plan.entry_zone.low ?? '—'} – ${a.trade_plan.entry_zone.high ?? '—'}`
                       : '—'}
                   </span>
                 </div>
-                <div className="ai-kpi">
-                  <label>Stop Loss</label>
-                  <span style={{ color: 'var(--bear)', fontWeight: 600 }}>{a.trade_plan.stop_loss ?? '—'}</span>
+                <div>
+                  <div className="ai-metric__label">Stop Loss</div>
+                  <span className="bear">{a.trade_plan.stop_loss ?? '—'}</span>
                 </div>
-                <div className="ai-kpi">
-                  <label>Plan signal strength</label>
+                <div>
+                  <div className="ai-metric__label">Plan signal strength</div>
                   <span>
                     Model {a.trade_plan.confidence ?? 0}%
                     {a.trade_plan.empirical_confidence != null && (
                       <>
                         {' · '}
-                        <span style={{ opacity: (a._meta?.calibration?.n ?? 0) < 20 ? 0.45 : 1 }}>
+                        <span className={(a._meta?.calibration?.n ?? 0) < 20 ? 'low-confidence' : ''}>
                           Empirical {a.trade_plan.empirical_confidence}%
                           {a._meta?.calibration?.n != null ? ` (n=${a._meta.calibration.n})` : ''}
                         </span>
@@ -540,9 +459,9 @@ export default function AIAnalysisPanel({
               </div>
 
               {a.trade_plan.targets?.length > 0 && (
-                <div className="ai-rows">
+                <div className="stack-2 mt-3">
                   {a.trade_plan.targets.map((t, i) => (
-                    <div className="ai-row" key={i}>
+                    <div className="row-between" key={i}>
                       <span>{t.label}</span>
                       <span>{t.price ?? '—'}{t.risk_reward != null ? ` · ${t.risk_reward}:1 R:R` : ''}</span>
                     </div>
@@ -554,16 +473,15 @@ export default function AIAnalysisPanel({
                 <p className="ai-signal-note">{a.trade_plan.risk_reward_summary}</p>
               )}
               {a.trade_plan.rationale && (
-                <p id="ai-trade-plan-rationale" className="ai-reasoning-text">{a.trade_plan.rationale}</p>
+                <p id="ai-trade-plan-rationale" className="ai-reasoning">{a.trade_plan.rationale}</p>
               )}
 
               {a.trade_plan.bias !== 'wait' && (
                 <>
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
+                  <div className="row wrap mt-3">
                     <button
                       type="button"
                       className="btn-ghost"
-                      style={{ fontSize: '11px' }}
                       onClick={() => {
                         const mid = a.trade_plan.entry_zone
                           ? (Number(a.trade_plan.entry_zone.low) + Number(a.trade_plan.entry_zone.high)) / 2
@@ -579,7 +497,6 @@ export default function AIAnalysisPanel({
                     <button
                       type="button"
                       className="btn-ghost"
-                      style={{ fontSize: '11px' }}
                       onClick={() => createPriceAlert('invalidation', a.trade_plan.stop_loss)}
                       disabled={a.trade_plan.stop_loss == null}
                     >
@@ -587,7 +504,7 @@ export default function AIAnalysisPanel({
                     </button>
                   </div>
                   {alertStatus && (
-                    <p className="ai-signal-note" style={{ marginTop: '6px' }}>{alertStatus}</p>
+                    <p className="ai-signal-note mt-2">{alertStatus}</p>
                   )}
                   <PositionSizeCalculator entry={a.trade_plan.entry_zone?.high ?? a.trade_plan.entry_zone?.low} stop={a.trade_plan.stop_loss} />
                 </>
@@ -597,16 +514,16 @@ export default function AIAnalysisPanel({
 
           <div className="ai-card">
             <div className="ai-card-header">Order Flow &amp; Positioning</div>
-            <div className="ai-rows">
-              <div className="ai-row">
+            <div className="stack-2">
+              <div className="row-between">
                 <span>Order Book Imbalance</span>
                 <span>{a.order_flow?.obi != null ? `${(a.order_flow.obi * 100).toFixed(1)}%` : 'unavailable'}</span>
               </div>
-              <div className="ai-row">
+              <div className="row-between">
                 <span>Dominant Side</span>
                 <div><StatusPill value={a.order_flow?.dominant_side} /></div>
               </div>
-              <div className="ai-row">
+              <div className="row-between">
                 <span>Futures Data</span>
                 <span>{a._meta?.data_completeness?.futures_available ? 'available' : 'unavailable (spot only)'}</span>
               </div>
@@ -619,26 +536,26 @@ export default function AIAnalysisPanel({
           <div className="ai-card wide">
             <div className="ai-card-header">AI Trade Logic</div>
             <div className="trade-scenarios">
-              <div className="scenario bull-scenario">
-                <div className="scenario-header" style={{ color: 'var(--bull)' }}>Bullish Scenario</div>
+              <div className="bull-scenario">
+                <div className="scenario-header">Bullish Scenario</div>
                 <p id="ai-bull-scenario">{a.trade_logic?.bullish_scenario ?? '—'}</p>
-                <small>Invalidation: <strong id="ai-invalidation-bull" style={{ color: 'var(--bear)' }}>{a.trade_logic?.invalidation_bull ?? '—'}</strong></small>
+                <small>Invalidation: <strong id="ai-invalidation-bull" className="bear">{a.trade_logic?.invalidation_bull ?? '—'}</strong></small>
               </div>
-              <div className="scenario bear-scenario">
-                <div className="scenario-header" style={{ color: 'var(--bear)' }}>Bearish Scenario</div>
+              <div className="bear-scenario">
+                <div className="scenario-header">Bearish Scenario</div>
                 <p id="ai-bear-scenario">{a.trade_logic?.bearish_scenario ?? '—'}</p>
-                <small>Invalidation: <strong id="ai-invalidation-bear" style={{ color: 'var(--bull)' }}>{a.trade_logic?.invalidation_bear ?? '—'}</strong></small>
+                <small>Invalidation: <strong id="ai-invalidation-bear" className="bull">{a.trade_logic?.invalidation_bear ?? '—'}</strong></small>
               </div>
             </div>
             {a.trade_logic?.risk_note && (
-              <div className="risk-note-box">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0, marginTop: '3px' }}><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+              <div className="auth-error row items-start mt-3">
+                <svg className="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
                 <p id="ai-risk-note">{a.trade_logic.risk_note}</p>
               </div>
             )}
           </div>
 
-          <div className="ai-card tall-card">
+          <div className="ai-card">
             <div className="ai-card-header">Pivot Confluences</div>
             <div id="ai-confluences" className="confluence-list">
               {a.pivot_analysis?.confluences?.length > 0 ? (
@@ -650,12 +567,12 @@ export default function AIAnalysisPanel({
                   </div>
                 ))
               ) : (
-                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>No significant confluences detected.</span>
+                <span className="text-sm-muted">No significant confluences detected.</span>
               )}
             </div>
           </div>
 
-          <div className="ai-card tall-card">
+          <div className="ai-card">
             <div className="ai-card-header">Anomalies &amp; Alerts</div>
             <div id="ai-anomalies" className="anomaly-list">
               {a.anomalies?.filter((x) => x.type !== 'none').length > 0 ? (
@@ -669,7 +586,7 @@ export default function AIAnalysisPanel({
                     </div>
                   ))
               ) : (
-                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>No anomalies detected.</span>
+                <span className="text-sm-muted">No anomalies detected.</span>
               )}
             </div>
           </div>

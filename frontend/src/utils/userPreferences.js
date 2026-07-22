@@ -2,6 +2,8 @@ import { supabase } from '../supabaseClient'
 import { sanitizePivotTimeframe } from '@forge/pivot'
 import {
   DEFAULT_PIVOT_CHART_PREFS,
+  LEGACY_PIVOT_COLOR,
+  STANDARD_PIVOT_COLOR,
   sanitizePivotChartPrefs,
 } from './pivotChartPrefs'
 
@@ -14,10 +16,10 @@ export const DEFAULT_CHART_PREFERENCES = {
   showSupport: false,
   showResistance: false,
   showStandardPivots: false,
-  showHistoricalPivots: true,
+  showHistoricalPivots: false,
   pivotType: 'traditional',
   pivotTimeframe: 'auto',
-  pivotsBack: 15,
+  pivotsBack: 5,
 
   // Extended overlays (Phase 3 chart parity). All default off so an existing user's chart looks
   // exactly as they left it. Server sanitizePreferences + DB allowlist must list every key here.
@@ -132,6 +134,16 @@ export function sanitizePreferences(payload) {
   sanitized.pivotLineWidth = pivotSanitized.pivotLineWidth
   sanitized.pivotLevelOptions = pivotSanitized.pivotLevelOptions
   sanitized.pivotsBack = pivotSanitized.pivotsBack
+
+  // Migrate saved TradingView-steel pivot color to Binance orange default
+  const levelOpts = sanitized.pivotLevelOptions
+  if (levelOpts && typeof levelOpts === 'object') {
+    Object.keys(levelOpts).forEach((level) => {
+      if (levelOpts[level]?.color === LEGACY_PIVOT_COLOR) {
+        levelOpts[level] = { ...levelOpts[level], color: STANDARD_PIVOT_COLOR }
+      }
+    })
+  }
 
   return sanitized
 }

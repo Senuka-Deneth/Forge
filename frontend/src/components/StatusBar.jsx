@@ -18,6 +18,7 @@ export default function StatusBar({
   priceChange,
   latestCandle,
   aiAnalysis,
+  signalAgreement = null,
   alertToast = '',
   armedAlerts = [],
 }) {
@@ -28,8 +29,21 @@ export default function StatusBar({
   const changeColorClass = positive ? 'bull' : 'bear'
 
   const rsiState = aiAnalysis?.indicators?.rsi?.state ? aiAnalysis.indicators.rsi.state.replace(/_/g, ' ') : '—'
-  const aiConfidence = aiAnalysis?.summary?.confidence != null ? `${aiAnalysis.summary.confidence}%` : '—'
   const aiBias = aiAnalysis?.summary?.bias ? aiAnalysis.summary.bias.replace(/_/g, ' ') : '—'
+
+  const hasAiConfidence = aiAnalysis?.summary?.confidence != null
+  const agreementScore = signalAgreement?.score
+  const signalValue = hasAiConfidence
+    ? `${aiAnalysis.summary.confidence}%`
+    : agreementScore != null
+      ? `${agreementScore}/100`
+      : '—'
+  const signalSub = hasAiConfidence
+    ? aiBias
+    : agreementScore != null
+      ? (signalAgreement?.label ?? '—')
+      : '—'
+  const signalSkeleton = !hasAiConfidence && agreementScore == null
 
   return (
     <>
@@ -68,8 +82,8 @@ export default function StatusBar({
         </div>
         <div className="kpi-card">
           <div className="kpi-label" title="Indicator confluence score — not a probability">Signal agreement</div>
-          <div className={`kpi-value format-tabular${aiAnalysis?.summary?.confidence == null ? ' skeleton' : ''}`} id="kpi-confidence">{aiConfidence}</div>
-          <div className="kpi-sub kpi-sub--caps" id="kpi-bias">{aiBias}</div>
+          <div className={`kpi-value format-tabular${signalSkeleton ? ' skeleton' : ''}`} id="kpi-confidence">{signalValue}</div>
+          <div className="kpi-sub kpi-sub--caps" id="kpi-bias">{signalSub}</div>
         </div>
         {armedAlerts.length > 0 && (
           <div className="kpi-card">

@@ -931,6 +931,7 @@ export default function App() {
               priceChange={priceChange}
               latestCandle={latestCandle}
               aiAnalysis={aiAnalysis}
+              signalAgreement={signalAgreement}
               alertToast={alertToast}
               armedAlerts={armedAlerts}
             />

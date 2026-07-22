@@ -1,16 +1,16 @@
 # Graph Report - Forge  (2026-07-22)
 
 ## Corpus Check
-- 134 files · ~148,459 words
+- 139 files · ~150,103 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1003 nodes · 1989 edges · 68 communities (55 shown, 13 thin omitted)
-- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 11 edges (avg confidence: 0.66)
+- 1040 nodes · 2093 edges · 72 communities (60 shown, 12 thin omitted)
+- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 15 edges (avg confidence: 0.7)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `a5be97f4`
+- Built from commit: `5e86f730`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -76,62 +76,64 @@
 - EducationIcon.jsx
 - normalizeModelOutput
 - outcome.ts
+- expectancy.ts
+- cors.ts
 - scripts
 - package.json
 - dompurify
 
 ## God Nodes (most connected - your core abstractions)
-1. `buildContextFromCandles()` - 52 edges
+1. `buildContextFromCandles()` - 54 edges
 2. `ChartPanel()` - 28 edges
-3. `enrichCandles()` - 20 edges
-4. `App()` - 18 edges
-5. `fetchWithTimeout()` - 16 edges
-6. `fetchBinanceKlines()` - 15 edges
+3. `enrichCandles()` - 21 edges
+4. `App()` - 19 edges
+5. `fetchBinanceKlines()` - 16 edges
+6. `fetchWithTimeout()` - 16 edges
 7. `buildPivotDataFromHtf()` - 14 edges
 8. `applyRegimeGating()` - 14 edges
 9. `normalizeModelOutput()` - 14 edges
 10. `JournalPanel()` - 13 edges
 
 ## Surprising Connections (you probably didn't know these)
+- `App()` --indirect_call--> `row()`  [INFERRED]
+  frontend/src/App.jsx → supabase/functions/tests/journal_snapshot_test.ts
+- `AIAnalysisPanel()` --indirect_call--> `level()`  [INFERRED]
+  frontend/src/components/AIAnalysisPanel.jsx → supabase/functions/tests/confluence_test.ts
 - `ChartPanel()` --indirect_call--> `level()`  [INFERRED]
   frontend/src/components/ChartPanel.jsx → supabase/functions/tests/confluence_test.ts
+- `ScannerPanel()` --indirect_call--> `row()`  [INFERRED]
+  frontend/src/components/ScannerPanel.jsx → supabase/functions/tests/journal_snapshot_test.ts
 - `summarizeOrderBook()` --indirect_call--> `pct()`  [INFERRED]
   supabase/functions/_shared/binance.ts → frontend/src/components/VerdictPanel.jsx
-- `buildConfluenceBands()` --indirect_call--> `cluster()`  [INFERRED]
-  frontend/src/utils/confluencePrimitive.js → supabase/functions/tests/prompt_compact_test.ts
-- `runSymbol()` --calls--> `buildContextFromCandles()`  [EXTRACTED]
-  scripts/backtest.ts → supabase/functions/_shared/aiContext.ts
-- `runSymbol()` --calls--> `fetchBinanceKlines()`  [EXTRACTED]
-  scripts/backtest.ts → supabase/functions/_shared/binance.ts
 
 ## Import Cycles
 - None detected.
 
-## Communities (68 total, 13 thin omitted)
+## Communities (72 total, 12 thin omitted)
 
 ### Community 0 - "App.jsx"
-Cohesion: 0.17
+Cohesion: 0.16
 Nodes (16): BlackoutWindow, checkEventBlackout(), classifySessionRelation(), CmeGap, computeFundingWindow(), computeSessionRanges(), dayIndexOf(), DEFAULT_EVENT_BLACKOUTS (+8 more)
 
 ### Community 1 - "pivotPoints.ts"
-Cohesion: 0.08
-Nodes (35): inflectionThreshold(), fetchBinanceHtfKlines(), parseBinanceKlines(), aggregateMonthlyToYearly(), ALLOWED_CHART_INTERVALS, AnalyzePivotsOptions, analyzePriceVsPivots(), buildPivotData() (+27 more)
+Cohesion: 0.07
+Nodes (42): inflectionThreshold(), fetchBinanceHtfKlines(), parseBinanceKlines(), aggregateMonthlyToYearly(), ALLOWED_CHART_INTERVALS, AnalyzePivotsOptions, analyzePriceVsPivots(), buildPivotData() (+34 more)
 
 ### Community 2 - "main.jsx"
-Cohesion: 0.20
-Nodes (18): App(), applyTheme(), buildTechnicalAnalysis(), COMMON_QUOTES, fetchBinanceCandles(), fetchMarketCandles(), fetchPivotData(), hasCurrentPivotPeriod() (+10 more)
+Cohesion: 0.06
+Nodes (47): App(), applyTheme(), buildTechnicalAnalysis(), ChartPanelErrorBoundary, COMMON_QUOTES, fetchBinanceCandles(), fetchMarketCandles(), fetchPivotData() (+39 more)
 
 ### Community 3 - "package.json"
 Cohesion: 0.13
 Nodes (15): eslint, @eslint/js, eslint-plugin-react, eslint-plugin-react-hooks, devDependencies, eslint, @eslint/js, eslint-plugin-react (+7 more)
 
 ### Community 4 - "app.py"
-Cohesion: 0.13
-Nodes (18): addToBucket(), allResults, args, Bucket, deriveBias(), doUpload, interval, outPath (+10 more)
+Cohesion: 0.18
+Nodes (21): asEnum(), asObject(), clamp(), deterministicFallback(), normalizeLabelValue(), normalizeModelOutput(), safeFloat(), safeInt() (+13 more)
 
 ### Community 5 - "ChartPanel.jsx"
-Cohesion: 0.22
-Nodes (16): buildCandleDataWithWhitespace(), buildSqueezeBars(), ChartPanel(), EXTENDED_OVERLAY_IDS, getCryptoIcon(), getCurrentPivotPeriodEnd(), getPivotTypeName(), POPULAR_PAIRS (+8 more)
+Cohesion: 0.17
+Nodes (22): buildCandleDataWithWhitespace(), buildSqueezeBars(), ChartPanel(), EXTENDED_OVERLAY_IDS, getCryptoIcon(), getCurrentPivotPeriodEnd(), getPivotTypeName(), POPULAR_PAIRS (+14 more)
 
 ### Community 7 - "Pivot Points Architecture"
 Cohesion: 0.20
@@ -142,8 +144,8 @@ Cohesion: 0.14
 Nodes (4): formatPivotPrice(), PivotSegmentsPaneRenderer, PivotSegmentsPaneView, PivotSegmentsPrimitive
 
 ### Community 10 - "index.ts"
-Cohesion: 0.06
-Nodes (56): ScoredRow, AlertRow, fetchLatestPrice(), TriggeredAlert, ALLOWED_INTERVALS, isCandleArray(), readMarketCache(), clamp() (+48 more)
+Cohesion: 0.20
+Nodes (10): ScoredRow, ALLOWED_INTERVALS, isCandleArray(), readMarketCache(), AuthResult, getBearerToken(), requireAuthenticatedUser(), tryServiceClient() (+2 more)
 
 ### Community 11 - "Forge — Prediction Accuracy Audit & Roadmap"
 Cohesion: 0.15
@@ -190,8 +192,8 @@ Cohesion: 0.23
 Nodes (15): buildLiquidityMap(), Candle, detectFairValueGaps(), detectLiquiditySweeps(), detectOrderBlocks(), FairValueGap, findLiquidityPools(), LiquidityMap (+7 more)
 
 ### Community 30 - "aiContext.ts"
-Cohesion: 0.10
-Nodes (28): gatherMarketContext(), BookWall, EMPTY_ORDER_BOOK, fetchFuturesContext(), FetchKlinesOptions, fetchOrderBookImbalance(), fetchTicker24hr(), FuturesContext (+20 more)
+Cohesion: 0.06
+Nodes (49): addToBucket(), allResults, args, Bucket, deriveBias(), doUpload, interval, outPath (+41 more)
 
 ### Community 31 - "index.ts"
 Cohesion: 0.12
@@ -199,31 +201,31 @@ Nodes (34): calculateATR(), calculateRSI(), calculateChandelierExit(), calculate
 
 ### Community 32 - "volumeProfile.ts"
 Cohesion: 0.12
-Nodes (26): buildMtfDepth(), fetchFundingSignal(), fetchJson(), fetchOiHistory(), fetchTakerRatioSignal(), FundingSignal, gatherMarketFeatures(), MarketFeatures (+18 more)
+Nodes (27): buildMtfDepth(), fetchFundingSignal(), fetchJson(), fetchOiHistory(), fetchTakerRatioSignal(), FundingSignal, gatherMarketFeatures(), MarketFeatures (+19 more)
 
 ### Community 33 - "main.jsx"
-Cohesion: 0.25
-Nodes (10): ProtectedRoute(), PublicOnlyRoute(), AUTH_ROUTES, AuthContext, AuthProvider(), getPath(), isProtectedPath(), replacePath() (+2 more)
+Cohesion: 0.17
+Nodes (17): AuthShell(), GoogleIcon(), ProtectedRoute(), PublicOnlyRoute(), AUTH_ROUTES, AuthContext, AuthProvider(), getPath() (+9 more)
 
 ### Community 34 - "features.ts"
-Cohesion: 0.11
-Nodes (30): buildContextFromCandles(), BuildContextOptions, buildLevelInputsFromContext(), buildUserMessage(), clamp(), compactConfluenceCluster(), compactForPrompt(), ConfluenceInputParts (+22 more)
+Cohesion: 0.13
+Nodes (23): buildContextFromCandles(), BuildContextOptions, buildLevelInputsFromContext(), clamp(), ConfluenceInputParts, DAILY_PLUS_INTERVALS, divergenceToLegacy(), EMPTY_FUTURES (+15 more)
 
 ### Community 39 - "vwap.ts"
 Cohesion: 0.22
 Nodes (11): anchoredVwap, AnchoredVwapPoint, buildAnchoredVwaps(), classifyVwapRelation(), EMPTY_POINT, round6(), selectVwapAnchors(), typicalPrice() (+3 more)
 
 ### Community 40 - "backtest.ts"
-Cohesion: 0.25
-Nodes (8): AIAnalysisPanel(), colorMap, loadPositionCalcDefaults(), PositionSizeCalculator(), formatR(), pct(), VERDICT_STYLES, VerdictPanel()
+Cohesion: 0.21
+Nodes (14): ACCENT_STATES, AIAnalysisPanel(), alertDirection(), BEAR_STATES, BULL_STATES, loadPositionCalcDefaults(), PositionSizeCalculator(), StatusPill() (+6 more)
 
 ### Community 41 - "tradePlan.ts"
 Cohesion: 0.13
 Nodes (11): body, count, __dirname, educationData, esc(), ICONS, iconsBody, out (+3 more)
 
 ### Community 42 - "pivotChartPrefs.js"
-Cohesion: 0.46
-Nodes (7): clampPivotsBack(), createDefaultPivotLevelOptions(), getEnabledPivotLevels(), PIVOT_LEVEL_LABELS, sanitizePivotChartPrefs(), sanitizePivotLevelOptions(), PIVOT_LEVEL_KEYS
+Cohesion: 0.23
+Nodes (11): clampPivotsBack(), createDefaultPivotLevelOptions(), DEFAULT_PIVOT_CHART_PREFS, getEnabledPivotLevels(), PIVOT_LEVEL_LABELS, sanitizePivotChartPrefs(), sanitizePivotLevelOptions(), DEFAULT_CHART_PREFERENCES (+3 more)
 
 ### Community 43 - "volumeProfilePrimitive.js"
 Cohesion: 0.22
@@ -238,68 +240,80 @@ Cohesion: 0.47
 Nodes (3): computeChartOverlays(), toLine(), VWAP_ANCHOR_LABELS
 
 ### Community 48 - "audit_fixes_test.ts"
-Cohesion: 0.26
-Nodes (12): calculateEMA(), calculateMACD(), calculateRSI(), computeMacdState(), computeRsiState(), computeSeriesIndicators(), extractClosedIndicatorState(), patchLastCandleIndicators() (+4 more)
+Cohesion: 0.22
+Nodes (16): alignClosesByTime(), applyCrossMarketGating(), buildCrossMarketContext(), computeDominance(), CrossMarketContext, CrossMarketGateResult, CrossMarketPrefetch, DominanceDirection (+8 more)
 
 ### Community 49 - "chartTheme.js"
 Cohesion: 0.50
 Nodes (4): DARK, getChartTheme(), getCurrentChartTheme(), LIGHT
 
 ### Community 50 - "SignUp.jsx"
-Cohesion: 0.37
-Nodes (7): AuthShell(), GoogleIcon(), SignIn(), SignUp(), getFriendlyAuthError(), isValidEmail(), ensureUserPreferences()
+Cohesion: 0.25
+Nodes (13): ALLOWED_INTERVALS, analyzePriceVsPivots(), bucketStart(), calculateClassicPivots(), calculateFibonacciPivots(), calculateTraditionalPivots(), Candle, getPivotPeriod() (+5 more)
 
 ### Community 51 - "AnalysisPanel.jsx"
-Cohesion: 0.36
-Nodes (6): AnalysisPanel(), formatLevel(), formatSwingTime(), formatValue(), deriveSignalAgreement(), signalAgreementLabel()
+Cohesion: 0.16
+Nodes (15): barHitLong(), barHitShort(), defaultFractions(), entryFilled(), feeCostR(), LadderStepResult, ScoredOutcome, scorePlanAgainstCandles() (+7 more)
 
 ### Community 52 - "confluence.ts"
-Cohesion: 0.20
-Nodes (13): MarketContext, buildConfluenceMap(), ConfluenceCluster, LevelInput, LevelSource, nearestConfluenceClusters(), round6(), SOURCE_WEIGHTS (+5 more)
+Cohesion: 0.36
+Nodes (8): buildConfluenceMap(), LevelInput, LevelSource, nearestConfluenceClusters(), round6(), SOURCE_WEIGHTS, topConfluenceClusters(), level()
 
 ### Community 53 - "chartOverlays.js"
-Cohesion: 0.17
-Nodes (9): AccuracyPanel(), colorMap, formatNumber(), INTERVAL_OPTIONS, ScannerPanel(), EdgeFunctionUnavailableError, invokeFunction(), isEdgeFunctionUnavailableError() (+1 more)
+Cohesion: 0.23
+Nodes (11): compactConfluenceCluster(), compactForPrompt(), MarketContext, promptPriceDecimals(), roundPromptPct(), roundPromptPrice(), roundPromptScore(), ConfluenceCluster (+3 more)
 
 ### Community 54 - "userPreferences.js"
-Cohesion: 0.38
-Nodes (4): DEFAULT_PIVOT_CHART_PREFS, DEFAULT_CHART_PREFERENCES, INDICATOR_PRESETS, OVERLAY_KEYS
+Cohesion: 0.19
+Nodes (11): clamp(), deriveSignalBias(), fetchScanCalibration(), fetchSetupBaseline(), ScanResultRow, scanSymbol(), toGatingContext(), WatchlistRow (+3 more)
 
 ### Community 55 - "chartOverlays.js"
-Cohesion: 0.33
-Nodes (6): buildLiquidityMarkers(), clearPriceOverlays(), PRICE_OVERLAY_SPECS, seriesKey(), syncAnchoredVwaps(), syncPriceOverlays()
+Cohesion: 0.28
+Nodes (11): attachUserGuardrails(), DEFAULT_RISK_SETTINGS, aggregateJournalSnapshot(), fetchJournalSnapshot(), fetchRiskSettings(), JournalDbClient, JournalTradeRow, MAJOR_SYMBOLS (+3 more)
+
+### Community 56 - "ChartPanelErrorBoundary"
+Cohesion: 0.43
+Nodes (5): Candle, deriveRegime(), MarketRegime, percentileRank(), RegimeResult
 
 ### Community 58 - "index.ts"
-Cohesion: 0.05
-Nodes (42): ALLOWED_INTERVALS, ANALYSIS_JSON_SCHEMA, ANALYSIS_REGIME_SET, AnalysisMarketRegime, AnalysisMeta, ANOMALY_TYPE_SET, AnomalyType, attachDecisionLayer() (+34 more)
+Cohesion: 0.04
+Nodes (44): ALLOWED_INTERVALS, ANALYSIS_JSON_SCHEMA, ANALYSIS_REGIME_SET, AnalysisMarketRegime, AnalysisMeta, ANOMALY_TYPE_SET, AnomalyType, attachDecisionLayer() (+36 more)
 
 ### Community 59 - "crossMarket.ts"
-Cohesion: 0.05
-Nodes (62): AtrResult, OHLC, trueRangeSeries(), wilderSmooth(), alignClosesByTime(), buildCrossMarketContext(), computeDominance(), CrossMarketContext (+54 more)
+Cohesion: 0.12
+Nodes (22): AtrResult, OHLC, trueRangeSeries(), wilderSmooth(), calculateADX(), calculateATR(), calculateBollingerBands(), calculateCVD() (+14 more)
 
 ### Community 60 - "calibration.ts"
-Cohesion: 0.19
-Nodes (14): fetchEmpiricalCalibration(), CalibrationBucket, CalibrationRow, clampModelConfidence(), computeBrierScore(), computeReliabilityCurve(), computeSetupStats(), confidenceDecile() (+6 more)
+Cohesion: 0.23
+Nodes (13): CalibrationBucket, CalibrationRow, clampModelConfidence(), computeBrierScore(), computeReliabilityCurve(), computeSetupStats(), confidenceDecile(), decidedCounts() (+5 more)
 
 ### Community 61 - "liquidation.ts"
 Cohesion: 0.40
 Nodes (4): public.risk_overrides, public.risk_settings, public.setup_baselines, public.trade_journal
 
 ### Community 62 - "tradePlan.ts"
-Cohesion: 0.23
-Nodes (15): applyCrossMarketGating(), clamp(), computeSignalAgreement(), appendPositionSizing(), applyRegimeGating(), buildDeterministicTradePlan(), clamp(), classifySetupType() (+7 more)
+Cohesion: 0.12
+Nodes (23): classifyMarketStructure(), AtrResult, buildMarketStructure(), clamp(), clusterIntoZones(), computeSignalAgreement(), computeSwingProminence(), detectMacdDivergence() (+15 more)
 
 ### Community 63 - "EducationIcon.jsx"
 Cohesion: 0.27
 Nodes (7): EducationIcon(), getIcon(), ICONS, iconStyle, educationData, ICONS, resolveIconId()
 
 ### Community 64 - "normalizeModelOutput"
-Cohesion: 0.31
-Nodes (9): asEnum(), asObject(), clamp(), deterministicFallback(), normalizeLabelValue(), normalizeModelOutput(), safeFloat(), safeInt() (+1 more)
+Cohesion: 0.21
+Nodes (12): AlertRow, fetchLatestPrice(), TriggeredAlert, asTradePlan(), LogRow, scoreRow(), constantTimeEqual(), digestSecret() (+4 more)
 
 ### Community 65 - "outcome.ts"
-Cohesion: 0.08
-Nodes (37): breakevenHitRate(), computeExpectancy(), entryMid(), ExpectancyResult, feeCostR(), finite(), wilsonInterval(), applyGuardrailVerdict() (+29 more)
+Cohesion: 0.15
+Nodes (19): applyJournalGuardrails(), JOURNAL_GUARDRAIL_IDS, ExpectancyResult, applyGuardrailVerdict(), BookQuality, evaluateGuardrails(), GuardrailId, GuardrailResult (+11 more)
+
+### Community 66 - "expectancy.ts"
+Cohesion: 0.50
+Nodes (6): breakevenHitRate(), computeExpectancy(), entryMid(), feeCostR(), finite(), wilsonInterval()
+
+### Community 67 - "cors.ts"
+Cohesion: 0.48
+Nodes (6): buildCorsHeaders(), DEFAULT_ALLOWED_ORIGINS, getAllowedOrigins(), handleOptions(), jsonResponse(), resolveAllowedOrigin()
 
 ### Community 68 - "scripts"
 Cohesion: 0.33
@@ -314,24 +328,24 @@ Cohesion: 0.67
 Nodes (3): dompurify, dompurify, EducationPanel()
 
 ## Knowledge Gaps
-- **262 isolated node(s):** `name`, `private`, `version`, `type`, `dev` (+257 more)
+- **261 isolated node(s):** `name`, `private`, `version`, `type`, `dev` (+256 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **13 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **12 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `ChartPanel()` connect `ChartPanel.jsx` to `main.jsx`, `pivotChartPrefs.js`, `volumeProfilePrimitive.js`, `zoneBoxPrimitive.js`, `chartIndicators.js`, `chartTheme.js`, `confluence.ts`, `chartOverlays.js`?**
-  _High betweenness centrality (0.231) - this node is a cross-community bridge._
-- **Why does `level()` connect `confluence.ts` to `ChartPanel.jsx`?**
-  _High betweenness centrality (0.197) - this node is a cross-community bridge._
+- **Why does `level()` connect `confluence.ts` to `backtest.ts`, `ChartPanel.jsx`?**
+  _High betweenness centrality (0.144) - this node is a cross-community bridge._
 - **Why does `buildConfluenceMap()` connect `confluence.ts` to `features.ts`?**
-  _High betweenness centrality (0.195) - this node is a cross-community bridge._
+  _High betweenness centrality (0.140) - this node is a cross-community bridge._
+- **Why does `PIVOT_LEVEL_KEYS` connect `pivotChartPrefs.js` to `pivotPoints.ts`?**
+  _High betweenness centrality (0.103) - this node is a cross-community bridge._
 - **What connects `name`, `private`, `version` to the rest of the system?**
-  _262 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _261 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `pivotPoints.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.08048780487804878 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.06693877551020408 - nodes in this community are weakly interconnected._
+- **Should `main.jsx` be split into smaller, more focused modules?**
+  _Cohesion score 0.05970149253731343 - nodes in this community are weakly interconnected._
 - **Should `package.json` be split into smaller, more focused modules?**
   _Cohesion score 0.13333333333333333 - nodes in this community are weakly interconnected._
-- **Should `app.py` be split into smaller, more focused modules?**
-  _Cohesion score 0.12857142857142856 - nodes in this community are weakly interconnected._

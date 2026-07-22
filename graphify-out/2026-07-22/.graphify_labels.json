@@ -64,7 +64,11 @@
   "63": "EducationIcon.jsx",
   "64": "normalizeModelOutput",
   "65": "outcome.ts",
+  "66": "expectancy.ts",
+  "67": "cors.ts",
   "68": "scripts",
   "70": "package.json",
-  "71": "dompurify"
+  "71": "dompurify",
+  "73": "20260722100000_user_preferences_extended_keys.sql",
+  "74": "20260722110000_check_alerts_cron.sql"
 }

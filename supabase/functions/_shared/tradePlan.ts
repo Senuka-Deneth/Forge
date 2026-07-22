@@ -1,3 +1,5 @@
+import { applyCrossMarketGating, type CrossMarketContext } from "./crossMarket.ts";
+
 export type SetupType =
   | "trend_continuation_long"
   | "trend_continuation_short"
@@ -44,6 +46,10 @@ export type GatingContext = {
   };
   nearestSupport: { label: string; value: number } | null;
   nearestResistance: { label: string; value: number } | null;
+  /** BTC-beta cross-market context (crossMarket.ts). Optional and defaults to skipping the check —
+   * same contract as the existing HTF-contradiction gate below: omit it, or hand it an
+   * `available: false` context, and this simply does nothing rather than guessing. */
+  crossMarket?: CrossMarketContext;
 };
 
 function finite(value: unknown): number | null {
@@ -88,12 +94,12 @@ export function applyRegimeGating(
   bias: "long" | "short" | "neutral",
   confidence: number,
   ctx: GatingContext,
-): { bias: "long" | "short" | "neutral"; confidence: number; setupType: SetupType } {
+): { bias: "long" | "short" | "neutral"; confidence: number; setupType: SetupType; crossMarketNote: string | null } {
   let gatedBias = bias;
   let gatedConfidence = confidence;
 
   if (ctx.regime === "volatile_chop") {
-    return { bias: "neutral", confidence: gatedConfidence, setupType: "wait" };
+    return { bias: "neutral", confidence: gatedConfidence, setupType: "wait", crossMarketNote: null };
   }
 
   if (ctx.regime === "ranging" && gatedBias !== "neutral") {
@@ -113,8 +119,20 @@ export function applyRegimeGating(
     }
   }
 
+  // Cross-market (BTC beta) gating runs after the HTF check, on whatever bias survived it — a
+  // setup the HTF gate already killed has nothing left for this to contradict.
+  let crossMarketNote: string | null = null;
+  if ((gatedBias === "long" || gatedBias === "short") && ctx.crossMarket) {
+    const crossMarketResult = applyCrossMarketGating(gatedBias, gatedConfidence, ctx.crossMarket);
+    if (crossMarketResult.applied) {
+      gatedBias = crossMarketResult.bias;
+      gatedConfidence = crossMarketResult.confidence;
+      crossMarketNote = crossMarketResult.reason;
+    }
+  }
+
   const setupType = classifySetupType(gatedBias, ctx.regime);
-  return { bias: gatedBias, confidence: gatedConfidence, setupType };
+  return { bias: gatedBias, confidence: gatedConfidence, setupType, crossMarketNote };
 }
 
 export function buildDeterministicTradePlan(

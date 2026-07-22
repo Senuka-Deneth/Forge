@@ -1,5 +1,6 @@
 import type { Candle as IndicatorCandle } from "./indicators.ts";
 import {
+  EMPTY_ORDER_BOOK,
   type FuturesContext,
   type OrderBookImbalance,
   type Ticker24hr,
@@ -30,6 +31,62 @@ import { gatherMarketFeatures, type MarketFeatures } from "./features.ts";
 import { enrichCandles } from "./indicators.ts";
 import { deriveRegime, type MarketRegime } from "./regime.ts";
 import { fetchLiquidationContext, type LiquidationContext } from "./liquidation.ts";
+import { intervalDurationMs } from "./candles.ts";
+import {
+  calculateChandelierExit,
+  calculateDonchian,
+  calculateIchimoku,
+  calculateKeltnerChannels,
+  calculatePersistence,
+  calculateRealizedVolatility,
+  calculateSqueeze,
+  calculateStochRsi,
+  calculateSupertrend,
+  type ChandelierExit,
+  type DonchianChannels,
+  type IchimokuResult,
+  type PersistenceResult,
+  type RealizedVolatility,
+  type SqueezeResult,
+  type StochRsiResult,
+  type SupertrendResult,
+} from "./volatility.ts";
+import {
+  buildAnchoredVwaps,
+  classifyVwapRelation,
+  type AnchoredVwap,
+  type VwapRelation,
+} from "./vwap.ts";
+import { buildLiquidityMap, type LiquidityMap } from "./liquidityMap.ts";
+import {
+  buildVolumeProfileResult,
+  classifyValueAreaRelation,
+  type ValueAreaRelation,
+  type VolumeProfileResult,
+} from "./volumeProfile.ts";
+import {
+  fetchCrossMarketContext,
+  UNAVAILABLE_CROSS_MARKET_CONTEXT,
+  type CrossMarketContext,
+} from "./crossMarket.ts";
+import {
+  checkEventBlackout,
+  computeFundingWindow,
+  computeSessionRanges,
+  findLatestCmeGap,
+  sessionRangesForPrompt,
+  type BlackoutCheck,
+  type CmeGap,
+  type FundingWindow,
+  type SessionRange,
+} from "./sessions.ts";
+import {
+  buildConfluenceMap,
+  nearestConfluenceClusters,
+  topConfluenceClusters,
+  type ConfluenceCluster,
+  type LevelInput,
+} from "./confluence.ts";
 
 export const PRIMARY_CANDLE_LIMIT = 500;
 export const MTF_CANDLE_LIMIT = 150;
@@ -90,6 +147,44 @@ export type MarketContext = {
     signal_agreement: number;
   };
   features: MarketFeatures;
+
+  // --- Phase 1/2 additions: deeper indicators, cross-market context, confluence ---
+
+  volatility: {
+    keltner: { upper: number | null; middle: number | null; lower: number | null };
+    squeeze: SqueezeResult["latest"];
+    stochRsi: StochRsiResult["latest"];
+    supertrend: SupertrendResult["latest"];
+    donchian: DonchianChannels["latest"];
+    ichimoku: IchimokuResult["latest"];
+    chandelier: ChandelierExit["latest"];
+    realizedVol: RealizedVolatility;
+    persistence: PersistenceResult;
+  };
+  /** Auto-anchored VWAPs (swing high / swing low / volume spike), latest snapshot only — the full
+   * per-bar series is chart-only data and would bloat the prompt for no analytical benefit. */
+  anchoredVwaps: Array<{
+    kind: AnchoredVwap["kind"];
+    anchorPrice: number | null;
+    anchorTime: number | null;
+    latest: AnchoredVwap["latest"];
+    zScore: number | null;
+    relation: VwapRelation | "unknown";
+  }>;
+  liquidity: LiquidityMap;
+  volumeProfileDetail: VolumeProfileResult & { valueAreaRelation: ValueAreaRelation };
+  crossMarket: CrossMarketContext;
+  sessions: {
+    ranges: SessionRange[];
+    cmeGap: CmeGap | null;
+    fundingWindow: FundingWindow;
+    eventBlackout: BlackoutCheck;
+  };
+  confluence: {
+    clusters: ConfluenceCluster[];
+    nearestSupport: ConfluenceCluster | null;
+    nearestResistance: ConfluenceCluster | null;
+  };
 };
 
 export type BuildContextOptions = {
@@ -99,6 +194,16 @@ export type BuildContextOptions = {
   ticker24h?: Ticker24hr | null;
   mtfDepthCandles?: Array<{ interval: string; candles: IndicatorCandle[] }>;
   rawPrimary?: Array<{ time: number; open: number; high: number; low: number; close: number; volume: number }>;
+  /**
+   * Cross-market context (BTC beta/regime). Unlike orderFlow/futures/liquidation this is not
+   * fetched inside buildContextFromCandles itself — it requires two extra klines calls (BTC + ETH),
+   * and buildContextFromCandles is also the function scripts/backtest.ts calls once per simulated
+   * bar. Fetching cross-market data unconditionally there would add two API calls per backtest
+   * step for no reason the backtest currently uses. gatherMarketContext (the live path) fetches it
+   * and passes it in here; callers that don't supply it get `available: false`, which
+   * applyCrossMarketGating already treats as "skip this check" — never a silent wrong answer.
+   */
+  crossMarket?: CrossMarketContext | null;
 };
 
 function clamp(value: number, low: number, high: number): number {
@@ -183,7 +288,7 @@ const EMPTY_TICKER: Ticker24hr = {
   lowPrice: null,
 };
 
-const EMPTY_ORDER_FLOW: OrderBookImbalance = { obi: null, bidVolume: 0, askVolume: 0, midPrice: null };
+const EMPTY_ORDER_FLOW: OrderBookImbalance = EMPTY_ORDER_BOOK;
 const EMPTY_FUTURES: FuturesContext = {
   available: false,
   fundingRate: null,
@@ -208,6 +313,102 @@ const EMPTY_LIQUIDATION: LiquidationContext = {
   estClusters: [],
   source: "estimate",
 };
+
+/**
+ * Inputs to the unified confluence map, gathered from every level-producing module the context
+ * builder already runs. Kept as an explicit parts object (rather than operating on the finished
+ * MarketContext) so it stays testable without needing a full context fixture.
+ */
+export type ConfluenceInputParts = {
+  latest: IndicatorCandle;
+  pivots: PivotDataResponse;
+  /** Full clustered zone lists, not the nearest-3 slice stored on ctx.structure. */
+  supportZones: SrZone[];
+  resistanceZones: SrZone[];
+  donchian: DonchianChannels["latest"];
+  ichimoku: IchimokuResult["latest"];
+  anchoredVwaps: MarketContext["anchoredVwaps"];
+  volumeProfile: VolumeProfileResult;
+  liquidity: LiquidityMap;
+  sessionRanges: SessionRange[];
+  cmeGap: CmeGap | null;
+};
+
+function pushPivotLevels(out: LevelInput[], pivots: Record<string, unknown>, source: LevelInput["source"]): void {
+  for (const [label, value] of Object.entries(pivots)) {
+    if (typeof value === "number" && Number.isFinite(value)) out.push({ price: value, source, label });
+  }
+}
+
+/** Build the raw level list for buildConfluenceMap from every source the context builder computes. */
+export function buildLevelInputsFromContext(parts: ConfluenceInputParts): LevelInput[] {
+  const out: LevelInput[] = [];
+
+  pushPivotLevels(out, parts.pivots.classic.pivots as Record<string, unknown>, "pivot_classic");
+  pushPivotLevels(out, parts.pivots.fibonacci.pivots as Record<string, unknown>, "pivot_fibonacci");
+  pushPivotLevels(out, parts.pivots.traditional.pivots as Record<string, unknown>, "pivot_traditional");
+
+  for (const zone of parts.supportZones) {
+    out.push({ price: zone.mid, source: "swing_support", label: `touches=${zone.touches}` });
+  }
+  for (const zone of parts.resistanceZones) {
+    out.push({ price: zone.mid, source: "swing_resistance", label: `touches=${zone.touches}` });
+  }
+
+  if (parts.latest.ema20 != null) out.push({ price: parts.latest.ema20, source: "ema20", label: "EMA20" });
+  if (parts.latest.ema50 != null) out.push({ price: parts.latest.ema50, source: "ema50", label: "EMA50" });
+  if (parts.latest.vwap != null) out.push({ price: parts.latest.vwap, source: "vwap", label: "session VWAP" });
+
+  if (parts.donchian.upper != null) out.push({ price: parts.donchian.upper, source: "donchian_upper", label: "Donchian upper" });
+  if (parts.donchian.lower != null) out.push({ price: parts.donchian.lower, source: "donchian_lower", label: "Donchian lower" });
+
+  if (parts.ichimoku.cloudTop != null) out.push({ price: parts.ichimoku.cloudTop, source: "ichimoku_cloud", label: "cloud top" });
+  if (parts.ichimoku.cloudBottom != null) out.push({ price: parts.ichimoku.cloudBottom, source: "ichimoku_cloud", label: "cloud bottom" });
+
+  for (const vwap of parts.anchoredVwaps) {
+    const bandLabel = `aVWAP (${vwap.kind})`;
+    if (vwap.latest.vwap != null) out.push({ price: vwap.latest.vwap, source: "vwap", label: bandLabel });
+    if (vwap.latest.upper1 != null) out.push({ price: vwap.latest.upper1, source: "vwap_band", label: `${bandLabel} +1σ` });
+    if (vwap.latest.lower1 != null) out.push({ price: vwap.latest.lower1, source: "vwap_band", label: `${bandLabel} -1σ` });
+    if (vwap.latest.upper2 != null) out.push({ price: vwap.latest.upper2, source: "vwap_band", label: `${bandLabel} +2σ` });
+    if (vwap.latest.lower2 != null) out.push({ price: vwap.latest.lower2, source: "vwap_band", label: `${bandLabel} -2σ` });
+  }
+
+  const vp = parts.volumeProfile.composite;
+  if (vp.poc != null) out.push({ price: vp.poc, source: "volume_profile_poc", label: "POC" });
+  if (vp.vah != null) out.push({ price: vp.vah, source: "volume_profile_va", label: "VAH" });
+  if (vp.val != null) out.push({ price: vp.val, source: "volume_profile_va", label: "VAL" });
+  for (const node of vp.hvn) out.push({ price: node.price, source: "volume_profile_hvn", label: "HVN" });
+  for (const node of vp.lvn) out.push({ price: node.price, source: "volume_profile_lvn", label: "LVN" });
+  for (const naked of parts.volumeProfile.nakedPocs) {
+    out.push({ price: naked.price, source: "volume_profile_naked_poc", label: `naked POC (${naked.barsAgo}b ago)` });
+  }
+
+  for (const gap of parts.liquidity.fairValueGaps) {
+    out.push({ price: (gap.top + gap.bottom) / 2, source: "fvg", label: `${gap.direction} FVG ${Math.round(gap.fillProgress * 100)}% filled` });
+  }
+  for (const block of parts.liquidity.orderBlocks) {
+    out.push({ price: (block.top + block.bottom) / 2, source: "order_block", label: `${block.direction} OB` });
+  }
+  // A swept pool's resting liquidity has already been consumed — it is history, not an active
+  // level, so (matching the chart's own treatment of stop pools) only unswept ones count here.
+  for (const pool of parts.liquidity.pools) {
+    if (pool.swept) continue;
+    out.push({ price: pool.price, source: "liquidity_pool", label: `${pool.side} x${pool.touches}` });
+  }
+
+  for (const range of parts.sessionRanges) {
+    out.push({ price: range.high, source: "session_high", label: `${range.session} high` });
+    out.push({ price: range.low, source: "session_low", label: `${range.session} low` });
+  }
+
+  if (parts.cmeGap && !parts.cmeGap.filled) {
+    out.push({ price: parts.cmeGap.fridayClose, source: "cme_gap", label: "CME gap (Friday close)" });
+    out.push({ price: parts.cmeGap.mondayOpen, source: "cme_gap", label: "CME gap (Monday open)" });
+  }
+
+  return out;
+}
 
 export async function buildContextFromCandles(
   symbol: string,
@@ -330,6 +531,65 @@ export async function buildContextFromCandles(
     .map((r) => ({ interval: r.interval, candles: r.candles }));
   const enrichedFeatures = await gatherMarketFeatures(symbol, primaryCandles, mtfDepthCandles);
 
+  // --- Phase 1: deeper indicators. All pure, computed directly from primaryCandles, so these are
+  // safe to run unconditionally without inflating the backtest's network traffic (see the
+  // BuildContextOptions.crossMarket comment for the one piece of Phase 2 that IS network-bound). ---
+  const keltnerRaw = calculateKeltnerChannels(primaryCandles);
+  const squeeze = calculateSqueeze(primaryCandles);
+  const stochRsi = calculateStochRsi(primaryCandles.map((c) => c.close));
+  const supertrend = calculateSupertrend(primaryCandles);
+  const donchian = calculateDonchian(primaryCandles);
+  const ichimoku = calculateIchimoku(primaryCandles);
+  const chandelier = calculateChandelierExit(primaryCandles);
+  const realizedVol = calculateRealizedVolatility(primaryCandles);
+  const persistence = calculatePersistence(primaryCandles.map((c) => c.close));
+
+  const anchoredVwapsRaw = buildAnchoredVwaps(primaryCandles, mktStruct.swingHighs, mktStruct.swingLows);
+  const anchoredVwaps: MarketContext["anchoredVwaps"] = anchoredVwapsRaw.map((v) => ({
+    kind: v.kind,
+    anchorPrice: v.anchorPrice,
+    anchorTime: v.anchorTime,
+    latest: v.latest,
+    zScore: v.latestZScore,
+    relation: classifyVwapRelation(price, v.latest),
+  }));
+
+  const liquidity = buildLiquidityMap(primaryCandles, mktStruct.swingHighs, mktStruct.swingLows);
+  const volumeProfileResult = buildVolumeProfileResult(primaryCandles);
+  const volumeProfileDetail = {
+    ...volumeProfileResult,
+    valueAreaRelation: classifyValueAreaRelation(price, volumeProfileResult.composite),
+  };
+
+  // Session ranges and the CME gap are pure derivations of the candle series; funding-window
+  // proximity reads from the already-optional `futures` block and degrades to nulls with it.
+  const intervalMs = intervalDurationMs(interval);
+  const sessionRanges = computeSessionRanges(rawPrimary);
+  const cmeGap = intervalMs != null ? findLatestCmeGap(rawPrimary, intervalMs / 1000) : null;
+  const fundingWindow = computeFundingWindow(futures.nextFundingTime);
+  const eventBlackout = checkEventBlackout();
+
+  const confluenceLevels = buildLevelInputsFromContext({
+    latest,
+    pivots: pivotPayload,
+    supportZones: mktStruct.srZones.supports,
+    resistanceZones: mktStruct.srZones.resistances,
+    donchian: donchian.latest,
+    ichimoku: ichimoku.latest,
+    anchoredVwaps,
+    volumeProfile: volumeProfileResult,
+    liquidity,
+    sessionRanges,
+    cmeGap,
+  });
+  const confluenceClusters = topConfluenceClusters(buildConfluenceMap(confluenceLevels, latest.atr14, price));
+  const { support: confluenceSupport, resistance: confluenceResistance } = nearestConfluenceClusters(confluenceClusters, price);
+
+  // --- Phase 2: cross-market (BTC beta) context. Network-bound, so it is only ever what the
+  // caller injected via opts.crossMarket (see BuildContextOptions) — gatherMarketContext fetches
+  // it live; buildContextFromCandles never fetches it itself. ---
+  const crossMarket = opts.crossMarket ?? UNAVAILABLE_CROSS_MARKET_CONTEXT;
+
   return {
     symbol,
     interval,
@@ -378,6 +638,38 @@ export async function buildContextFromCandles(
       signal_agreement: signalAgreement,
     },
     features: enrichedFeatures,
+    volatility: {
+      keltner: keltnerRaw.upper.length
+        ? {
+          upper: keltnerRaw.upper[keltnerRaw.upper.length - 1],
+          middle: keltnerRaw.middle[keltnerRaw.middle.length - 1],
+          lower: keltnerRaw.lower[keltnerRaw.lower.length - 1],
+        }
+        : { upper: null, middle: null, lower: null },
+      squeeze: squeeze.latest,
+      stochRsi: stochRsi.latest,
+      supertrend: supertrend.latest,
+      donchian: donchian.latest,
+      ichimoku: ichimoku.latest,
+      chandelier: chandelier.latest,
+      realizedVol,
+      persistence,
+    },
+    anchoredVwaps,
+    liquidity,
+    volumeProfileDetail,
+    crossMarket,
+    sessions: {
+      ranges: sessionRanges,
+      cmeGap,
+      fundingWindow,
+      eventBlackout,
+    },
+    confluence: {
+      clusters: confluenceClusters,
+      nearestSupport: confluenceSupport,
+      nearestResistance: confluenceResistance,
+    },
   };
 }
 
@@ -388,10 +680,11 @@ export async function gatherMarketContext(symbol: string, interval: string): Pro
   const closedPrimary = sliceClosedCandles(rawPrimary, interval);
   const analysisCandles = closedPrimary.length ? closedPrimary : rawPrimary.slice(0, -1);
 
-  const [orderFlow, futures, ticker24h] = await Promise.all([
+  const [orderFlow, futures, ticker24h, crossMarket] = await Promise.all([
     fetchOrderBookImbalance(symbol),
     fetchFuturesContext(symbol),
     fetchTicker24hr(symbol),
+    fetchCrossMarketContext(symbol, interval, analysisCandles),
   ]);
 
   const ctx = await buildContextFromCandles(symbol, interval, analysisCandles, {
@@ -399,6 +692,7 @@ export async function gatherMarketContext(symbol: string, interval: string): Pro
     futures,
     ticker24h,
     rawPrimary,
+    crossMarket,
   });
 
   const latestSwingHigh = ctx.swingHighs[ctx.swingHighs.length - 1]?.price ?? null;
@@ -408,10 +702,161 @@ export async function gatherMarketContext(symbol: string, interval: string): Pro
   return { ...ctx, liquidation };
 }
 
+const PROMPT_CONFLUENCE_TOP = 5;
+const PROMPT_LIQUIDITY_MAX = 5;
+const PROMPT_VP_NODE_MAX = 3;
+
+function promptPriceDecimals(refPrice: number): number {
+  if (refPrice >= 10_000) return 0;
+  if (refPrice >= 100) return 1;
+  if (refPrice >= 1) return 2;
+  return 4;
+}
+
+function roundPromptPrice(value: number | null | undefined, refPrice: number): number | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  return Number(value.toFixed(promptPriceDecimals(refPrice)));
+}
+
+function roundPromptScore(value: number | null | undefined): number | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  return Number(value.toFixed(2));
+}
+
+function roundPromptPct(value: number | null | undefined): number | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  return Number(value.toFixed(2));
+}
+
+type PromptConfluenceCluster = {
+  mid: number | null;
+  low: number | null;
+  high: number | null;
+  score: number | null;
+  sourceCount: number;
+  sources: ConfluenceCluster["sources"];
+  dist_pct: number | null;
+};
+
+function compactConfluenceCluster(
+  cluster: ConfluenceCluster | null,
+  refPrice: number,
+): PromptConfluenceCluster | null {
+  if (!cluster) return null;
+  return {
+    mid: roundPromptPrice(cluster.mid, refPrice),
+    low: roundPromptPrice(cluster.low, refPrice),
+    high: roundPromptPrice(cluster.high, refPrice),
+    score: roundPromptScore(cluster.score),
+    sourceCount: cluster.sourceCount,
+    sources: cluster.sources,
+    dist_pct: roundPromptPct(cluster.distancePct),
+  };
+}
+
+/** Trim Phase-2 context fields for the LLM prompt without touching the full MarketContext. */
+export function compactForPrompt(ctx: MarketContext) {
+  const price = ctx.price;
+  const developing = ctx.volumeProfileDetail.developing;
+
+  return {
+    anchoredVwaps: ctx.anchoredVwaps.map((v) => ({
+      anchor: v.kind,
+      vwap: roundPromptPrice(v.latest.vwap, price),
+      z: roundPromptScore(v.zScore),
+      relation: v.relation,
+    })),
+    liquidity: {
+      unsweptPools: ctx.liquidity.pools
+        .filter((p) => !p.swept)
+        .slice(0, PROMPT_LIQUIDITY_MAX)
+        .map((p) => ({
+          side: p.side,
+          price: roundPromptPrice(p.price, price),
+          touches: p.touches,
+        })),
+      recentSweeps: ctx.liquidity.sweeps.slice(0, PROMPT_LIQUIDITY_MAX).map((s) => ({
+        side: s.side,
+        level: roundPromptPrice(s.level, price),
+        reclaimed: s.reclaimed,
+        penetrationAtr: roundPromptScore(s.penetrationAtr),
+      })),
+      nearestBuySidePool: ctx.liquidity.nearestBuySidePool
+        ? {
+          side: ctx.liquidity.nearestBuySidePool.side,
+          price: roundPromptPrice(ctx.liquidity.nearestBuySidePool.price, price),
+          touches: ctx.liquidity.nearestBuySidePool.touches,
+        }
+        : null,
+      nearestSellSidePool: ctx.liquidity.nearestSellSidePool
+        ? {
+          side: ctx.liquidity.nearestSellSidePool.side,
+          price: roundPromptPrice(ctx.liquidity.nearestSellSidePool.price, price),
+          touches: ctx.liquidity.nearestSellSidePool.touches,
+        }
+        : null,
+      unfilledFvgs: ctx.liquidity.fairValueGaps.slice(0, PROMPT_LIQUIDITY_MAX).map((g) => ({
+        direction: g.direction,
+        top: roundPromptPrice(g.top, price),
+        bottom: roundPromptPrice(g.bottom, price),
+        fillProgress: roundPromptScore(g.fillProgress),
+      })),
+      orderBlocks: ctx.liquidity.orderBlocks.slice(0, PROMPT_LIQUIDITY_MAX).map((b) => ({
+        direction: b.direction,
+        top: roundPromptPrice(b.top, price),
+        bottom: roundPromptPrice(b.bottom, price),
+        mitigated: b.mitigated,
+      })),
+    },
+    volumeProfile: {
+      composite: {
+        poc: roundPromptPrice(ctx.volumeProfileDetail.composite.poc, price),
+        vah: roundPromptPrice(ctx.volumeProfileDetail.composite.vah, price),
+        val: roundPromptPrice(ctx.volumeProfileDetail.composite.val, price),
+        hvn: ctx.volumeProfileDetail.composite.hvn.slice(0, PROMPT_VP_NODE_MAX).map((n) => ({
+          price: roundPromptPrice(n.price, price),
+          share: roundPromptPct(n.share * 100),
+        })),
+        lvn: (ctx.volumeProfileDetail.composite.lvn ?? []).slice(0, PROMPT_VP_NODE_MAX).map((n) => ({
+          price: roundPromptPrice(n.price, price),
+          share: roundPromptPct(n.share * 100),
+        })),
+      },
+      developing: developing
+        ? {
+          poc: roundPromptPrice(developing.poc, price),
+          vah: roundPromptPrice(developing.vah, price),
+          val: roundPromptPrice(developing.val, price),
+          valueAreaRelation: classifyValueAreaRelation(price, developing),
+        }
+        : null,
+      nakedPocs: (ctx.volumeProfileDetail.nakedPocs ?? []).map((n) => ({
+        price: roundPromptPrice(n.price, price),
+        barsAgo: n.barsAgo,
+      })),
+      valueAreaRelation: ctx.volumeProfileDetail.valueAreaRelation,
+    },
+    sessionRanges: sessionRangesForPrompt(ctx.sessions.ranges).map((r) => ({
+      session: r.session,
+      high: roundPromptPrice(r.high, price),
+      low: roundPromptPrice(r.low, price),
+      isDeveloping: r.isDeveloping,
+    })),
+    confluence: {
+      topClusters: ctx.confluence.clusters
+        .slice(0, PROMPT_CONFLUENCE_TOP)
+        .map((c) => compactConfluenceCluster(c, price)!),
+      nearestSupport: compactConfluenceCluster(ctx.confluence.nearestSupport, price),
+      nearestResistance: compactConfluenceCluster(ctx.confluence.nearestResistance, price),
+    },
+  };
+}
+
 export function buildUserMessage(ctx: MarketContext): string {
   const c = ctx.pivots.classic.pivots;
   const f = ctx.pivots.fibonacci.pivots;
   const t = ctx.pivots.traditional.pivots;
+  const prompt = compactForPrompt(ctx);
 
   const vwapLine = ctx.latest.vwap != null
     ? `- vwap: ${ctx.latest.vwap} (price is ${ctx.vwapRelation} VWAP)`
@@ -505,5 +950,49 @@ MULTI-TIMEFRAME:
 
 PIVOTS (native HTF — classic / fibonacci / traditional):
 ${JSON.stringify({ classic: c, fibonacci: f, traditional: t })}
-PIVOT_ANALYSIS: ${JSON.stringify(ctx.pivots.classic.analysis)}`;
+PIVOT_ANALYSIS: ${JSON.stringify(ctx.pivots.classic.analysis)}
+
+VOLATILITY & TREND QUALITY:
+- keltner_channels: ${JSON.stringify(ctx.volatility.keltner)}
+- ttm_squeeze: ${JSON.stringify(ctx.volatility.squeeze)} (in_squeeze = volatility compression; the release, not the squeeze itself, is the tradable event)
+- stoch_rsi: ${JSON.stringify(ctx.volatility.stochRsi)}
+- supertrend: ${JSON.stringify(ctx.volatility.supertrend)}
+- donchian_20: ${JSON.stringify(ctx.volatility.donchian)}
+- ichimoku: ${JSON.stringify(ctx.volatility.ichimoku)}
+- chandelier_exit: ${JSON.stringify(ctx.volatility.chandelier)}
+- realized_volatility: ${JSON.stringify(ctx.volatility.realizedVol)}
+- persistence (Hurst/variance-ratio — trending vs mean-reverting, independent of ADX): ${JSON.stringify(ctx.volatility.persistence)}
+
+ANCHORED VWAP (mean price paid since each anchor; z = σ distance from VWAP):
+${JSON.stringify(prompt.anchoredVwaps)}
+
+LIQUIDITY STRUCTURE (stop pools, sweeps, imbalances — see education for how to read these):
+- unswept_pools (resting stops; a reclaimed sweep of one is a stronger reversal signal than a plain breakout): ${JSON.stringify(prompt.liquidity.unsweptPools)}
+- recent_sweeps: ${JSON.stringify(prompt.liquidity.recentSweeps)}
+- nearest_buy_side_pool: ${JSON.stringify(prompt.liquidity.nearestBuySidePool)}
+- nearest_sell_side_pool: ${JSON.stringify(prompt.liquidity.nearestSellSidePool)}
+- unfilled_fair_value_gaps: ${JSON.stringify(prompt.liquidity.unfilledFvgs)}
+- unmitigated_order_blocks: ${JSON.stringify(prompt.liquidity.orderBlocks)}
+
+VOLUME PROFILE (composite over last ${PRIMARY_CANDLE_LIMIT} closed candles, plus the still-forming session):
+- composite: ${JSON.stringify(prompt.volumeProfile.composite)}
+- developing_session: ${JSON.stringify(prompt.volumeProfile.developing)}
+- naked_pocs (untested prior points of control — these act as magnets): ${JSON.stringify(prompt.volumeProfile.nakedPocs)}
+- price_vs_value_area: ${prompt.volumeProfile.valueAreaRelation}
+
+CROSS-MARKET (BTC beta — most altcoin moves are BTC beta, not idiosyncratic signal):
+${JSON.stringify(ctx.crossMarket)}
+${ctx.crossMarket.available && !ctx.crossMarket.isBtcOrEth ? "gating_rule: if beta_to_btc >= 0.7 and BTC trend contradicts the proposed bias, treat this the same as an unresolved HTF contradiction — wait if BTC is itself trending against the trade, otherwise lower confidence." : ""}
+
+SESSIONS & CALENDAR:
+- session_ranges (developing + latest completed per session, UTC — see education; London/New York deliberately overlap): ${JSON.stringify(prompt.sessionRanges)}
+- cme_btc_futures_gap (estimated from spot candles, not a measured CME print — see education): ${JSON.stringify(ctx.sessions.cmeGap)}
+- funding_window: ${JSON.stringify(ctx.sessions.fundingWindow)}${ctx.sessions.fundingWindow.imminent ? " — a funding settlement is imminent; do not let this alone drive the bias, but mention it as a timing risk." : ""}
+- event_blackout: ${JSON.stringify(ctx.sessions.eventBlackout)}
+
+CONFLUENCE MAP (every price level the system tracks, clustered and scored by source diversity — a level five independent analyses agree on outranks one repeated by a single analysis):
+- top_clusters: ${JSON.stringify(prompt.confluence.topClusters)}
+- nearest_support_cluster: ${JSON.stringify(prompt.confluence.nearestSupport)}
+- nearest_resistance_cluster: ${JSON.stringify(prompt.confluence.nearestResistance)}
+- confluence_gating_rule: base stop_loss and targets on these clusters (and the swing structure / ATR already provided) ahead of a lone pivot level when a higher-scored cluster sits nearby.`;
 }

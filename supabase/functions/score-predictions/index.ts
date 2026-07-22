@@ -3,7 +3,7 @@ import { safeError } from "../_shared/http.ts";
 import { tryServiceClient } from "../_shared/auth.ts";
 import { isCronSecretConfigured, verifyCronSecret } from "../_shared/cronAuth.ts";
 import { fetchBinanceKlines } from "../_shared/binance.ts";
-import { scorePlanAgainstCandles } from "../_shared/outcome.ts";
+import { scorePlanAgainstCandles, SCORING_VERSION } from "../_shared/outcome.ts";
 import type { TradePlan } from "../_shared/tradePlan.ts";
 
 const BATCH_SIZE = 50;
@@ -37,7 +37,7 @@ async function scoreRow(row: LogRow) {
       mfe: null,
       mae: null,
       realized_r: null,
-      scoring_version: 2,
+      scoring_version: SCORING_VERSION,
     };
   }
 

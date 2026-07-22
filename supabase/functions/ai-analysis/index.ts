@@ -3,7 +3,12 @@ import { handleOptions, jsonResponse } from "../_shared/cors.ts";
 import { fetchWithTimeout, safeError } from "../_shared/http.ts";
 import { requireAuthenticatedUser, tryServiceClient } from "../_shared/auth.ts";
 import { consumeQuota } from "../_shared/rateLimit.ts";
-import { empiricalConfidence, clampModelConfidence } from "../_shared/calibration.ts";
+import {
+  type CalibrationRow,
+  clampModelConfidence,
+  type EmpiricalCalibration,
+  selectCalibrationBucket,
+} from "../_shared/calibration.ts";
 import {
   buildUserMessage,
   gatherMarketContext,
@@ -22,6 +27,29 @@ import {
   type TradePlanTarget,
   validateTradePlanGeometry,
 } from "../_shared/tradePlan.ts";
+import type { DivergenceResult } from "../_shared/marketStructure.ts";
+import type { PivotBias } from "../_shared/pivotPoints.ts";
+import type { MarketRegime } from "../_shared/regime.ts";
+import { bookQualityFromOrderFlow, buildVerdict, type Factor } from "../_shared/verdict.ts";
+
+export type AnalysisMeta = {
+  model: string;
+  source: string;
+  timestamp: string;
+  validated: boolean;
+  confluence_score: number;
+  signal_strength: number;
+  setup_type: SetupType;
+  data_completeness: { futures_available: boolean; order_book_available: boolean; liquidation_available: boolean };
+  model_field_ratio?: number;
+  trade_plan_geometry_valid?: boolean;
+  analysis_id?: string | null;
+  latency_ms?: number;
+  confluence_breakdown?: MarketContext["confluenceBreakdown"];
+  cached?: boolean;
+  calibration?: { setup_type: SetupType; n: number; empirical_hit_rate: number };
+  confidence_capped?: boolean;
+};
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_MODEL = "nvidia/nemotron-super-49b-v1:free";
@@ -83,6 +111,7 @@ async function logAiAnalysis(
     requestPayload?: Record<string, unknown> | null;
     responsePayload?: Record<string, unknown> | null;
     setupType?: SetupType | null;
+    regime?: string | null;
   },
 ): Promise<string | null> {
   const { data, error } = await supabase.from("ai_analysis_logs").insert({
@@ -96,6 +125,7 @@ async function logAiAnalysis(
     request_payload: entry.requestPayload ?? null,
     response_payload: entry.responsePayload ?? null,
     setup_type: entry.setupType ?? null,
+    regime: entry.regime ?? null,
   }).select("id").single();
   if (error) console.error("[ai-analysis] failed to write ai_analysis_logs:", error.message);
   return data?.id ?? null;
@@ -113,26 +143,42 @@ function toGatingContext(ctx: MarketContext): GatingContext {
     pivots: ctx.pivots,
     nearestSupport: ctx.nearestSupport,
     nearestResistance: ctx.nearestResistance,
+    crossMarket: ctx.crossMarket,
   };
 }
 
+/** Empirical hit rate for the setup about to be recommended. Bucket selection lives in
+ * _shared/calibration.ts so it can be unit-tested without a database. */
 async function fetchEmpiricalCalibration(
   supabase: SupabaseClient,
   setupType: SetupType,
-): Promise<{ n: number; empirical_hit_rate: number } | null> {
+  regime: string | null,
+): Promise<EmpiricalCalibration | null> {
+  // Prefer the newest scoring version that has enough decided samples; fall back to the pooled
+  // history rather than waiting weeks for a cold v3 bucket to fill.
+  const { data: v3data, error: v3error } = await supabase
+    .from("ai_analysis_logs")
+    .select("outcome, setup_type, regime, scoring_version")
+    .eq("status", "success")
+    .not("evaluated_at", "is", null)
+    .in("outcome", ["target_hit", "stop_hit", "expired", "no_fill"])
+    .eq("scoring_version", 3)
+    .limit(500);
+  const useV3 = !v3error && (v3data?.length ?? 0) >= 20;
+
   const { data: v2data, error: v2error } = await supabase
     .from("ai_analysis_logs")
-    .select("outcome, setup_type, scoring_version")
+    .select("outcome, setup_type, regime, scoring_version")
     .eq("status", "success")
     .not("evaluated_at", "is", null)
     .in("outcome", ["target_hit", "stop_hit", "expired", "no_fill"])
     .eq("scoring_version", 2)
     .limit(500);
-  const useV2 = !v2error && (v2data?.length ?? 0) >= 20;
+  const useV2 = !useV3 && !v2error && (v2data?.length ?? 0) >= 20;
 
   const { data, error } = await supabase
     .from("ai_analysis_logs")
-    .select("outcome, setup_type, scoring_version")
+    .select("outcome, setup_type, regime, scoring_version")
     .eq("status", "success")
     .not("evaluated_at", "is", null)
     .in("outcome", ["target_hit", "stop_hit", "expired", "no_fill"])
@@ -140,68 +186,159 @@ async function fetchEmpiricalCalibration(
     .limit(500);
   if (error || !data?.length) return null;
 
-  const rows = (useV2
-    ? (v2data ?? [])
-    : data) as Array<{ outcome: string | null; setup_type: string | null }>;
-  const globalWins = rows.filter((r) => r.outcome === "target_hit").length;
-  const globalDecided = rows.filter((r) => r.outcome === "target_hit" || r.outcome === "stop_hit").length;
-  const globalRate = globalDecided > 0 ? globalWins / globalDecided : 0.5;
-
-  const setupRows = rows.filter((r) => r.setup_type === setupType);
-  const hits = setupRows.filter((r) => r.outcome === "target_hit").length;
-  const decided = setupRows.filter((r) => r.outcome === "target_hit" || r.outcome === "stop_hit").length;
-  if (!decided) return null;
-
-  return {
-    n: decided,
-    empirical_hit_rate: empiricalConfidence(hits, decided, globalRate) / 100,
-  };
+  const rows = (useV3 ? (v3data ?? []) : useV2 ? (v2data ?? []) : data) as CalibrationRow[];
+  return selectCalibrationBucket(rows, setupType, regime);
 }
 
-function attachEmpiricalConfidence(
-  analysis: Record<string, unknown>,
-  calibration: { n: number; empirical_hit_rate: number } | null,
-  setupType: SetupType,
-): void {
-  if (!calibration) return;
-  const tradePlan = analysis.trade_plan as TradePlan;
-  if (!tradePlan || typeof tradePlan !== "object") return;
-  tradePlan.empirical_confidence = Number((calibration.empirical_hit_rate * 100).toFixed(1));
-  const pct = (calibration.empirical_hit_rate * 100).toFixed(1);
-  tradePlan.rationale = `${tradePlan.rationale} This setup type has hit ${pct}% over ${calibration.n} decided instances — don't report confidence far above this without stating why.`;
+const CALIBRATION_BUCKET_LABEL: Record<EmpiricalCalibration["bucket"], string> = {
+  // Wording matters here: the model is told what population the rate describes so it cannot
+  // present a pooled global fallback as if it were a measurement of this specific setup.
+  setup_regime: "this setup type in this regime",
+  setup: "this setup type across all regimes",
+  global: "all setups pooled",
+};
 
-  const summary = analysis.summary as Record<string, unknown> | undefined;
-  if (summary && typeof summary.confidence === "number") {
-    const { confidence, capped } = clampModelConfidence(summary.confidence as number, calibration);
-    summary.confidence = confidence;
-    if (capped) {
-      analysis._meta = {
-        ...(analysis._meta as Record<string, unknown>),
-        confidence_capped: true,
-      };
+function deriveFactors(ctx: MarketContext, bias: TradePlan["bias"]): Factor[] {
+  const factors: Factor[] = [];
+  const push = (side: "bull" | "bear", label: string, weight: number) => {
+    factors.push({ side, label, weight });
+  };
+
+  if (ctx.latest.ema20 != null && ctx.latest.ema50 != null) {
+    if (ctx.price > ctx.latest.ema20 && ctx.latest.ema20 > ctx.latest.ema50) {
+      push("bull", "EMA stack bullish (price > EMA20 > EMA50)", 1.2);
+    } else if (ctx.price < ctx.latest.ema20 && ctx.latest.ema20 < ctx.latest.ema50) {
+      push("bear", "EMA stack bearish (price < EMA20 < EMA50)", 1.2);
     }
   }
-  if (typeof tradePlan.confidence === "number") {
-    const { confidence, capped } = clampModelConfidence(tradePlan.confidence, calibration);
-    tradePlan.confidence = confidence;
-    if (capped) {
-      analysis._meta = {
-        ...(analysis._meta as Record<string, unknown>),
-        confidence_capped: true,
-      };
+  if (ctx.latest.rsi14 != null) {
+    if (ctx.latest.rsi14 >= 55) push("bull", `RSI ${ctx.latest.rsi14.toFixed(1)} in bullish zone`, 0.8);
+    else if (ctx.latest.rsi14 <= 45) push("bear", `RSI ${ctx.latest.rsi14.toFixed(1)} in bearish zone`, 0.8);
+  }
+  if (ctx.latest.macd != null && ctx.latest.macdSignal != null) {
+    if (ctx.latest.macd > ctx.latest.macdSignal) push("bull", "MACD above signal", 0.9);
+    else push("bear", "MACD below signal", 0.9);
+  }
+  if (ctx.htfBias === "bullish") push("bull", "Higher-timeframe bias bullish", 1.1);
+  if (ctx.htfBias === "bearish") push("bear", "Higher-timeframe bias bearish", 1.1);
+  if (ctx.rsiDivergence.type === "bullish") push("bull", "RSI bullish divergence", 1.3);
+  if (ctx.rsiDivergence.type === "bearish") push("bear", "RSI bearish divergence", 1.3);
+  if (ctx.macdDivergence.type === "bullish") push("bull", "MACD bullish divergence", 1.2);
+  if (ctx.macdDivergence.type === "bearish") push("bear", "MACD bearish divergence", 1.2);
+  if (ctx.regime === "volatile_chop") {
+    push("bear", "Volatile chop regime — directional edge degraded", 1.5);
+    push("bull", "Volatile chop regime — directional edge degraded", 1.5);
+  }
+  if (bias === "wait") {
+    // Keep the ledger informative even when standing aside.
+  }
+  return factors;
+}
+
+/**
+ * Attach calibrated confidence, expected-value verdict, management plan and guardrails.
+ *
+ * EV and guardrails are computed here — never by the model. Called for both the live AI path and
+ * the deterministic fallback so the UI always receives the same decision-layer shape.
+ */
+function attachDecisionLayer(
+  analysis: Record<string, unknown>,
+  calibration: EmpiricalCalibration | null,
+  setupType: SetupType,
+  ctx: MarketContext,
+): void {
+  const tradePlan = analysis.trade_plan as TradePlan;
+  if (!tradePlan || typeof tradePlan !== "object") return;
+
+  if (calibration) {
+    tradePlan.empirical_confidence = Number((calibration.empirical_hit_rate * 100).toFixed(1));
+    const pct = (calibration.empirical_hit_rate * 100).toFixed(1);
+    tradePlan.rationale = `${tradePlan.rationale} Historically ${CALIBRATION_BUCKET_LABEL[calibration.bucket]} has hit ${pct}% over ${calibration.n} decided instances — don't report confidence far above this without stating why.`;
+
+    const summary = analysis.summary as Record<string, unknown> | undefined;
+    if (summary && typeof summary.confidence === "number") {
+      const { confidence, capped } = clampModelConfidence(summary.confidence as number, calibration);
+      summary.confidence = confidence;
+      if (capped) {
+        analysis._meta = {
+          ...(analysis._meta as Record<string, unknown>),
+          confidence_capped: true,
+        };
+      }
+    }
+    if (typeof tradePlan.confidence === "number") {
+      const { confidence, capped } = clampModelConfidence(tradePlan.confidence, calibration);
+      tradePlan.confidence = confidence;
+      if (capped) {
+        analysis._meta = {
+          ...(analysis._meta as Record<string, unknown>),
+          confidence_capped: true,
+        };
+      }
     }
   }
 
   analysis.trade_plan = tradePlan;
+
+  const tradeLogic = analysis.trade_logic as Record<string, unknown> | undefined;
+  const verdict = buildVerdict({
+    plan: tradePlan,
+    regime: ctx.regime,
+    calibration,
+    funding: ctx.sessions?.fundingWindow ?? null,
+    blackout: ctx.sessions?.eventBlackout ?? null,
+    book: bookQualityFromOrderFlow(ctx.orderFlow),
+    factors: deriveFactors(ctx, tradePlan.bias),
+    scenarios: {
+      primary: String(tradeLogic?.bullish_scenario ?? tradePlan.rationale ?? "No primary scenario."),
+      alternate: String(tradeLogic?.bearish_scenario ?? "No alternate scenario."),
+      invalidation: tradePlan.bias === "long"
+        ? `Bull idea fails beyond stop ${tradePlan.stop_loss ?? tradeLogic?.invalidation_bull ?? "n/a"}.`
+        : tradePlan.bias === "short"
+        ? `Bear idea fails beyond stop ${tradePlan.stop_loss ?? tradeLogic?.invalidation_bear ?? "n/a"}.`
+        : "No directional plan — no invalidation.",
+    },
+  });
+
+  analysis.verdict = verdict;
+  analysis.management = verdict.management;
+  analysis.expectancy = verdict.expectancy;
+  analysis.guardrails = verdict.guardrails;
+
   analysis._meta = {
     ...(analysis._meta as Record<string, unknown>),
     setup_type: setupType,
-    calibration: {
-      setup_type: setupType,
-      n: calibration.n,
-      empirical_hit_rate: calibration.empirical_hit_rate,
-    },
+    verdict: verdict.verdict,
+    ...(calibration
+      ? {
+        calibration: {
+          setup_type: setupType,
+          n: calibration.n,
+          empirical_hit_rate: calibration.empirical_hit_rate,
+          bucket: calibration.bucket,
+        },
+      }
+      : {}),
   };
+}
+
+/** @deprecated Use attachDecisionLayer — kept as a thin alias for any external callers. */
+function attachEmpiricalConfidence(
+  analysis: Record<string, unknown>,
+  calibration: EmpiricalCalibration | null,
+  setupType: SetupType,
+  ctx?: MarketContext,
+): void {
+  if (ctx) {
+    attachDecisionLayer(analysis, calibration, setupType, ctx);
+    return;
+  }
+  // Legacy path without context: only the calibration clamp, no verdict.
+  if (!calibration) return;
+  const tradePlan = analysis.trade_plan as TradePlan;
+  if (!tradePlan || typeof tradePlan !== "object") return;
+  tradePlan.empirical_confidence = Number((calibration.empirical_hit_rate * 100).toFixed(1));
+  analysis.trade_plan = tradePlan;
 }
 
 function safeFloat(value: unknown, fallback: number | null = null): number | null {
@@ -222,6 +359,40 @@ function asEnum<T extends string>(value: unknown, allowed: Set<T>, fallback: T):
   const normalized = String(value ?? "").trim().toLowerCase() as T;
   return allowed.has(normalized) ? normalized : fallback;
 }
+
+type PrimaryTrend = "bullish" | "bearish" | "sideways";
+type MomentumState = "strong_bullish" | "bullish" | "neutral" | "bearish" | "strong_bearish";
+type MarketPhase = "accumulation" | "markup" | "distribution" | "markdown" | "consolidation";
+type SummaryBias = "long" | "short" | "neutral";
+type RsiState = "overbought" | "bullish_zone" | "neutral" | "bearish_zone" | "oversold";
+type MacdState = "bullish_crossover" | "bearish_crossover" | "bullish_momentum" | "bearish_momentum";
+type EmaAlignment = "bullish" | "bearish" | "mixed";
+type PriceVsEma = "above" | "below" | "at";
+type SignificanceLevel = "high" | "medium" | "low";
+type DominantSide = "buyers" | "sellers" | "neutral";
+type VolatilityState = MarketContext["volatilityState"];
+type AnalysisMarketRegime = MarketRegime | "breakout" | "reversal";
+type AnomalyType = "divergence" | "liquidity_trap" | "trend_exhaustion" | "pivot_confluence" | "volume_spike" | "none";
+type SeverityLevel = "low" | "medium" | "high";
+
+const PRIMARY_TREND_SET = new Set<PrimaryTrend>(["bullish", "bearish", "sideways"]);
+const MOMENTUM_SET = new Set<MomentumState>(["strong_bullish", "bullish", "neutral", "bearish", "strong_bearish"]);
+const MARKET_PHASE_SET = new Set<MarketPhase>(["accumulation", "markup", "distribution", "markdown", "consolidation"]);
+const SUMMARY_BIAS_SET = new Set<SummaryBias>(["long", "short", "neutral"]);
+const RSI_STATE_SET = new Set<RsiState>(["overbought", "bullish_zone", "neutral", "bearish_zone", "oversold"]);
+const DIVERGENCE_SET = new Set<DivergenceResult>(["bullish", "bearish", "none"]);
+const MACD_STATE_SET = new Set<MacdState>(["bullish_crossover", "bearish_crossover", "bullish_momentum", "bearish_momentum"]);
+const EMA_ALIGNMENT_SET = new Set<EmaAlignment>(["bullish", "bearish", "mixed"]);
+const PRICE_VS_EMA_SET = new Set<PriceVsEma>(["above", "below", "at"]);
+const SIGNIFICANCE_SET = new Set<SignificanceLevel>(["high", "medium", "low"]);
+const PIVOT_BIAS_SET = new Set<PivotBias>(["bullish", "bearish", "neutral"]);
+const BREAKOUT_WATCH_SET = new Set<DivergenceResult>(["bullish", "bearish", "none"]);
+const DOMINANT_SIDE_SET = new Set<DominantSide>(["buyers", "sellers", "neutral"]);
+const TRADE_BIAS_SET = new Set<TradePlan["bias"]>(["long", "short", "wait"]);
+const ANOMALY_TYPE_SET = new Set<AnomalyType>(["divergence", "liquidity_trap", "trend_exhaustion", "pivot_confluence", "volume_spike", "none"]);
+const SEVERITY_SET = new Set<SeverityLevel>(["low", "medium", "high"]);
+const VOLATILITY_SET = new Set<VolatilityState>(["low", "medium", "high"]);
+const ANALYSIS_REGIME_SET = new Set<AnalysisMarketRegime>(["trending", "ranging", "volatile_chop", "breakout", "reversal"]);
 
 function asObject(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -340,14 +511,42 @@ function deterministicFallback(ctx: MarketContext, source = "local-fallback") {
   const gated = applyRegimeGating(bias, confidence, gatingCtx);
   const tradePlan = buildDeterministicTradePlan(gatingCtx, gated.bias, gated.confidence);
 
+  // The headline summary is derived from the finished trade plan rather than from the raw
+  // pre-gating values. Previously the header read the ungated `bias`/`confidence` while the plan
+  // read the gated ones, so the card could say "bias: long, confidence: 75%" directly above a plan
+  // that said "wait". Reading both off the plan makes that contradiction unrepresentable.
+  // primary_trend/momentum/phase stay ungated: they describe what the market is doing, not what
+  // the system recommends.
+  const summaryBias = tradePlan.bias === "wait" ? "neutral" : tradePlan.bias;
+  const gatedNote = summaryBias !== bias
+    ? gated.crossMarketNote
+      ? ` Raw signal read ${bias}; downgraded to ${summaryBias}. ${gated.crossMarketNote}`
+      : ` Raw signal read ${bias}; ${ctx.regime} regime gating downgraded it to ${summaryBias}.`
+    : "";
+
+  const meta: AnalysisMeta = {
+    model: MODEL,
+    source,
+    timestamp: new Date().toISOString(),
+    validated: true,
+    confluence_score: ctx.confluenceScore,
+    signal_strength: ctx.signalAgreement,
+    setup_type: gated.setupType,
+    data_completeness: {
+      futures_available: ctx.futures.available,
+      order_book_available: ctx.orderFlow.obi != null,
+      liquidation_available: ctx.liquidation.available,
+    },
+  };
+
   const legacy = {
     summary: {
       primary_trend: primaryTrend,
       momentum,
       phase: primaryTrend === "bullish" ? "markup" : primaryTrend === "bearish" ? "markdown" : "consolidation",
-      confidence,
-      bias: bias === "neutral" ? "neutral" : bias,
-      reasoning: `Price ${price}, EMA alignment ${alignment}, RSI state ${rsiState}, MTF confluence ${ctx.confluenceScore}%, ADX-based trend strength ${ctx.trendStrength}.`,
+      confidence: tradePlan.confidence,
+      bias: summaryBias,
+      reasoning: `Price ${price}, EMA alignment ${alignment}, RSI state ${rsiState}, MTF confluence ${ctx.confluenceScore}%, ADX-based trend strength ${ctx.trendStrength}.${gatedNote}`,
     },
     indicators: {
       rsi: {
@@ -418,20 +617,7 @@ function deterministicFallback(ctx: MarketContext, source = "local-fallback") {
       htf_bias: ctx.htfBias,
     },
     trade_plan: tradePlan,
-    _meta: {
-      model: MODEL,
-      source,
-      timestamp: new Date().toISOString(),
-      validated: true,
-      confluence_score: ctx.confluenceScore,
-      signal_strength: ctx.signalAgreement,
-      setup_type: gated.setupType,
-      data_completeness: {
-        futures_available: ctx.futures.available,
-        order_book_available: ctx.orderFlow.obi != null,
-        liquidation_available: ctx.liquidation.available,
-      },
-    },
+    _meta: meta,
   };
 
   return {
@@ -638,8 +824,23 @@ Reasoning rules:
   reasonably agree; otherwise use "wait" with entry_zone null and empty targets.
 - Regime gating: volatile_chop => wait; ranging => only fade within 0.5×ATR of S/R zones;
   if 2+ HTF reads contradict bias => wait; if 1 contradicts => lower confidence ~15pts.
-- Base stop_loss and targets on the supplied pivot levels, swing structure, and ATR — never invent
-  price levels that are not derivable from the provided data.
+- Cross-market gating (only applies when cross_market.available is true and the symbol is not BTC
+  or ETH itself): if beta_to_btc >= 0.7 and BTC's trend contradicts the proposed bias, treat it like
+  an HTF contradiction — wait if BTC is itself trending against the trade, otherwise lower
+  confidence ~10-15pts. A high-beta altcoin long against a trending-down BTC is a BTC short wearing
+  a different ticker; say so explicitly in the rationale when this applies.
+- Base stop_loss and targets on the confluence map's highest-scored nearby clusters first, then the
+  supplied pivot levels, swing structure, and ATR — never invent price levels that are not
+  derivable from the provided data. A cluster backed by several independent sources (e.g. a pivot,
+  a volume-profile POC, and an anchored VWAP all landing together) is stronger evidence than a lone
+  pivot level and should be preferred for stop/target placement when one is nearby.
+- A liquidity sweep that reclaimed (wicked through a level and closed back inside) is meaningfully
+  different from a plain breakout of the same level — treat a reclaimed sweep against the prevailing
+  trend as a real reversal signal, not noise. A TTM squeeze release (state "fired") in the direction
+  of the proposed bias adds confidence; a squeeze still compressing ("squeeze") is not itself a
+  signal to act on.
+- If funding_window.imminent is true, mention the upcoming settlement as a timing consideration but
+  do not let it alone drive bias or confidence.
 - Price above the classic PP is bullish session bias; below is bearish. RSI >= 70 is overbought,
   <= 30 is oversold. MACD is bullish when the MACD line is above its signal line. EMA alignment is
   bullish if price > EMA20 > EMA50, bearish if price < EMA20 < EMA50, otherwise mixed.
@@ -680,34 +881,34 @@ function normalizeModelOutput(parsed: Record<string, unknown>, ctx: MarketContex
   const baseTradePlan = base.trade_plan as TradePlan;
 
   const validatedSummary = {
-    primary_trend: asEnum(summary.primary_trend, new Set(["bullish", "bearish", "sideways"]), baseSummary.primary_trend as string),
-    momentum: asEnum(summary.momentum, new Set(["strong_bullish", "bullish", "neutral", "bearish", "strong_bearish"]), baseSummary.momentum as string),
-    phase: asEnum(summary.phase, new Set(["accumulation", "markup", "distribution", "markdown", "consolidation"]), baseSummary.phase as string),
+    primary_trend: asEnum(summary.primary_trend, PRIMARY_TREND_SET, baseSummary.primary_trend as PrimaryTrend),
+    momentum: asEnum(summary.momentum, MOMENTUM_SET, baseSummary.momentum as MomentumState),
+    phase: asEnum(summary.phase, MARKET_PHASE_SET, baseSummary.phase as MarketPhase),
     confidence: clamp(safeInt(summary.confidence, baseSummary.confidence as number), 0, 100),
-    bias: asEnum(summary.bias, new Set(["long", "short", "neutral"]), baseSummary.bias as string),
+    bias: asEnum(summary.bias, SUMMARY_BIAS_SET, baseSummary.bias as SummaryBias),
     reasoning: String(summary.reasoning ?? baseSummary.reasoning),
   };
 
   const validatedIndicators = {
     rsi: {
       value: baseIndicators.rsi.value as number | null,
-      state: asEnum(rsiObj.state, new Set(["overbought", "bullish_zone", "neutral", "bearish_zone", "oversold"]), baseIndicators.rsi.state as string),
-      divergence: asEnum(rsiObj.divergence, new Set(["bullish", "bearish", "none"]), baseIndicators.rsi.divergence as string),
+      state: asEnum(rsiObj.state, RSI_STATE_SET, baseIndicators.rsi.state as RsiState),
+      divergence: asEnum(rsiObj.divergence, DIVERGENCE_SET, baseIndicators.rsi.divergence as DivergenceResult),
       signal: String(rsiObj.signal ?? baseIndicators.rsi.signal),
     },
     macd: {
       macd_line: baseIndicators.macd.macd_line as number | null,
       signal_line: baseIndicators.macd.signal_line as number | null,
       histogram: baseIndicators.macd.histogram as number | null,
-      state: asEnum(macdObj.state, new Set(["bullish_crossover", "bearish_crossover", "bullish_momentum", "bearish_momentum"]), baseIndicators.macd.state as string),
+      state: asEnum(macdObj.state, MACD_STATE_SET, baseIndicators.macd.state as MacdState),
       signal: String(macdObj.signal ?? baseIndicators.macd.signal),
     },
     ema: {
       ema20: baseIndicators.ema.ema20 as number | null,
       ema50: baseIndicators.ema.ema50 as number | null,
-      alignment: asEnum(emaObj.alignment, new Set(["bullish", "bearish", "mixed"]), baseIndicators.ema.alignment as string),
-      price_vs_ema20: asEnum(emaObj.price_vs_ema20, new Set(["above", "below", "at"]), baseIndicators.ema.price_vs_ema20 as string),
-      price_vs_ema50: asEnum(emaObj.price_vs_ema50, new Set(["above", "below", "at"]), baseIndicators.ema.price_vs_ema50 as string),
+      alignment: asEnum(emaObj.alignment, EMA_ALIGNMENT_SET, baseIndicators.ema.alignment as EmaAlignment),
+      price_vs_ema20: asEnum(emaObj.price_vs_ema20, PRICE_VS_EMA_SET, baseIndicators.ema.price_vs_ema20 as PriceVsEma),
+      price_vs_ema50: asEnum(emaObj.price_vs_ema50, PRICE_VS_EMA_SET, baseIndicators.ema.price_vs_ema50 as PriceVsEma),
       signal: String(emaObj.signal ?? baseIndicators.ema.signal),
     },
   };
@@ -722,14 +923,14 @@ function normalizeModelOutput(parsed: Record<string, unknown>, ctx: MarketContex
       level: String(c.level ?? "N/A"),
       price: safeFloat(c.price, null),
       confluent_with: String(c.confluent_with ?? "unknown"),
-      significance: asEnum(c.significance, new Set(["high", "medium", "low"]), "low"),
+      significance: asEnum(c.significance, SIGNIFICANCE_SET, "low"),
     }))
     .filter((c) => c.price != null);
 
   const validatedPivotAnalysis = {
     pp: basePivotAnalysis.pp as number | null,
     current_zone: String(pivotAnalysis.current_zone ?? basePivotAnalysis.current_zone),
-    session_bias: asEnum(pivotAnalysis.session_bias, new Set(["bullish", "bearish", "neutral"]), basePivotAnalysis.session_bias as string),
+    session_bias: asEnum(pivotAnalysis.session_bias, PIVOT_BIAS_SET, basePivotAnalysis.session_bias as PivotBias),
     nearest_pivot_resistance: nearestResistance,
     nearest_pivot_support: nearestSupport,
     distance_to_pivot_resistance_pct: safeFloat(pivotAnalysis.distance_to_pivot_resistance_pct, basePivotAnalysis.distance_to_pivot_resistance_pct as number | null),
@@ -756,13 +957,13 @@ function normalizeModelOutput(parsed: Record<string, unknown>, ctx: MarketContex
     key_support_levels: filterFiniteNumbers(structure.key_support_levels, baseStructure.key_support_levels, 5),
     key_resistance_levels: filterFiniteNumbers(structure.key_resistance_levels, baseStructure.key_resistance_levels, 5),
     range_bound: Boolean(structure.range_bound ?? baseStructure.range_bound),
-    breakout_watch: asEnum(structure.breakout_watch, new Set(["bullish", "bearish", "none"]), baseStructure.breakout_watch as string),
+    breakout_watch: asEnum(structure.breakout_watch, BREAKOUT_WATCH_SET, baseStructure.breakout_watch as DivergenceResult),
   };
 
   const validatedOrderFlow = {
     obi: safeFloat(orderFlow.obi, baseOrderFlow.obi as number | null),
     tfi: safeFloat(orderFlow.tfi, baseOrderFlow.tfi as number | null),
-    dominant_side: asEnum(orderFlow.dominant_side, new Set(["buyers", "sellers", "neutral"]), baseOrderFlow.dominant_side as string),
+    dominant_side: asEnum(orderFlow.dominant_side, DOMINANT_SIDE_SET, baseOrderFlow.dominant_side as DominantSide),
     interpretation: String(orderFlow.interpretation ?? baseOrderFlow.interpretation),
   };
 
@@ -771,7 +972,7 @@ function normalizeModelOutput(parsed: Record<string, unknown>, ctx: MarketContex
     bearish_scenario: String(tradeLogic.bearish_scenario ?? baseTradeLogic.bearish_scenario),
     invalidation_bull: safeFloat(tradeLogic.invalidation_bull, baseTradeLogic.invalidation_bull as number | null),
     invalidation_bear: safeFloat(tradeLogic.invalidation_bear, baseTradeLogic.invalidation_bear as number | null),
-    suggested_bias: asEnum(tradeLogic.suggested_bias, new Set(["long", "short", "wait"]), baseTradeLogic.suggested_bias as string),
+    suggested_bias: asEnum(tradeLogic.suggested_bias, TRADE_BIAS_SET, baseTradeLogic.suggested_bias as TradePlan["bias"]),
     risk_note: String(tradeLogic.risk_note ?? baseTradeLogic.risk_note),
   };
 
@@ -779,16 +980,16 @@ function normalizeModelOutput(parsed: Record<string, unknown>, ctx: MarketContex
   const validatedAnomalies = rawAnomalies
     .filter((a): a is Record<string, unknown> => !!a && typeof a === "object")
     .map((a) => ({
-      type: asEnum(a.type, new Set(["divergence", "liquidity_trap", "trend_exhaustion", "pivot_confluence", "volume_spike", "none"]), "none"),
+      type: asEnum(a.type, ANOMALY_TYPE_SET, "none"),
       description: String(a.description ?? ""),
-      severity: asEnum(a.severity, new Set(["low", "medium", "high"]), "low"),
+      severity: asEnum(a.severity, SEVERITY_SET, "low"),
     }));
 
   const validatedMarketRegime = {
-    volatility: asEnum(marketRegime.volatility, new Set(["low", "medium", "high"]), baseMarketRegime.volatility as string),
+    volatility: asEnum(marketRegime.volatility, VOLATILITY_SET, baseMarketRegime.volatility as VolatilityState),
     trend_strength: clamp(safeInt(marketRegime.trend_strength, baseMarketRegime.trend_strength as number), 0, 100),
     is_trending: Boolean(marketRegime.is_trending ?? baseMarketRegime.is_trending),
-    regime: asEnum(marketRegime.regime, new Set(["trending", "ranging", "volatile_chop", "breakout", "reversal"]), baseMarketRegime.regime as string),
+    regime: asEnum(marketRegime.regime, ANALYSIS_REGIME_SET, baseMarketRegime.regime as AnalysisMarketRegime),
   };
 
   const rawTargets = Array.isArray(tradePlanObj.targets) ? tradePlanObj.targets : [];
@@ -802,7 +1003,7 @@ function normalizeModelOutput(parsed: Record<string, unknown>, ctx: MarketContex
     .filter((t) => t.price != null)
     .slice(0, 5);
 
-  const tradePlanBias = asEnum(tradePlanObj.bias, new Set(["long", "short", "wait"]), baseTradePlan.bias);
+  const tradePlanBias = asEnum(tradePlanObj.bias, TRADE_BIAS_SET, baseTradePlan.bias);
   const entryZoneObj = asObject(tradePlanObj.entry_zone);
   let validatedTradePlan: TradePlan = {
     bias: tradePlanBias,
@@ -835,7 +1036,7 @@ function normalizeModelOutput(parsed: Record<string, unknown>, ctx: MarketContex
   const geometry = validateTradePlanGeometry(validatedTradePlan, ctx.price);
   let tradePlanGeometryValid = geometry.valid;
   const gatingCtx = toGatingContext(ctx);
-  const baseSetupType = (base._meta as Record<string, unknown>)?.setup_type as SetupType ?? "wait";
+  const baseSetupType = base._meta.setup_type ?? "wait";
   if (!geometry.valid && validatedTradePlan.bias !== "wait") {
     const fallbackBias = validatedTradePlan.bias === "long" ? "long" : validatedTradePlan.bias === "short" ? "short" : "neutral";
     const detBias = fallbackBias === "long" || fallbackBias === "short" ? fallbackBias : "neutral";
@@ -853,8 +1054,38 @@ function normalizeModelOutput(parsed: Record<string, unknown>, ctx: MarketContex
     gatingCtx,
   ).setupType ?? baseSetupType;
 
+  // Reconcile the headline with the finished plan. The model can emit a summary and a trade_plan
+  // that disagree, and geometry validation above may have replaced the plan wholesale after the
+  // summary was already validated — either path leaves the header claiming a directional bias over
+  // a plan that says wait. The plan is the artifact the trader acts on, so it wins.
+  const reconciledBias = validatedTradePlan.bias === "wait" ? "neutral" : validatedTradePlan.bias;
+  const summaryContradictedPlan = validatedSummary.bias !== reconciledBias;
+  validatedSummary.bias = reconciledBias;
+  validatedSummary.confidence = validatedTradePlan.confidence;
+  if (summaryContradictedPlan) {
+    validatedSummary.reasoning =
+      `${validatedSummary.reasoning} (Headline bias aligned to the validated trade plan, which reads ${validatedTradePlan.bias}.)`;
+  }
+
   const modelFieldRatio = totalFieldCount > 0 ? modelFieldCount / totalFieldCount : 0;
   const source = modelFieldRatio >= 0.7 ? "openrouter" : modelFieldRatio > 0 ? "openrouter-partial" : "deterministic";
+
+  const meta: AnalysisMeta = {
+    model: MODEL,
+    source,
+    timestamp: new Date().toISOString(),
+    validated: true,
+    confluence_score: ctx.confluenceScore,
+    signal_strength: ctx.signalAgreement,
+    model_field_ratio: Number(modelFieldRatio.toFixed(3)),
+    trade_plan_geometry_valid: tradePlanGeometryValid,
+    setup_type: setupType,
+    data_completeness: {
+      futures_available: ctx.futures.available,
+      order_book_available: ctx.orderFlow.obi != null,
+      liquidation_available: ctx.liquidation.available,
+    },
+  };
 
   const out = {
     ...base,
@@ -867,22 +1098,7 @@ function normalizeModelOutput(parsed: Record<string, unknown>, ctx: MarketContex
     anomalies: validatedAnomalies.length ? validatedAnomalies : base.anomalies,
     market_regime: validatedMarketRegime,
     trade_plan: validatedTradePlan,
-    _meta: {
-      model: MODEL,
-      source,
-      timestamp: new Date().toISOString(),
-      validated: true,
-      confluence_score: ctx.confluenceScore,
-      signal_strength: ctx.signalAgreement,
-      model_field_ratio: Number(modelFieldRatio.toFixed(3)),
-      trade_plan_geometry_valid: tradePlanGeometryValid,
-      setup_type: setupType,
-      data_completeness: {
-        futures_available: ctx.futures.available,
-        order_book_available: ctx.orderFlow.obi != null,
-        liquidation_available: ctx.liquidation.available,
-      },
-    },
+    _meta: meta,
   };
 
   return {
@@ -1001,9 +1217,9 @@ Deno.serve(async (req) => {
     const content = payload?.choices?.[0]?.message?.content ?? "";
     const parsed = extractJson(content);
     const analysis = normalizeModelOutput(parsed, ctx);
-    const setupType = (analysis._meta as Record<string, unknown>)?.setup_type as SetupType ?? "wait";
-    const calibration = await fetchEmpiricalCalibration(supabase, setupType);
-    attachEmpiricalConfidence(analysis as Record<string, unknown>, calibration, setupType);
+    const setupType = analysis._meta.setup_type ?? "wait";
+    const calibration = await fetchEmpiricalCalibration(supabase, setupType, ctx.regime);
+    attachDecisionLayer(analysis as Record<string, unknown>, calibration, setupType, ctx);
     const latencyMs = Date.now() - started;
 
     await writeAnalysisCache(supabase, cacheKey, analysis as Record<string, unknown>);
@@ -1017,6 +1233,7 @@ Deno.serve(async (req) => {
       requestPayload,
       responsePayload: analysis as Record<string, unknown>,
       setupType,
+      regime: ctx.regime,
     });
     analysis._meta = {
       ...analysis._meta,
@@ -1039,7 +1256,10 @@ Deno.serve(async (req) => {
       const ctx = ctxForFallback ?? (symbol && interval ? await gatherMarketContext(symbol, interval) : null);
       if (ctx) {
         const fallback = deterministicFallback(ctx, `fallback: ${errorMessage}`);
-        fallback._meta = { ...(fallback._meta as Record<string, unknown>), analysis_id: fallbackAnalysisId };
+        const setupType = fallback._meta.setup_type ?? "wait";
+        const calibration = await fetchEmpiricalCalibration(supabase, setupType, ctx.regime).catch(() => null);
+        attachDecisionLayer(fallback as Record<string, unknown>, calibration, setupType, ctx);
+        fallback._meta = { ...fallback._meta, analysis_id: fallbackAnalysisId };
         return jsonResponse(req, { success: true, analysis: fallback });
       }
     } catch { /* fall through to hard error below */ }

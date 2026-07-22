@@ -6,6 +6,8 @@ import ChartPanel from './components/ChartPanel'
 import AnalysisPanel from './components/AnalysisPanel'
 import AIAnalysisPanel from './components/AIAnalysisPanel'
 import AccuracyPanel from './components/AccuracyPanel'
+import ScannerPanel from './components/ScannerPanel'
+import EdgePanel from './components/EdgePanel'
 import EducationPanel from './components/EducationPanel'
 import JournalPanel from './components/JournalPanel'
 import { useAuth } from './hooks/useAuth'
@@ -21,6 +23,7 @@ import {
   sanitizePreferences,
 } from './utils/userPreferences'
 import { patchLastCandleIndicators, extractClosedIndicatorState, computeSeriesIndicators } from './utils/incrementalIndicators'
+import { deriveSignalAgreement } from './utils/signalAgreement'
 
 const COMMON_QUOTES = ['USDT', 'BUSD', 'BTC', 'ETH', 'FDUSD']
 const BINANCE_KLINES_URL = 'https://api.binance.com/api/v3/klines'
@@ -222,7 +225,7 @@ function buildTechnicalAnalysis(candles, selectedSymbol, selectedInterval) {
   const latest = candles[candles.length - 1]
   const rsiSeries = candles.map((c) => c.rsi14 ?? null)
   const structure = buildMarketStructure(candles, rsiSeries)
-  const { nearestSupport, nearestResistance, swingHighs, swingLows } = structure
+  const { nearestSupport, nearestResistance, swingHighs, swingLows, divergence } = structure
 
   const trend = latest.ema20 == null || latest.ema50 == null
     ? 'unknown'
@@ -274,17 +277,16 @@ function buildTechnicalAnalysis(candles, selectedSymbol, selectedInterval) {
     ? `Bearish continuation becomes stronger if price loses support near ${nearestSupport.price.toFixed(2)}.`
     : 'Need more confirmation.'
 
-  const invalidation = trend === 'bullish' && nearestSupport
-    ? `If using the bullish idea, invalidation is a break below support near ${nearestSupport.price.toFixed(2)}.`
-    : nearestSupport
-      ? 'If using the bearish idea, invalidation is a clean reclaim above the latest broken support/resistance area.'
-      : 'No clear invalidation level yet.'
+  // The bull case dies below support; the bear case dies above resistance. These are genuinely
+  // different levels and must never share one string — showing the same invalidation on both
+  // scenario cards tells the trader their downside stop also protects an upside idea.
+  const invalidationBull = nearestSupport
+    ? `Bullish idea fails on a decisive close below support near ${nearestSupport.price.toFixed(2)}.`
+    : 'No confirmed support below price yet — no bullish invalidation level.'
 
-  let confidence = 50
-  if (trend === 'bullish' || trend === 'bearish') confidence += 15
-  if (momentum === 'bullish' || momentum === 'bearish') confidence += 15
-  if (nearestSupport) confidence += 10
-  if (nearestResistance) confidence += 10
+  const invalidationBear = nearestResistance
+    ? `Bearish idea fails on a decisive close above resistance near ${nearestResistance.price.toFixed(2)}.`
+    : 'No confirmed resistance above price yet — no bearish invalidation level.'
 
   return {
     symbol: selectedSymbol,
@@ -304,10 +306,11 @@ function buildTechnicalAnalysis(candles, selectedSymbol, selectedInterval) {
     nearestResistance,
     swingHighs: swingHighs.slice(-5).map((s) => ({ time: s.time, price: s.price })),
     swingLows: swingLows.slice(-5).map((s) => ({ time: s.time, price: s.price })),
+    divergence,
     bullishScenario,
     bearishScenario,
-    invalidation,
-    confidence: Math.min(confidence, 95),
+    invalidationBull,
+    invalidationBear,
   }
 }
 
@@ -642,6 +645,13 @@ export default function App() {
     return () => clearTimeout(saveTimer)
   }, [chartPreferences, chartPrefsReady, currentUserId])
 
+  // Signal agreement is recomputed when pivots land rather than folded into buildTechnicalAnalysis,
+  // so the expensive structure pass over 4000 candles does not rerun on every pivot refresh.
+  const signalAgreement = useMemo(
+    () => deriveSignalAgreement(analysis, pivotData?.classic?.analysis ?? null),
+    [analysis, pivotData],
+  )
+
   // Refresh pivots once per bar open (not on every websocket tick — intra-bar
   // ticks cannot change pivot levels, and each refresh hits Binance server-side).
   const lastBarTime = candles.length ? candles[candles.length - 1].time : null
@@ -899,6 +909,9 @@ export default function App() {
                 loading={loading}
                 error={error}
                 pivotData={pivotData}
+                signalAgreement={signalAgreement}
+                empiricalConfidence={aiAnalysis?.trade_plan?.empirical_confidence ?? null}
+                empiricalSampleSize={aiAnalysis?._meta?.calibration?.n ?? null}
               />
             </div>
           </m.div>
@@ -917,7 +930,16 @@ export default function App() {
                aiError={aiError}
                onRefresh={() => runAIAnalysis(candles)}
             />
+            <ScannerPanel
+              onSelectSymbol={(nextSymbol, nextInterval) => {
+                setSymbolInput(nextSymbol)
+                setSymbol(nextSymbol)
+                if (nextInterval) setChartInterval(nextInterval)
+                loadChart(nextSymbol, nextInterval || chartInterval)
+              }}
+            />
             <AccuracyPanel />
+            <EdgePanel />
           </m.div>
         )}
 

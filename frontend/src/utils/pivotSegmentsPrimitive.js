@@ -24,7 +24,7 @@ class PivotSegmentsPaneRenderer {
 
     const timeScale = chart.timeScale()
     const showLabels = style.showLabels !== false
-    const showPrices = style.showPrices !== false
+    const showPrices = style.showPrices === true
     const labelsPosition = style.labelsPosition === 'right' ? 'right' : 'left'
 
     target.useBitmapCoordinateSpace(({ context, horizontalPixelRatio, verticalPixelRatio }) => {
@@ -53,17 +53,18 @@ class PivotSegmentsPaneRenderer {
           if (showPrices) {
             text = `${text} ${formatPivotPrice(seg.price)}`
           }
-          const fontSize = Math.round(11 * verticalPixelRatio)
-          context.font = `${fontSize}px ui-sans-serif, system-ui, sans-serif`
+          const fontSize = Math.round(10 * verticalPixelRatio)
+          context.font = `500 ${fontSize}px ui-sans-serif, system-ui, sans-serif`
           context.fillStyle = seg.color
-          context.textBaseline = 'middle'
+          context.textBaseline = 'bottom'
           const pad = Math.round(4 * horizontalPixelRatio)
+          const labelY = scaledY - Math.round(3 * verticalPixelRatio)
           if (labelsPosition === 'left') {
             context.textAlign = 'left'
-            context.fillText(text, scaledX1 + pad, scaledY)
+            context.fillText(text, scaledX1 + pad, labelY)
           } else {
             context.textAlign = 'right'
-            context.fillText(text, scaledX2 - pad, scaledY)
+            context.fillText(text, scaledX2 - pad, labelY)
           }
         }
       }

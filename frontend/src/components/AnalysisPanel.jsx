@@ -16,6 +16,15 @@ function formatSwingTime(epochSeconds) {
   return `${d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', timeZone: 'UTC' })} ${d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' })} UTC`
 }
 
+// Maps the 8-way pivot zone to the 4 Constructivist zone-block buckets
+// (top = premium/expensive, bottom = discount/cheap, middle = equilibrium)
+function zoneBucket(zone) {
+  if (!zone) return null
+  if (zone === 'above_R3' || zone === 'between_R2_R3' || zone === 'between_R1_R2') return 'premium'
+  if (zone === 'between_S2_S1' || zone === 'between_S3_S2' || zone === 'below_S3') return 'discount'
+  return 'equilibrium'
+}
+
 export default function AnalysisPanel({
   symbol,
   interval,
@@ -27,16 +36,6 @@ export default function AnalysisPanel({
   empiricalConfidence = null,
   empiricalSampleSize = null
 }) {
-  // Muted bear→bull ramp matching the steel design tokens (chartTheme.js)
-  const zoneColors = {
-    above_R3: 'hsl(4, 56%, 40%)',
-    between_R2_R3: 'hsl(4, 50%, 48%)', between_R1_R2: 'hsl(4, 45%, 56%)',
-    between_PP_R1: 'hsl(4, 32%, 62%)',
-    between_S1_PP: 'hsl(152, 26%, 56%)',
-    between_S2_S1: 'hsl(152, 34%, 46%)', between_S3_S2: 'hsl(152, 40%, 36%)',
-    below_S3: 'hsl(152, 45%, 26%)'
-  }
-
   const pivots = pivotData?.classic?.pivots ?? null
   const pivotAnalysis = pivotData?.classic?.analysis ?? null
 
@@ -76,25 +75,26 @@ export default function AnalysisPanel({
         >
           <span className="summary-label">Signal agreement</span>
           <div className="confidence-bar-track">
-            <div className="confidence-bar-fill" id="confidence-bar-fill" style={{
-              width: `${agreementScore ?? 0}%`,
-              backgroundColor: (agreementScore ?? 0) >= 70 ? 'var(--bull)' : (agreementScore ?? 0) >= 45 ? 'var(--neutral)' : 'var(--bear)'
-            }}></div>
+            <div
+              className={`confidence-bar-fill ${(agreementScore ?? 0) >= 70 ? 'confidence-bar-fill--bull' : (agreementScore ?? 0) >= 45 ? '' : 'confidence-bar-fill--bear'}`}
+              id="confidence-bar-fill"
+              style={{ width: `${agreementScore ?? 0}%` }}
+            ></div>
           </div>
           <span className="confidence-pct" id="confidence-pct">
             {agreementScore != null ? `${agreementScore}/100` : '—'}
           </span>
         </div>
-        <p className="ai-signal-note" style={{ marginTop: '8px' }}>
+        <p className="ai-signal-note mt-2">
           {signalAgreementLabel(agreementScore)} — an alignment count, not a probability.
           {signalAgreement && !signalAgreement.pivotsIncluded && ' Pivot checks excluded until pivots load.'}
         </p>
         {empiricalConfidence != null && (
-          <div className="ai-row" style={{ marginTop: '4px' }}>
+          <div className="row-between mt-1">
             <span title="Realized hit rate for this setup type from scored past predictions. This is the only calibrated number on this card.">
               Calibrated hit rate
             </span>
-            <span style={{ opacity: (empiricalSampleSize ?? 0) < 20 ? 0.45 : 1 }}>
+            <span className={(empiricalSampleSize ?? 0) < 20 ? 'low-confidence' : ''}>
               {empiricalConfidence}%
               {empiricalSampleSize != null ? ` (n=${empiricalSampleSize})` : ''}
               {(empiricalSampleSize ?? 0) < 20 ? ' — too few samples to trust' : ''}
@@ -109,30 +109,30 @@ export default function AnalysisPanel({
         </div>
         <div className="levels-grid">
           <div className="level-item">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <div className="level-item__meta">
               <span className="level-label">EMA 20</span>
-              <span style={{ fontFamily: 'var(--font-ui)', fontSize: '11px', color: 'var(--text-muted)' }}>Short-term MA</span>
+              <span className="level-item__hint">Short-term MA</span>
             </div>
             <span className="level-value" id="level-ema20">{formatValue(analysis?.ema20)}</span>
           </div>
           <div className="level-item">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <div className="level-item__meta">
               <span className="level-label">EMA 50</span>
-              <span style={{ fontFamily: 'var(--font-ui)', fontSize: '11px', color: 'var(--text-muted)' }}>Medium-term MA</span>
+              <span className="level-item__hint">Medium-term MA</span>
             </div>
             <span className="level-value" id="level-ema50">{formatValue(analysis?.ema50)}</span>
           </div>
           <div className="level-item">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <div className="level-item__meta">
               <span className="level-label">Support</span>
-              <span style={{ fontFamily: 'var(--font-ui)', fontSize: '11px', color: 'var(--text-muted)' }}>Nearest floor</span>
+              <span className="level-item__hint">Nearest floor</span>
             </div>
             <span className="level-value bull" id="level-support">{formatLevel(analysis?.nearestSupport)}</span>
           </div>
           <div className="level-item">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <div className="level-item__meta">
               <span className="level-label">Resistance</span>
-              <span style={{ fontFamily: 'var(--font-ui)', fontSize: '11px', color: 'var(--text-muted)' }}>Nearest ceiling</span>
+              <span className="level-item__hint">Nearest ceiling</span>
             </div>
             <span className="level-value bear" id="level-resistance">{formatLevel(analysis?.nearestResistance)}</span>
           </div>
@@ -147,52 +147,44 @@ export default function AnalysisPanel({
         <div className="pivot-meta-row">
           <div className="pivot-meta-item">
             <span className="summary-label">Price Zone</span>
-            <span id="pivot-zone-tag" className="status-pill" style={{
-              backgroundColor: pivotAnalysis?.zone ? zoneColors[pivotAnalysis.zone] : 'transparent',
-              color: pivotAnalysis?.zone ? '#fff' : 'inherit',
-              border: pivotAnalysis?.zone ? 'none' : '1px solid var(--border-medium)'
-            }}>
+            <span id="pivot-zone-tag" className={`tag ${pivotAnalysis?.zone ? `zone-block--${zoneBucket(pivotAnalysis.zone)}` : ''}`}>
               {pivotAnalysis?.zone ? pivotAnalysis.zone.replace(/_/g, ' ') : '—'}
             </span>
           </div>
           <div className="pivot-meta-item">
             <span className="summary-label">Session Bias</span>
-            <span id="pivot-bias-tag" className="status-pill" style={{
-               backgroundColor: pivotAnalysis?.bias === 'bullish' ? 'var(--bull)' : pivotAnalysis?.bias === 'bearish' ? 'var(--bear)' : 'transparent',
-               color: pivotAnalysis?.bias ? '#fff' : 'inherit',
-               border: pivotAnalysis?.bias ? 'none' : '1px solid var(--border-medium)'
-            }}>
+            <span id="pivot-bias-tag" className={`tag ${pivotAnalysis?.bias === 'bullish' ? 'tag--bull' : pivotAnalysis?.bias === 'bearish' ? 'tag--bear' : ''}`}>
               {pivotAnalysis?.bias || '—'}
             </span>
           </div>
         </div>
 
-        <div className="pivot-levels-stack">
-          <div className="plevel r3">
-            <span>R3</span><strong id="pv-R3">{pivots?.R3 ?? '—'}</strong>
+        <div className="pivot-ladder">
+          <div className="plevel plevel--r">
+            <span className="plevel__label">R3</span><strong className="plevel__value" id="pv-R3">{pivots?.R3 ?? '—'}</strong>
           </div>
-          <div className="plevel r2">
-            <span>R2</span><strong id="pv-R2">{pivots?.R2 ?? '—'}</strong>
+          <div className="plevel plevel--r">
+            <span className="plevel__label">R2</span><strong className="plevel__value" id="pv-R2">{pivots?.R2 ?? '—'}</strong>
           </div>
-          <div className="plevel r1">
-            <span>R1</span><strong id="pv-R1">{pivots?.R1 ?? '—'}</strong>
+          <div className="plevel plevel--r">
+            <span className="plevel__label">R1</span><strong className="plevel__value" id="pv-R1">{pivots?.R1 ?? '—'}</strong>
           </div>
-          <div className="plevel pp">
-            <span>PP</span><strong id="pv-PP">{pivots?.PP ?? '—'}</strong>
+          <div className="plevel plevel--pp">
+            <span className="plevel__label">PP</span><strong className="plevel__value" id="pv-PP">{pivots?.PP ?? '—'}</strong>
           </div>
-          <div className="plevel s1">
-            <span>S1</span><strong id="pv-S1">{pivots?.S1 ?? '—'}</strong>
+          <div className="plevel plevel--s">
+            <span className="plevel__label">S1</span><strong className="plevel__value" id="pv-S1">{pivots?.S1 ?? '—'}</strong>
           </div>
-          <div className="plevel s2">
-            <span>S2</span><strong id="pv-S2">{pivots?.S2 ?? '—'}</strong>
+          <div className="plevel plevel--s">
+            <span className="plevel__label">S2</span><strong className="plevel__value" id="pv-S2">{pivots?.S2 ?? '—'}</strong>
           </div>
-          <div className="plevel s3">
-            <span>S3</span><strong id="pv-S3">{pivots?.S3 ?? '—'}</strong>
+          <div className="plevel plevel--s">
+            <span className="plevel__label">S3</span><strong className="plevel__value" id="pv-S3">{pivots?.S3 ?? '—'}</strong>
           </div>
         </div>
 
         {pivotAnalysis?.atInflectionPoint && pivotAnalysis?.inflectionLevel && (
-          <div id="pivot-inflection" className="inflection-alert" style={{ display: 'flex' }}>
+          <div id="pivot-inflection" className="inflection-alert">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
             <span>Inflection: <strong id="pivot-inflection-level">{pivotAnalysis?.inflectionLevel?.label} @ {pivotAnalysis?.inflectionLevel?.value}</strong></span>
           </div>
@@ -226,42 +218,30 @@ export default function AnalysisPanel({
           <div className="scenario bull-scenario">
             <div className="scenario-header">Bullish Scenario</div>
             <p id="trade-bull">{analysis?.bullishScenario || 'Awaiting analysis...'}</p>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: '8px',
-              padding: '8px 10px',
-              background: 'var(--bear-soft)',
-              borderRadius: 'var(--radius-xs)',
-              borderLeft: '2px solid var(--color-bear)',
-            }}>
-              <span style={{ fontFamily: 'var(--font-ui)', fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-bear)', whiteSpace: 'nowrap' }}>Invalidates if</span>
-              <span id="inv-bull" style={{ fontFamily: 'var(--font-ui)', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{analysis?.invalidationBull || '—'}</span>
+            <div className="invalidation invalidation--bear">
+              <span className="invalidation__label">Invalidates if</span>
+              <span id="inv-bull" className="invalidation__value">{analysis?.invalidationBull || '—'}</span>
             </div>
           </div>
           <div className="scenario bear-scenario">
             <div className="scenario-header">Bearish Scenario</div>
             <p id="trade-bear">{analysis?.bearishScenario || 'Awaiting analysis...'}</p>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: '8px',
-              padding: '8px 10px',
-              background: 'var(--bull-soft)',
-              borderRadius: 'var(--radius-xs)',
-              borderLeft: '2px solid var(--color-bull)',
-            }}>
-              <span style={{ fontFamily: 'var(--font-ui)', fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-bull)', whiteSpace: 'nowrap' }}>Invalidates if</span>
-              <span id="inv-bear" style={{ fontFamily: 'var(--font-ui)', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{analysis?.invalidationBear || '—'}</span>
+            <div className="invalidation invalidation--bull">
+              <span className="invalidation__label">Invalidates if</span>
+              <span id="inv-bear" className="invalidation__value">{analysis?.invalidationBear || '—'}</span>
             </div>
           </div>
         </div>
       </div>
 
       <div className="panel-card tall-dashboard-panel">
-        <div className="panel-card-header" style={{ borderBottom: 'none', marginBottom: 0, paddingBottom: 0 }}>
-          <span className="panel-title" style={{ fontSize: '13px', fontWeight: 500 }}>Recent Swing Points</span>
-          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+        <div className="panel-card-header panel-card-header--flush">
+          <span className="panel-title panel-title--regular">Recent Swing Points</span>
+          <span className="text-sm-muted">
             {(analysis?.swingHighs?.length || 0) + (analysis?.swingLows?.length || 0)} points
           </span>
         </div>
-        <div style={{ marginTop: '16px' }}>
+        <div className="mt-4">
           {(() => {
             if (!analysis) return <div className="swing-item text-muted">—</div>;
             
@@ -291,10 +271,9 @@ export default function AnalysisPanel({
                   <span className="swing-price">{swing.price.toFixed(2)}</span>
                   
                   <div className="swing-bar-container" title={`Price: ${swing.price.toFixed(2)}`}>
-                    <div 
-                      className="swing-bar-fill" 
+                    <div
+                      className={`swing-bar-fill ${swing.type === 'SH' ? 'swing-bar-fill--bull' : 'swing-bar-fill--bear'}`}
                       style={{
-                        background: swing.type === 'SH' ? 'var(--color-bull)' : 'var(--color-bear)',
                         width: `${swing.type === 'SH' ? 100 - posPercent : posPercent}%`,
                         [swing.type === 'SH' ? 'right' : 'left']: 0
                       }}

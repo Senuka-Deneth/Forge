@@ -15,10 +15,10 @@ import {
 
 function StatTile({ label, value, hint }) {
   return (
-    <div className="panel-card" style={{ padding: '16px' }}>
+    <div>
       <div className="summary-label">{label}</div>
-      <div className="summary-value" style={{ marginTop: '8px' }}>{value ?? '—'}</div>
-      {hint && <p className="ai-signal-note" style={{ marginTop: '8px' }}>{hint}</p>}
+      <div className="summary-value mt-2">{value ?? '—'}</div>
+      {hint && <p className="ai-signal-note mt-2">{hint}</p>}
     </div>
   )
 }
@@ -43,7 +43,7 @@ function EquityCurve({ points }) {
 
   return (
     <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} aria-label="Cumulative R equity curve">
-      <path d={path} fill="none" stroke="var(--accent-primary)" strokeWidth="2" />
+      <path d={path} fill="none" stroke="var(--accent)" strokeWidth="2" />
     </svg>
   )
 }
@@ -217,7 +217,7 @@ export default function JournalPanel({ symbol, latestPrice, aiAnalysis }) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%' }}>
+    <div className="stack-4">
       <div className="panel-card">
         <div className="panel-card-header">
           <span className="panel-title">Trade Journal</span>
@@ -226,27 +226,27 @@ export default function JournalPanel({ symbol, latestPrice, aiAnalysis }) {
         <p className="ai-signal-note">
           Log trades from the current AI plan or manually. PnL and R-multiple are computed server-side when you close a position.
         </p>
-        {error && <p className="ai-signal-note" style={{ color: 'var(--bear)' }}>{error}</p>}
+        {error && <p className="ai-signal-note bear">{error}</p>}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px' }}>
+      <div className="stat-grid">
         <StatTile label="Decided win rate" value={formatJournalPct(stats.winRate)} hint={`${stats.wins}W / ${stats.losses}L`} />
         <StatTile label="Average R" value={formatJournalR(stats.avgR)} />
         <StatTile label="Expectancy" value={stats.expectancy != null ? `$${stats.expectancy.toFixed(2)}` : '—'} />
         <StatTile label="Closed trades" value={stats.totalTrades} />
       </div>
 
-      <div className="panel-card" style={{ padding: '16px' }}>
-        <div className="summary-label" style={{ marginBottom: '12px' }}>Cumulative R</div>
+      <div className="panel-card panel-card--pad">
+        <div className="summary-label mb-3">Cumulative R</div>
         <EquityCurve points={stats.equityCurve} />
       </div>
 
-      <div className="panel-card" style={{ padding: '16px' }}>
-        <div className="panel-card-header" style={{ marginBottom: '12px' }}>
+      <div className="panel-card panel-card--pad">
+        <div className="panel-card-header mb-3">
           <span className="panel-title">New Entry</span>
           {form.analysis_id && <span className="panel-badge ready">Linked to AI analysis</span>}
         </div>
-        <form onSubmit={handleCreate} className="position-calc-inputs" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px' }}>
+        <form onSubmit={handleCreate} className="position-calc-inputs">
           <label>
             Symbol
             <input value={form.symbol} onChange={(e) => updateForm('symbol', e.target.value)} required />
@@ -274,11 +274,11 @@ export default function JournalPanel({ symbol, latestPrice, aiAnalysis }) {
             Target
             <input type="number" step="any" min="0" value={form.target} onChange={(e) => updateForm('target', e.target.value)} />
           </label>
-          <label style={{ gridColumn: '1 / -1' }}>
+          <label className="col-span-all">
             Notes
-            <textarea value={form.notes} onChange={(e) => updateForm('notes', e.target.value)} rows={3} style={{ width: '100%' }} />
+            <textarea value={form.notes} onChange={(e) => updateForm('notes', e.target.value)} rows={3} />
           </label>
-          <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end' }}>
+          <div className="col-span-all justify-end">
             <button type="submit" className="btn-primary" disabled={saving}>
               {saving ? 'Saving…' : 'Open position'}
             </button>
@@ -286,8 +286,8 @@ export default function JournalPanel({ symbol, latestPrice, aiAnalysis }) {
         </form>
       </div>
 
-      <div className="panel-card" style={{ padding: '16px' }}>
-        <div className="panel-card-header" style={{ marginBottom: '12px' }}>
+      <div className="panel-card panel-card--pad">
+        <div className="panel-card-header mb-3">
           <span className="panel-title">Open Positions</span>
           <span className="panel-badge">{openEntries.length}</span>
         </div>
@@ -296,20 +296,20 @@ export default function JournalPanel({ symbol, latestPrice, aiAnalysis }) {
         ) : openEntries.length === 0 ? (
           <p className="ai-signal-note">No open positions.</p>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div className="stack-3">
             {openEntries.map((entry) => (
-              <div key={entry.id} className="ai-card" style={{ padding: '12px' }}>
-                <div className="ai-rows">
-                  <div className="ai-row">
+              <div key={entry.id} className="ai-card">
+                <div className="stack-2">
+                  <div className="row-between">
                     <span>{entry.symbol} · {entry.side}</span>
                     <span>{formatJournalPrice(entry.entry)}</span>
                   </div>
-                  <div className="ai-row">
+                  <div className="row-between">
                     <span>Stop / Target</span>
                     <span>{formatJournalPrice(entry.stop)} / {formatJournalPrice(entry.target)}</span>
                   </div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '8px', marginTop: '12px' }}>
+                <div className="position-calc-inputs">
                   <label>
                     Exit price
                     <input
@@ -331,7 +331,7 @@ export default function JournalPanel({ symbol, latestPrice, aiAnalysis }) {
                     />
                   </label>
                 </div>
-                <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                <div className="row">
                   <button type="button" className="btn-primary" disabled={saving} onClick={() => handleClose(entry)}>Close</button>
                   <button type="button" className="btn-secondary" disabled={saving} onClick={() => handleCancel(entry)}>Cancel</button>
                 </div>
@@ -341,49 +341,49 @@ export default function JournalPanel({ symbol, latestPrice, aiAnalysis }) {
         )}
       </div>
 
-      <div className="panel-card" style={{ padding: '16px' }}>
-        <div className="panel-card-header" style={{ marginBottom: '12px' }}>
+      <div className="panel-card panel-card--pad">
+        <div className="panel-card-header mb-3">
           <span className="panel-title">Closed History</span>
           <span className="panel-badge">{closedEntries.length}</span>
         </div>
         {closedEntries.length === 0 ? (
           <p className="ai-signal-note">No closed trades yet.</p>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div className="stack-3">
             {closedEntries.map((entry) => {
               const outcome = outcomes[entry.id]
               const pnlPositive = entry.pnl != null && entry.pnl >= 0
               return (
-                <div key={entry.id} className="ai-card" style={{ padding: '12px' }}>
-                  <div className="ai-rows">
-                    <div className="ai-row">
+                <div key={entry.id} className="ai-card">
+                  <div className="stack-2">
+                    <div className="row-between">
                       <span>{entry.symbol} · {entry.side}</span>
-                      <span style={{ color: pnlPositive ? 'var(--bull)' : 'var(--bear)' }}>
+                      <span className={pnlPositive ? 'bull' : 'bear'}>
                         {entry.pnl != null ? `$${Number(entry.pnl).toFixed(2)}` : '—'}
                       </span>
                     </div>
-                    <div className="ai-row">
+                    <div className="row-between">
                       <span>Entry → Exit</span>
                       <span>{formatJournalPrice(entry.entry)} → {formatJournalPrice(entry.exit_price)}</span>
                     </div>
-                    <div className="ai-row">
+                    <div className="row-between">
                       <span>R-multiple</span>
                       <span>{formatJournalR(entry.r_multiple)}</span>
                     </div>
                     {outcome && (
                       <>
-                        <div className="ai-row">
+                        <div className="row-between">
                           <span>AI plan outcome</span>
                           <span>{outcome.outcome ?? '—'}</span>
                         </div>
-                        <div className="ai-row">
+                        <div className="row-between">
                           <span>AI realized R</span>
                           <span>{formatJournalR(outcome.realized_r)}</span>
                         </div>
                       </>
                     )}
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
+                  <div className="justify-end">
                     <button type="button" className="btn-secondary" disabled={saving} onClick={() => handleDelete(entry)}>Delete</button>
                   </div>
                 </div>

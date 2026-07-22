@@ -5,33 +5,33 @@
     "semantic_hash": ""
   },
   "frontend/src/App.jsx": {
-    "mtime": 1784696797.8647213,
-    "ast_hash": "7ce4966db3b63c962311de70c625e554",
+    "mtime": 1784710344.372674,
+    "ast_hash": "27753c49e1553edd72a3cb836e7565ec",
     "semantic_hash": ""
   },
   "frontend/src/components/AIAnalysisPanel.jsx": {
-    "mtime": 1784696503.699427,
-    "ast_hash": "bfd9d7874fb263db6c385abc817a6d0d",
+    "mtime": 1784708383.7283642,
+    "ast_hash": "15b5e877916412973d1ab1902c19399c",
     "semantic_hash": ""
   },
   "frontend/src/components/AnalysisPanel.jsx": {
-    "mtime": 1784663294.805815,
-    "ast_hash": "68b0f7d44dff71654df8a50dbf18781e",
+    "mtime": 1784710361.3050778,
+    "ast_hash": "57ae4d488bd1c134030e14146319051e",
     "semantic_hash": ""
   },
   "frontend/src/components/AuthShell.jsx": {
-    "mtime": 1784646418.4226737,
+    "mtime": 1784708821.8466363,
     "ast_hash": "feb600c56683ea03531da1b9ebcfcf1d",
     "semantic_hash": ""
   },
   "frontend/src/components/ChartPanel.jsx": {
-    "mtime": 1784693330.5193949,
-    "ast_hash": "ba92b2764fbafb7723e6b083f98a19ef",
+    "mtime": 1784710337.5726771,
+    "ast_hash": "041affa4f6c40c6a655100ac12ae7217",
     "semantic_hash": ""
   },
   "frontend/src/components/EducationPanel.jsx": {
-    "mtime": 1784649680.7127883,
-    "ast_hash": "aeb79399d400bde23ad811ff11b258ee",
+    "mtime": 1784707722.3306932,
+    "ast_hash": "5457451f8e617711cc5afd4d3b1971ec",
     "semantic_hash": ""
   },
   "frontend/src/components/GoogleIcon.jsx": {
@@ -40,7 +40,7 @@
     "semantic_hash": ""
   },
   "frontend/src/components/HeaderControls.jsx": {
-    "mtime": 1784645778.916126,
+    "mtime": 1784708821.8224614,
     "ast_hash": "968c181c00ca2970c019f3c70f67a37a",
     "semantic_hash": ""
   },
@@ -55,8 +55,8 @@
     "semantic_hash": ""
   },
   "frontend/src/components/StatusBar.jsx": {
-    "mtime": 1784696541.1280694,
-    "ast_hash": "ced70c6b371aea860c1c28bbe6d22079",
+    "mtime": 1784710353.0404491,
+    "ast_hash": "3e444abff202e08a8ca1d023869249f9",
     "semantic_hash": ""
   },
   "frontend/src/context/AuthContext.jsx": {
@@ -65,7 +65,7 @@
     "semantic_hash": ""
   },
   "frontend/src/data/educationData.js": {
-    "mtime": 1784696705.6745377,
+    "mtime": 1784708821.8920605,
     "ast_hash": "9635e05132e7513dbf337a1b72372260",
     "semantic_hash": ""
   },
@@ -110,8 +110,8 @@
     "semantic_hash": ""
   },
   "frontend/src/utils/pivotChartPrefs.js": {
-    "mtime": 1784645957.8490682,
-    "ast_hash": "1c1f453a991edf810a595a3459b91ff5",
+    "mtime": 1784710307.315168,
+    "ast_hash": "34e41a7a5d04ac54767dfdee1a5d0170",
     "semantic_hash": ""
   },
   "frontend/src/utils/pivotPoints.test.js": {
@@ -120,13 +120,13 @@
     "semantic_hash": ""
   },
   "frontend/src/utils/pivotSegmentsPrimitive.js": {
-    "mtime": 1784427946.1906848,
-    "ast_hash": "b68ea1d580aa948a98b5384edc07da34",
+    "mtime": 1784710308.870188,
+    "ast_hash": "933a02f26f6a5cbd213f85e2a12bd08f",
     "semantic_hash": ""
   },
   "frontend/src/utils/userPreferences.js": {
-    "mtime": 1784695587.2683766,
-    "ast_hash": "332368182eada4b693bb330ea2eb2d43",
+    "mtime": 1784710316.7377188,
+    "ast_hash": "86ebb4ebe58f4b18a506d35a531eddbf",
     "semantic_hash": ""
   },
   "frontend/vite.config.js": {
@@ -190,8 +190,8 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1784696697.3266127,
-    "ast_hash": "147d3db0153ce8bda3db1f52ae7effa3",
+    "mtime": 1784696810.4559991,
+    "ast_hash": "f774369084b903676e8f9e5819eac272",
     "semantic_hash": ""
   },
   "docs/pivots.md": {
@@ -200,7 +200,7 @@
     "semantic_hash": ""
   },
   "frontend/index.html": {
-    "mtime": 1784645581.0459266,
+    "mtime": 1784708821.788002,
     "ast_hash": "6d3160c8091070eccadbdb0885517eee",
     "semantic_hash": ""
   },
@@ -215,8 +215,8 @@
     "semantic_hash": ""
   },
   "frontend/src/components/AccuracyPanel.jsx": {
-    "mtime": 1784649746.49921,
-    "ast_hash": "60aa2840873dbd4416f6729dd09a2640",
+    "mtime": 1784707849.2072642,
+    "ast_hash": "182b0792cac396206d6d4294c4669dc1",
     "semantic_hash": ""
   },
   "frontend/src/utils/incrementalIndicators.js": {
@@ -225,7 +225,7 @@
     "semantic_hash": ""
   },
   "package.json": {
-    "mtime": 1784691600.8376806,
+    "mtime": 1784705509.6620808,
     "ast_hash": "04450a45de073c2d4f62f74413d9ed86",
     "semantic_hash": ""
   },
@@ -335,7 +335,7 @@
     "semantic_hash": ""
   },
   "frontend/src/styles/chartTheme.js": {
-    "mtime": 1784687325.811427,
+    "mtime": 1784708821.764123,
     "ast_hash": "5a2ee97287087db540e14d90944fc060",
     "semantic_hash": ""
   },
@@ -455,8 +455,8 @@
     "semantic_hash": ""
   },
   "frontend/src/components/JournalPanel.jsx": {
-    "mtime": 1784696728.2553008,
-    "ast_hash": "39b853f57176ae2b5d6f44d1753002de",
+    "mtime": 1784708151.6011906,
+    "ast_hash": "ec5e10c73df274c3d0ce0c63cb611ee1",
     "semantic_hash": ""
   },
   "frontend/src/utils/journal.js": {
@@ -490,13 +490,13 @@
     "semantic_hash": ""
   },
   ".claude/settings.local.json": {
-    "mtime": 1784694788.8895438,
-    "ast_hash": "28decb8dd1abc086f814139ddfcbee91",
+    "mtime": 1784709471.5994754,
+    "ast_hash": "e59bdeedcb2de414ba89d789fdbc5efc",
     "semantic_hash": ""
   },
   "frontend/src/utils/signalAgreement.js": {
-    "mtime": 1784662858.4235091,
-    "ast_hash": "0aa84d986c710de8fcdc34ca3f79e3c6",
+    "mtime": 1784710317.944283,
+    "ast_hash": "1e6f14b0f479c13e5d2c756be156223b",
     "semantic_hash": ""
   },
   "frontend/src/utils/signalAgreement.test.js": {
@@ -570,7 +570,7 @@
     "semantic_hash": ""
   },
   "frontend/src/utils/userPreferences.test.js": {
-    "mtime": 1784687708.1203802,
+    "mtime": 1784708821.938362,
     "ast_hash": "e8acbab9ee5ef66e2b196cbe13fdffdc",
     "semantic_hash": ""
   },
@@ -625,17 +625,17 @@
     "semantic_hash": ""
   },
   "frontend/src/components/ScannerPanel.jsx": {
-    "mtime": 1784696714.0398366,
-    "ast_hash": "ce43a603d311fe5b18c73a7ecc0a8502",
+    "mtime": 1784707883.6218839,
+    "ast_hash": "070dfec002cd4f9761dc3874ce2f68f7",
     "semantic_hash": ""
   },
   "frontend/src/components/VerdictPanel.jsx": {
-    "mtime": 1784696469.5056818,
-    "ast_hash": "749318bbc389950244d4c69541286e43",
+    "mtime": 1784708260.535633,
+    "ast_hash": "78f1cf3d5d30c42317f4d20197d1373d",
     "semantic_hash": ""
   },
   "frontend/src/utils/confluencePrimitive.js": {
-    "mtime": 1784692778.2095509,
+    "mtime": 1784708821.9126427,
     "ast_hash": "a4f869c89fb6ac0319ae5dea62f265e4",
     "semantic_hash": ""
   },
@@ -695,8 +695,8 @@
     "semantic_hash": ""
   },
   "frontend/src/components/EdgePanel.jsx": {
-    "mtime": 1784693230.5199516,
-    "ast_hash": "50116bf7c9eba52ce9ff1004ff0f8e6a",
+    "mtime": 1784707826.8830137,
+    "ast_hash": "3b576511d219e6ece700737f23caded0",
     "semantic_hash": ""
   },
   "supabase/functions/_shared/journalSnapshot.ts": {

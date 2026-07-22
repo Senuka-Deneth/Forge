@@ -3,40 +3,28 @@ import { invokeFunction, supabase } from '../supabaseClient'
 
 const INTERVAL_OPTIONS = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1M']
 
-const colorMap = {
-  long: 'var(--bull)',
-  short: 'var(--bear)',
-  wait: 'var(--neutral)',
-  take: 'var(--bull)',
-  skip: 'var(--bear)',
-  trending: 'var(--info)',
-  ranging: 'var(--neutral)',
-  volatile_chop: 'var(--bear)',
+const PILL_VARIANTS = {
+  long: 'tag--bull',
+  short: 'tag--bear',
+  wait: 'tag--muted',
+  take: 'tag--bull',
+  skip: 'tag--bear',
+  trending: 'tag--accent',
+  ranging: 'tag--muted',
+  volatile_chop: 'tag--bear',
 }
 
 function StatusPill({ value }) {
   if (value == null) {
-    return <span className="status-pill" style={{ color: 'inherit', opacity: 0.5 }}>—</span>
+    return <span className="tag tag--muted">—</span>
   }
 
   const valStr = String(value).toLowerCase()
   const display = String(value).replace(/_/g, ' ').toUpperCase()
-  const color = colorMap[valStr] ?? 'var(--text-muted)'
-  const isTransparent = color === 'transparent'
+  const variant = PILL_VARIANTS[valStr] ?? ''
 
   return (
-    <span className="status-pill" style={{
-      backgroundColor: isTransparent ? 'var(--bg-overlay)' : `var(--${color.replace('var(--', '').replace(')', '')}-soft, var(--bg-overlay))`,
-      color,
-      border: `1px solid ${isTransparent ? 'var(--border-subtle)' : color}`,
-      padding: '2px 8px',
-      borderRadius: 'var(--radius-sm)',
-      fontSize: '10px',
-      fontWeight: '700',
-      letterSpacing: '0.02em',
-      display: 'inline-flex',
-      alignItems: 'center',
-    }}>
+    <span className={`tag ${variant}`.trim()}>
       {display}
     </span>
   )
@@ -209,13 +197,13 @@ export default function ScannerPanel({ onSelectSymbol, armedAlerts = [] }) {
   }
 
   return (
-    <section className="scanner-panel" aria-label="Watchlist scanner">
-      <div className="panel-card">
-        <div className="panel-card-header">
-          <span className="panel-title">Watchlist Scanner</span>
+    <section className="scanner-panel stack-4" aria-label="Watchlist scanner">
+      <div className="module">
+        <div className="module__header">
+          <span className="module__title">Watchlist Scanner</span>
           <button
             type="button"
-            className="btn-primary"
+            className="btn btn--solid"
             onClick={handleScan}
             disabled={scanning || loadingList || !watchlist.length}
           >
@@ -223,78 +211,81 @@ export default function ScannerPanel({ onSelectSymbol, armedAlerts = [] }) {
           </button>
         </div>
 
-        {error && <p className="error-text" style={{ marginTop: '12px' }}>{error}</p>}
+        <div className="module__body stack-4">
+          {error && <p className="bear">{error}</p>}
 
-        {armedAlerts.length > 0 && (
-          <div style={{ marginTop: '12px' }}>
-            <div className="summary-label" style={{ marginBottom: '4px' }}>Armed alerts</div>
-            <div className="ai-rows">
-              {armedAlerts.slice(0, 8).map((alert) => (
-                <div key={alert.id} className="ai-row">
-                  <span>{alert.symbol} {alert.direction} {alert.level}</span>
-                  <span style={{ opacity: 0.6 }}>{String(alert.source || '').replace(/_/g, ' ')}</span>
+          {armedAlerts.length > 0 && (
+            <div className="panel-section">
+              <div className="panel-section__title">Armed alerts</div>
+              <div className="stack-2">
+                {armedAlerts.slice(0, 8).map((alert) => (
+                  <div key={alert.id} className="row-between">
+                    <span>{alert.symbol} {alert.direction} {alert.level}</span>
+                    <span className="muted">{String(alert.source || '').replace(/_/g, ' ')}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <form className="row wrap" onSubmit={handleAdd}>
+            <label className="field-group">
+              <span className="field-label">Symbol</span>
+              <input
+                className="field"
+                type="text"
+                value={newSymbol}
+                onChange={(e) => setNewSymbol(e.target.value.toUpperCase())}
+                placeholder="BTCUSDT"
+                maxLength={20}
+              />
+            </label>
+            <label className="field-group">
+              <span className="field-label">Interval</span>
+              <select className="field" value={newInterval} onChange={(e) => setNewInterval(e.target.value)}>
+                {INTERVAL_OPTIONS.map((interval) => (
+                  <option key={interval} value={interval}>{interval}</option>
+                ))}
+              </select>
+            </label>
+            <button type="submit" className="btn" disabled={saving || !newSymbol.trim()}>
+              Add
+            </button>
+          </form>
+
+          {loadingList ? (
+            <p className="ai-signal-note">Loading watchlist…</p>
+          ) : watchlist.length === 0 ? (
+            <p className="ai-signal-note">Add symbols to your watchlist, then scan for deterministic setups.</p>
+          ) : (
+            <div className="stack-2">
+              {watchlist.map((row) => (
+                <div key={row.id} className="row-between">
+                  <span>{row.symbol} · {row.interval}</span>
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={saving}
+                    onClick={() => handleRemove(row)}
+                  >
+                    Remove
+                  </button>
                 </div>
               ))}
             </div>
-          </div>
-        )}
-
-        <form className="ai-rows" style={{ marginTop: '16px', gap: '12px' }} onSubmit={handleAdd}>
-          <label style={{ flex: 1 }}>
-            Symbol
-            <input
-              type="text"
-              value={newSymbol}
-              onChange={(e) => setNewSymbol(e.target.value.toUpperCase())}
-              placeholder="BTCUSDT"
-              maxLength={20}
-            />
-          </label>
-          <label>
-            Interval
-            <select value={newInterval} onChange={(e) => setNewInterval(e.target.value)}>
-              {INTERVAL_OPTIONS.map((interval) => (
-                <option key={interval} value={interval}>{interval}</option>
-              ))}
-            </select>
-          </label>
-          <button type="submit" className="btn-ghost" disabled={saving || !newSymbol.trim()}>
-            Add
-          </button>
-        </form>
-
-        {loadingList ? (
-          <p className="ai-signal-note" style={{ marginTop: '16px' }}>Loading watchlist…</p>
-        ) : watchlist.length === 0 ? (
-          <p className="ai-signal-note" style={{ marginTop: '16px' }}>Add symbols to your watchlist, then scan for deterministic setups.</p>
-        ) : (
-          <div className="ai-rows" style={{ marginTop: '12px' }}>
-            {watchlist.map((row) => (
-              <div key={row.id} className="ai-row">
-                <span>{row.symbol} · {row.interval}</span>
-                <button
-                  type="button"
-                  className="btn-ghost"
-                  disabled={saving}
-                  onClick={() => handleRemove(row)}
-                >
-                  Remove
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {sortedResults.length > 0 && (
-        <div className="panel-card" style={{ marginTop: '16px' }}>
-          <div className="panel-card-header">
-            <span className="panel-title">Scan results</span>
-            <span className="panel-badge ready">{sortedResults.length} symbols</span>
+        <div className="module">
+          <div className="module__header">
+            <span className="module__title">Scan results</span>
+            <span className="tag tag--bull">{sortedResults.length} symbols</span>
           </div>
 
-          <div style={{ overflowX: 'auto', marginTop: '12px' }}>
-            <table className="scanner-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-xs)' }}>
+          <div className="module__body">
+            <table className="scanner-table">
               <thead>
                 <tr>
                   {[
@@ -308,7 +299,7 @@ export default function ScannerPanel({ onSelectSymbol, armedAlerts = [] }) {
                     ['ev_r', 'EV (R)'],
                     ['risk_reward', 'R:R'],
                   ].map(([key, label]) => (
-                    <th key={key} style={{ textAlign: 'left', padding: '8px', cursor: 'pointer' }} onClick={() => toggleSort(key)}>
+                    <th key={key} onClick={() => toggleSort(key)}>
                       {label}{sortIndicator(key)}
                     </th>
                   ))}
@@ -318,21 +309,21 @@ export default function ScannerPanel({ onSelectSymbol, armedAlerts = [] }) {
                 {sortedResults.map((row) => (
                   <tr
                     key={`${row.symbol}-${row.interval}`}
-                    style={{ cursor: onSelectSymbol ? 'pointer' : 'default' }}
+                    className={onSelectSymbol ? 'scanner-row' : ''}
                     onClick={() => onSelectSymbol?.(row.symbol, row.interval)}
                   >
-                    <td style={{ padding: '8px' }}>
+                    <td>
                       <div>{row.symbol}</div>
-                      <div className="ai-signal-note">{row.interval}{row.error ? ` · ${row.error}` : ''}</div>
+                      <div className="muted">{row.interval}{row.error ? ` · ${row.error}` : ''}</div>
                     </td>
-                    <td style={{ padding: '8px' }}><StatusPill value={row.bias} /></td>
-                    <td style={{ padding: '8px' }}><StatusPill value={row.setup_type} /></td>
-                    <td style={{ padding: '8px' }}><StatusPill value={row.regime} /></td>
-                    <td style={{ padding: '8px' }}>{row.confidence}%</td>
-                    <td style={{ padding: '8px' }}>{row.confluence_score}%</td>
-                    <td style={{ padding: '8px' }}><StatusPill value={row.verdict} /></td>
-                    <td style={{ padding: '8px' }}>{formatNumber(row.ev_r, 3)}</td>
-                    <td style={{ padding: '8px' }}>{formatNumber(row.risk_reward, 2)}</td>
+                    <td><StatusPill value={row.bias} /></td>
+                    <td><StatusPill value={row.setup_type} /></td>
+                    <td><StatusPill value={row.regime} /></td>
+                    <td className="num">{row.confidence}%</td>
+                    <td className="num">{row.confluence_score}%</td>
+                    <td><StatusPill value={row.verdict} /></td>
+                    <td className="num">{formatNumber(row.ev_r, 3)}</td>
+                    <td className="num">{formatNumber(row.risk_reward, 2)}</td>
                   </tr>
                 ))}
               </tbody>

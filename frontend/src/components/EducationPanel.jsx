@@ -82,7 +82,7 @@ export default function EducationPanel() {
   };
 
   return (
-    <div style={{ display: 'flex', width: '100%', height: '100%', overflow: 'hidden', background: 'var(--bg-base)' }}>
+    <div className="edu-shell">
       {/* ─── EDUCATION TOPIC SIDEBAR ─── */}
       <aside className="edu-sidebar">
         <a href="#" className="edu-brand" onClick={(e) => { e.preventDefault(); mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' }); }}>
@@ -96,7 +96,7 @@ export default function EducationPanel() {
         </a>
 
         <div className="edu-nav-wrap">
-          <nav id="edu-sidebar" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <nav id="edu-sidebar" className="edu-topics-nav">
             {educationData.map(group => {
               // Filter items based on search
               const filteredItems = group.items.filter(item => 
@@ -130,7 +130,7 @@ export default function EducationPanel() {
       </aside>
 
       {/* ─── MAIN CONTENT ─── */}
-      <div className="edu-main" ref={mainRef} style={{ animation: 'pageAppear 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards' }}>
+      <div className="edu-main" ref={mainRef}>
         
         {/* ─── TOPBAR ─── */}
         <header className="edu-topbar">
@@ -186,18 +186,18 @@ export default function EducationPanel() {
                     </div>
                     <div className="edu-section-body">
                       <div className="edu-block">
-                        <div className="edu-block-label">What is it?</div>
+                        <div className="edu-block-title">What is it?</div>
                         <p className="edu-block-text">{item.whatIsIt}</p>
                       </div>
                       <div className="edu-block">
-                        <div className="edu-block-label">How to read it</div>
+                        <div className="edu-block-title">How to read it</div>
                         <p className="edu-block-text">{item.howToRead}</p>
                         {item.visualHtml && (
                           <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(item.visualHtml) }} />
                         )}
                       </div>
                       <div className="edu-block">
-                        <div className="edu-block-label">How to use it</div>
+                        <div className="edu-block-title">How to use it</div>
                         <p className="edu-block-text">{item.howToUse}</p>
                       </div>
                     </div>

@@ -4,7 +4,8 @@ import {
   maxPivotsBackForType,
 } from '@forge/pivot'
 
-export const STANDARD_PIVOT_COLOR = 'rgba(116, 143, 180, 0.92)'
+export const STANDARD_PIVOT_COLOR = '#FB8C00'
+export const LEGACY_PIVOT_COLOR = 'rgba(116, 143, 180, 0.92)'
 
 export const PIVOT_LEVEL_LABELS = {
   PP: 'P',
@@ -30,7 +31,7 @@ export function createDefaultPivotLevelOptions() {
 
 export const DEFAULT_PIVOT_CHART_PREFS = {
   showPivotLabels: true,
-  showPivotPrices: true,
+  showPivotPrices: false,
   pivotLabelsPosition: 'left',
   pivotLineWidth: 1,
   pivotLevelOptions: createDefaultPivotLevelOptions(),
@@ -56,11 +57,13 @@ export function sanitizePivotLevelOptions(raw) {
   PIVOT_LEVEL_KEYS.forEach((level) => {
     const entry = raw[level]
     if (!entry || typeof entry !== 'object') return
+    let color = typeof entry.color === 'string' && entry.color.trim()
+      ? entry.color.trim()
+      : STANDARD_PIVOT_COLOR
+    if (color === LEGACY_PIVOT_COLOR) color = STANDARD_PIVOT_COLOR
     sanitized[level] = {
       enabled: entry.enabled !== false,
-      color: typeof entry.color === 'string' && entry.color.trim()
-        ? entry.color.trim()
-        : STANDARD_PIVOT_COLOR,
+      color,
     }
   })
   return sanitized
@@ -74,7 +77,7 @@ export function sanitizePivotChartPrefs(payload = {}) {
 
   return {
     showPivotLabels: payload.showPivotLabels !== false,
-    showPivotPrices: payload.showPivotPrices !== false,
+    showPivotPrices: payload.showPivotPrices === true,
     pivotLabelsPosition: labelsPosition,
     pivotLineWidth: lineWidth,
     pivotLevelOptions,

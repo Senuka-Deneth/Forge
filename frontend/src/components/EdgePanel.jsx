@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { analyzeTradeEfficiency } from '@forge/trade-efficiency'
 import { supabase } from '../supabaseClient'
 import {
   computeJournalStats,
@@ -41,7 +42,8 @@ export default function EdgePanel() {
       setError('')
       const { data, error: qError } = await supabase
         .from('trade_journal')
-        .select('id, symbol, side, status, pnl, r_multiple, plan_adherence, behavioral_tags, mae, mfe, closed_at, analysis_id')
+        // entry and stop are required to express MAE/MFE in R — see the excursion section below.
+        .select('id, symbol, side, status, entry, stop, pnl, r_multiple, plan_adherence, behavioral_tags, mae, mfe, closed_at, analysis_id')
         .order('opened_at', { ascending: false })
         .limit(500)
       if (cancelled) return
@@ -57,7 +59,12 @@ export default function EdgePanel() {
     return () => { cancelled = true }
   }, [])
 
-  const closed = entries.filter((e) => e.status === 'closed' && e.pnl != null)
+  // Memoized so it keeps a stable identity across renders — the efficiency report below depends
+  // on it, and an array rebuilt every render would defeat that memo entirely.
+  const closed = useMemo(
+    () => entries.filter((e) => e.status === 'closed' && e.pnl != null),
+    [entries],
+  )
   const stats = computeJournalStats(entries)
 
   const byAdherence = groupBy(closed, (e) => e.plan_adherence || 'untracked')
@@ -77,8 +84,20 @@ export default function EdgePanel() {
   const followedAvgR = avg(followed.map((e) => e.r_multiple))
   const deviatedAvgR = avg(deviated.map((e) => e.r_multiple))
 
-  const maeAvg = avg(closed.map((e) => e.mae))
-  const mfeAvg = avg(closed.map((e) => e.mfe))
+  // MAE/MFE are stored in absolute price units, so averaging them raw pools a $60,000 BTC trade
+  // with a $0.30 alt and produces a number governed entirely by which symbol has the bigger
+  // nominal price. analyzeTradeEfficiency normalizes each trade by its own |entry - stop| first.
+  const efficiency = useMemo(
+    () => analyzeTradeEfficiency(closed.map((entry) => ({
+      mae: entry.mae,
+      mfe: entry.mfe,
+      entry: entry.entry,
+      stop: entry.stop,
+      realized_r: entry.r_multiple,
+      outcome: entry.pnl > 0 ? 'target_hit' : 'stop_hit',
+    }))),
+    [closed],
+  )
 
   const tagCounts = {}
   for (const entry of closed) {
@@ -89,96 +108,130 @@ export default function EdgePanel() {
   const topTags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).slice(0, 6)
 
   return (
-    <div className="panel-card" id="edge-panel">
-      <div className="panel-card-header">
-        <span className="panel-title">Your Edge</span>
+    <div className="module" id="edge-panel">
+      <div className="module__header">
+        <span className="module__title">Your Edge</span>
       </div>
 
-      {loading && <p className="ai-signal-note">Loading journal…</p>}
-      {error && <p className="ai-signal-note" style={{ color: 'var(--bear)' }}>{error}</p>}
+      <div className="module__body stack-4">
+        {loading && <p className="ai-signal-note">Loading journal…</p>}
+        {error && <p className="bear">{error}</p>}
 
-      {!loading && !error && closed.length === 0 && (
-        <p className="ai-signal-note">
-          No closed trades yet. Once the journal has outcomes (with optional adherence and MAE/MFE),
-          this panel shows where your edge actually is.
-        </p>
-      )}
+        {!loading && !error && closed.length === 0 && (
+          <p className="ai-signal-note">
+            No closed trades yet. Once the journal has outcomes (with optional adherence and MAE/MFE),
+            this panel shows where your edge actually is.
+          </p>
+        )}
 
-      {!loading && closed.length > 0 && (
-        <>
-          <div className="ai-rows">
-            <div className="ai-row">
-              <span>Closed trades</span>
-              <span>{stats.totalTrades}</span>
-            </div>
-            <div className="ai-row">
-              <span>Win rate</span>
-              <span>{formatJournalPct(stats.winRate)}</span>
-            </div>
-            <div className="ai-row">
-              <span>Avg R</span>
-              <span>{formatJournalR(stats.avgR)}</span>
-            </div>
-            <div className="ai-row">
-              <span>Expectancy ($)</span>
-              <span>{stats.expectancy != null ? `$${stats.expectancy.toFixed(2)}` : '—'}</span>
-            </div>
-          </div>
-
-          <div style={{ marginTop: '14px' }}>
-            <div className="summary-label" style={{ marginBottom: '4px' }}>Plan adherence</div>
-            {adherenceRows.length === 0 && (
-              <p className="ai-signal-note">No adherence tags recorded yet.</p>
-            )}
-            {adherenceRows.map((row) => (
-              <div key={row.key} className="ai-row">
-                <span>{row.key.replace(/_/g, ' ')} (n={row.n})</span>
-                <span>
-                  {formatJournalPct(row.winRate)} · {formatJournalR(row.avgR)}
-                </span>
+        {!loading && closed.length > 0 && (
+          <>
+            <div className="stack-2">
+              <div className="row-between">
+                <span>Closed trades</span>
+                <span>{stats.totalTrades}</span>
               </div>
-            ))}
-            {followed.length > 0 && deviated.length > 0 && (
-              <p className="ai-signal-note" style={{ marginTop: '6px' }}>
-                Followed plans average {formatJournalR(followedAvgR)}; deviations average{' '}
-                {formatJournalR(deviatedAvgR)}.
-              </p>
-            )}
-          </div>
+              <div className="row-between">
+                <span>Win rate</span>
+                <span>{formatJournalPct(stats.winRate)}</span>
+              </div>
+              <div className="row-between">
+                <span>Avg R</span>
+                <span>{formatJournalR(stats.avgR)}</span>
+              </div>
+              <div className="row-between">
+                <span>Expectancy ($)</span>
+                <span>{stats.expectancy != null ? `$${stats.expectancy.toFixed(2)}` : '—'}</span>
+              </div>
+            </div>
 
-          {(maeAvg != null || mfeAvg != null) && (
-            <div style={{ marginTop: '14px' }}>
-              <div className="summary-label" style={{ marginBottom: '4px' }}>Excursion</div>
-              <div className="ai-row">
-                <span title="Maximum adverse excursion on your fills">Avg MAE</span>
-                <span>{maeAvg != null ? maeAvg.toFixed(4) : '—'}</span>
+            <div className="panel-section">
+              <div className="panel-section__title">Plan adherence</div>
+              {adherenceRows.length === 0 && (
+                <p className="ai-signal-note">No adherence tags recorded yet.</p>
+              )}
+              <div className="stack-2">
+                {adherenceRows.map((row) => (
+                  <div key={row.key} className="row-between">
+                    <span>{row.key.replace(/_/g, ' ')} (n={row.n})</span>
+                    <span>
+                      {formatJournalPct(row.winRate)} · {formatJournalR(row.avgR)}
+                    </span>
+                  </div>
+                ))}
               </div>
-              <div className="ai-row">
-                <span title="Maximum favorable excursion on your fills">Avg MFE</span>
-                <span>{mfeAvg != null ? mfeAvg.toFixed(4) : '—'}</span>
-              </div>
-              {mfeAvg != null && stats.avgR != null && mfeAvg > 0 && (
+              {followed.length > 0 && deviated.length > 0 && (
                 <p className="ai-signal-note">
-                  Avg MFE {mfeAvg.toFixed(4)} vs avg realized {formatJournalR(stats.avgR)} —
-                  compare these to see whether you tend to leave winners early or hold losers too long.
+                  Followed plans average {formatJournalR(followedAvgR)}; deviations average{' '}
+                  {formatJournalR(deviatedAvgR)}.
                 </p>
               )}
             </div>
-          )}
 
-          {topTags.length > 0 && (
-            <div style={{ marginTop: '14px' }}>
-              <div className="summary-label" style={{ marginBottom: '4px' }}>Behavioral tags</div>
-              {topTags.map(([tag, count]) => (
-                <div key={tag} className="ai-row">
-                  <span>{tag}</span>
-                  <span>×{count}</span>
+            {efficiency.n > 0 && (
+              <div className="panel-section">
+                <div className="panel-section__title">Stop &amp; target doctor</div>
+                <div className="stack-2">
+                  {efficiency.winner_mae_r && (
+                    <div className="row-between">
+                      <span title="How far winning trades ran against you before working, in R">
+                        Heat on winners (p50 / p90)
+                      </span>
+                      <span>
+                        {efficiency.winner_mae_r.p50.toFixed(2)}R / {efficiency.winner_mae_r.p90.toFixed(2)}R
+                      </span>
+                    </div>
+                  )}
+                  {efficiency.capture_efficiency != null && (
+                    <div className="row-between">
+                      <span title="Realized R divided by peak R on winning trades">
+                        Capture efficiency
+                      </span>
+                      <span className={efficiency.capture_efficiency < 0.5 ? 'bear' : ''}>
+                        {(efficiency.capture_efficiency * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                  )}
+                  {efficiency.shakeout_rate != null && (
+                    <div className="row-between">
+                      <span title="Share of losing trades that were already 1R in profit before stopping out">
+                        Shaken out of winners
+                      </span>
+                      <span className={efficiency.shakeout_rate > 0.35 ? 'bear' : ''}>
+                        {(efficiency.shakeout_rate * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                  )}
+                  {efficiency.suggested_stop_r != null && (
+                    <div className="row-between">
+                      <span title="Stop width that would have survived 90% of past winners, plus a buffer">
+                        Stop hypothesis
+                      </span>
+                      <span>{efficiency.suggested_stop_r.toFixed(2)}R</span>
+                    </div>
+                  )}
                 </div>
-              ))}
-            </div>
-          )}
-        </>
-      )}
+                {efficiency.stop_note && <p className="ai-signal-note">{efficiency.stop_note}</p>}
+                {efficiency.target_note && <p className="ai-signal-note">{efficiency.target_note}</p>}
+              </div>
+            )}
+
+            {topTags.length > 0 && (
+              <div className="panel-section">
+                <div className="panel-section__title">Behavioral tags</div>
+                <div className="stack-2">
+                  {topTags.map(([tag, count]) => (
+                    <div key={tag} className="row-between">
+                      <span>{tag}</span>
+                      <span>×{count}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </div>
   )
 }

@@ -86,6 +86,55 @@ After the trade plan is built (deterministic engine, with optional AI narrative)
 
 Guardrail overrides are explicit UI actions and logged to `risk_overrides` — no silent auto-approval.
 
+**One gate is not overridable:** `liquidation_before_stop`. Every other guardrail is a judgement call about edge; that one is arithmetic about exchange behaviour, and clicking through it does not move the liquidation price.
+
+---
+
+## Execution and survival layer
+
+Everything above decides *whether* to trade. These four decide *how much*, *whether it can work*, and *whether you survive the sequence*.
+
+### Position sizer (`_shared/positionSizing.ts`)
+
+Turns a risk budget into an order quantity: `qty = risk_budget / (stop_distance + fees)`, then capped by leverage and floored onto the exchange lot step.
+
+- **Rounds down, always.** Rounding a quantity to nearest breaches the risk budget you just chose.
+- **Fees are inside the budget**, not on top of it — on a tight stop they are a material fraction of 1R.
+- **Exchange filters** (`tickSize` / `stepSize` / `minNotional`) from `exchangeInfo`, cached an hour. Failure returns unconstrained filters so a Binance outage degrades rounding, not the sizer. Fetched server-side by `_shared/binance.ts` and in the browser by `utils/symbolFilters.js`; both parse through the same pure `parseSymbolFilters`, so the two cannot disagree.
+- **Liquidation estimate** from the *selected* exchange leverage, which is not the leverage the position requires. A position needing 3× on a symbol left set to 50× posts a sixteenth of the margin and liquidates sixteen times closer to entry. Selected leverage is persisted as `risk_settings.exchange_leverage` — without it the server has to assume the account fully backs the position, which is exactly the case where the gate never fires.
+- **Fractional Kelly** risk suggestion from the **Wilson CI lower bound**, not the point estimate — Kelly is brutally sensitive to an overestimated `p`. Quarter-Kelly by default, hard-capped.
+
+### Target feasibility (`_shared/expectedMove.ts`)
+
+Forge scored `expired` as an outcome without ever predicting it. This gate asks whether the nearest target can trade inside the 100-bar scoring horizon before the plan is taken.
+
+- Per-bar sigma from realized log returns, or from ATR via the Brownian range factor √(8/π).
+- Touch probability by the **reflection principle**: `P(touch) = 2·Φ(−d/σ√N)`. The factor of two is what makes it a *touch* probability rather than a terminal one — omitting it understates every target. Validated against a Monte Carlo random walk in the test suite.
+- Volatility scales with **√time**: four times the bars is twice the expected move.
+- Also reports the **no-edge baseline** — gambler's ruin `stop/(stop+target)`. When the calibrated hit rate is not meaningfully above it, the "edge" is just bracket geometry.
+- Driftless by construction. That is a refusal to claim a direction, not a forecast that price goes nowhere — the directional view already lives in the plan and the calibrated hit rate.
+
+Fires the overridable `unreachable_target` guardrail.
+
+### Risk lab (`_shared/riskOfRuin.ts`)
+
+Expectancy is an average over infinite trades; ruin is a property of the path. A +EV strategy at 5% per trade still ruins a meaningful share of the people who run it.
+
+- **Bootstraps your own realized R distribution** rather than assuming every loss is −1R. The real left tail — slippage, gaps, partial-ladder exits — is what drives ruin.
+- Seeded (`mulberry32`), so the numbers never flicker between refreshes.
+- Reports P(ruin), median and 95th-percentile max drawdown, terminal equity percentiles, and the losing streak to expect.
+- `solveMaxRiskPct` binary-searches the largest size holding ruin under tolerance — and **returns zero for a negative-expectancy distribution**, because at a small enough stake a losing strategy merely bleeds too slowly to trip the threshold. That is slow, not safe.
+
+### Stop & target doctor (`_shared/tradeEfficiency.ts`)
+
+Diagnoses bracket width from the MAE/MFE already recorded on every scored plan.
+
+- **Excursions are stored in absolute price units.** Averaging them raw pools a $60,000 BTC trade with a $0.30 alt into a number governed entirely by nominal price. Everything normalizes by each trade's own `|entry − stop|` first.
+- Winner MAE percentiles → how much heat a winner actually takes.
+- Loser MFE percentiles → the **shakeout rate**: losers that were already 1R onside before dying is an open-profit problem, not a stop-width one.
+- **Capture efficiency** = realized R ÷ peak R on winners.
+- `suggested_stop_r` ships with its own caveat: the winner set is conditioned on the stop that was actually used, so tightening converts some current winners into losses. It is a hypothesis for the backtest CLI, never an instruction.
+
 ---
 
 ## AI analysis pipeline
@@ -221,6 +270,7 @@ Notable recent migrations:
 - `20260722070000_decision_proactive_learning.sql` — risk settings, watchlist, price_alerts, setup_baselines
 - `20260722100000_user_preferences_extended_keys.sql` — chart overlay + pivot pref allowlist
 - `20260722110000_check_alerts_cron.sql` — minutely `check-alerts` cron + Realtime on `price_alerts`
+- `20260722120000_position_sizing_risk_profile.sql` — account equity, risk-per-trade %, leverage cap, exchange leverage, ruin tolerance on `risk_settings`
 
 Production: set secrets in **Project Settings → Edge Functions → Secrets**, deploy with `supabase functions deploy`.
 

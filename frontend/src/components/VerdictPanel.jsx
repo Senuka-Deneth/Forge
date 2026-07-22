@@ -8,10 +8,10 @@ import React, { useMemo, useState } from 'react';
  * server — this component never invents an EV or a guardrail.
  */
 
-const VERDICT_STYLES = {
-  TAKE: { color: 'var(--bull)', bg: 'var(--bull-soft)', label: 'TAKE' },
-  SKIP: { color: 'var(--bear)', bg: 'var(--bear-soft)', label: 'SKIP' },
-  WAIT: { color: 'var(--neutral)', bg: 'var(--neutral-soft)', label: 'WAIT' },
+const VERDICT_TONE = {
+  TAKE: 'bull',
+  SKIP: 'bear',
+  WAIT: 'flat',
 };
 
 function pct(value) {
@@ -27,7 +27,11 @@ function formatR(value) {
 
 /** Mirror applyGuardrailVerdict: negative EV stays SKIP; WAIT-from-guardrails flips to TAKE only when every blocking gate is overridden and expectancy was TAKE. */
 function resolveDisplayedVerdict(expectancyVerdict, guardrails, overriddenIds) {
-  const active = (guardrails ?? []).filter((g) => g.blocked && !overriddenIds.has(g.id));
+  // `overridable: false` must hold here too, exactly as it does server-side — a non-overridable
+  // gate (liquidation before stop) can never be cleared, whatever the override set contains.
+  const active = (guardrails ?? []).filter(
+    (g) => g.blocked && !(g.overridable && overriddenIds.has(g.id)),
+  );
   if (expectancyVerdict === 'WAIT') return 'WAIT';
   if (expectancyVerdict === 'SKIP') return 'SKIP';
   if (active.length) return 'WAIT';
@@ -45,6 +49,7 @@ export default function VerdictPanel({ analysis, onOverride }) {
   const bullFactors = factors.filter((f) => f.side === 'bull');
   const bearFactors = factors.filter((f) => f.side === 'bear');
   const scenarios = verdict?.scenarios ?? {};
+  const feasibility = verdict?.feasibility ?? null;
 
   const displayedVerdict = useMemo(() => {
     if (!verdict) return 'WAIT';
@@ -54,7 +59,7 @@ export default function VerdictPanel({ analysis, onOverride }) {
 
   if (!verdict) return null;
 
-  const style = VERDICT_STYLES[displayedVerdict] ?? VERDICT_STYLES.WAIT;
+  const tone = VERDICT_TONE[displayedVerdict] ?? VERDICT_TONE.WAIT;
 
   const handleOverride = (id) => {
     setOverridden((prev) => {
@@ -68,101 +73,116 @@ export default function VerdictPanel({ analysis, onOverride }) {
   const activeGuards = guardrails.filter((g) => !overridden.has(g.id));
 
   return (
-    <div className="panel-card" id="verdict-panel" style={{ marginBottom: '16px' }}>
-      <div className="panel-card-header" style={{ alignItems: 'center' }}>
+    <div className="panel-card" id="verdict-panel">
+      <div className="panel-card-header">
         <span className="panel-title">Verdict</span>
-        <span
-          className="panel-badge"
-          style={{
-            backgroundColor: style.bg,
-            color: style.color,
-            fontWeight: 700,
-            letterSpacing: '0.06em',
-            fontSize: '13px',
-            padding: '4px 12px',
-          }}
-        >
-          {style.label}
-        </span>
       </div>
 
-      <div className="ai-rows">
-        <div className="ai-row">
-          <span title="Expected value in R-multiples after fees">Expected value</span>
-          <span style={{ color: expectancy.ev_r > 0 ? 'var(--bull)' : expectancy.ev_r < 0 ? 'var(--bear)' : 'inherit' }}>
-            {formatR(expectancy.ev_r)}
-          </span>
-        </div>
-        <div className="ai-row">
-          <span title="Hit rate this plan needs just to break even given its R:R and fees">Break-even hit rate</span>
-          <span>{pct(expectancy.breakeven_hit_rate)}</span>
-        </div>
-        <div className="ai-row">
-          <span title="Calibrated hit rate from scored past predictions of this setup × regime">
-            Calibrated hit rate
-          </span>
-          <span style={{ opacity: (expectancy.n ?? 0) < 20 ? 0.45 : 1 }}>
-            {pct(expectancy.p)}
-            {expectancy.n != null ? ` (n=${expectancy.n})` : ''}
-            {expectancy.p_ci_low != null && expectancy.p_ci_high != null
-              ? ` · CI ${pct(expectancy.p_ci_low)}–${pct(expectancy.p_ci_high)}`
-              : ''}
-          </span>
-        </div>
-        {expectancy.reward_r != null && (
-          <div className="ai-row">
-            <span>Nearest target R:R</span>
-            <span>{expectancy.reward_r.toFixed(2)}:1</span>
+      <div className={`verdict-banner verdict-banner--${tone}`}>
+        <span className="verdict-banner__bias">{displayedVerdict}</span>
+      </div>
+
+      <div className="panel-section">
+        <div className="stack-2">
+          <div className="row-between">
+            <span title="Expected value in R-multiples after fees">Expected value</span>
+            <span className={expectancy.ev_r > 0 ? 'bull' : expectancy.ev_r < 0 ? 'bear' : ''}>
+              {formatR(expectancy.ev_r)}
+            </span>
           </div>
+          <div className="row-between">
+            <span title="Hit rate this plan needs just to break even given its R:R and fees">Break-even hit rate</span>
+            <span>{pct(expectancy.breakeven_hit_rate)}</span>
+          </div>
+          <div className="row-between">
+            <span title="Calibrated hit rate from scored past predictions of this setup × regime">
+              Calibrated hit rate
+            </span>
+            <span className={(expectancy.n ?? 0) < 20 ? 'low-confidence' : ''}>
+              {pct(expectancy.p)}
+              {expectancy.n != null ? ` (n=${expectancy.n})` : ''}
+              {expectancy.p_ci_low != null && expectancy.p_ci_high != null
+                ? ` · CI ${pct(expectancy.p_ci_low)}–${pct(expectancy.p_ci_high)}`
+                : ''}
+            </span>
+          </div>
+          {expectancy.reward_r != null && (
+            <div className="row-between">
+              <span>Nearest target R:R</span>
+              <span>{expectancy.reward_r.toFixed(2)}:1</span>
+            </div>
+          )}
+        </div>
+
+        {expectancy.summary && (
+          <p className="ai-signal-note mt-2">{expectancy.summary}</p>
         )}
       </div>
 
-      {expectancy.summary && (
-        <p className="ai-signal-note" style={{ marginTop: '8px' }}>{expectancy.summary}</p>
+      {feasibility && (
+        <div className="panel-section">
+          <div className="panel-section__title">Target feasibility</div>
+          <div className="stack-2">
+            <div className="row-between">
+              <span title="One standard deviation of movement over the scoring horizon">
+                Expected move ({feasibility.horizon_bars} bars)
+              </span>
+              <span>±{feasibility.expected_abs_move_pct?.toFixed(2)}%</span>
+            </div>
+            {feasibility.targets?.map((target) => (
+              <div key={target.label || target.price} className="row-between">
+                <span>
+                  {target.label || 'T'} · {target.distance_sigma?.toFixed(2)}σ away
+                </span>
+                <span className={target.reachable ? '' : 'bear'}>
+                  {(target.touch_probability * 100).toFixed(0)}% chance of trading
+                </span>
+              </div>
+            ))}
+            {feasibility.geometric_p != null && (
+              <div className="row-between">
+                <span title="Gambler's-ruin probability of reaching the target before the stop with no edge at all — the baseline the calibrated hit rate has to beat">
+                  No-edge baseline
+                </span>
+                <span>{pct(feasibility.geometric_p)}</span>
+              </div>
+            )}
+          </div>
+          <p className="ai-signal-note mt-2">{feasibility.summary}</p>
+        </div>
       )}
 
       {guardrails.length > 0 && (
-        <div style={{ marginTop: '14px' }}>
-          <div className="summary-label" style={{ marginBottom: '6px' }}>Guardrails</div>
-          {guardrails.map((g) => {
-            const isOverridden = overridden.has(g.id);
-            return (
-              <div
-                key={g.id}
-                className="ai-row"
-                style={{
-                  background: isOverridden ? 'transparent' : 'var(--bear-soft)',
-                  borderRadius: '6px',
-                  padding: '8px 10px',
-                  marginBottom: '4px',
-                  opacity: isOverridden ? 0.55 : 1,
-                  alignItems: 'flex-start',
-                  gap: '10px',
-                }}
-              >
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, color: isOverridden ? 'var(--text-muted)' : 'var(--bear)', fontSize: '12px' }}>
-                    {g.id.replace(/_/g, ' ').toUpperCase()}
-                    {isOverridden ? ' — overridden' : ''}
+        <div className="panel-section">
+          <div className="panel-section__title">Guardrails</div>
+          <div className="stack-2">
+            {guardrails.map((g) => {
+              const isOverridden = overridden.has(g.id);
+              return (
+                <div key={g.id} className={`guardrail-item ${isOverridden ? 'guardrail-item--overridden' : ''}`}>
+                  <div className="guardrail-item__body">
+                    <div className="guardrail-item__title">
+                      {g.id.replace(/_/g, ' ').toUpperCase()}
+                      {isOverridden ? ' — overridden' : ''}
+                    </div>
+                    <div className="guardrail-item__reason">{g.reason}</div>
                   </div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>{g.reason}</div>
+                  {g.overridable && !isOverridden && (
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      onClick={() => handleOverride(g.id)}
+                      title="Override requires an explicit click and is logged"
+                    >
+                      Override
+                    </button>
+                  )}
                 </div>
-                {g.overridable && !isOverridden && (
-                  <button
-                    type="button"
-                    className="btn-ghost"
-                    style={{ fontSize: '11px', whiteSpace: 'nowrap' }}
-                    onClick={() => handleOverride(g.id)}
-                    title="Override requires an explicit click and is logged"
-                  >
-                    Override
-                  </button>
-                )}
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
           {activeGuards.length === 0 && overridden.size > 0 && (
-            <p className="ai-signal-note">
+            <p className="ai-signal-note mt-2">
               {displayedVerdict === 'TAKE'
                 ? 'All blocking guardrails overridden — verdict is TAKE. Proceed with eyes open.'
                 : 'All blocking guardrails overridden — proceed with eyes open.'}
@@ -172,55 +192,57 @@ export default function VerdictPanel({ analysis, onOverride }) {
       )}
 
       {(bullFactors.length > 0 || bearFactors.length > 0) && (
-        <div style={{ marginTop: '14px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-          <div>
-            <div className="summary-label" style={{ color: 'var(--bull)', marginBottom: '4px' }}>Bull factors</div>
-            {bullFactors.length === 0 && <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>None</span>}
-            {bullFactors.map((f, i) => (
-              <div key={`b-${i}`} style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '2px' }}>
-                <span style={{ opacity: 0.6 }}>{f.weight.toFixed(1)}×</span> {f.label}
-              </div>
-            ))}
-          </div>
-          <div>
-            <div className="summary-label" style={{ color: 'var(--bear)', marginBottom: '4px' }}>Bear factors</div>
-            {bearFactors.length === 0 && <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>None</span>}
-            {bearFactors.map((f, i) => (
-              <div key={`r-${i}`} style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '2px' }}>
-                <span style={{ opacity: 0.6 }}>{f.weight.toFixed(1)}×</span> {f.label}
-              </div>
-            ))}
+        <div className="panel-section">
+          <div className="ai-plan-grid">
+            <div>
+              <div className="summary-label bull mb-1">Bull factors</div>
+              {bullFactors.length === 0 && <span className="text-sm-muted">None</span>}
+              {bullFactors.map((f, i) => (
+                <div key={`b-${i}`} className="factor-line">
+                  <span className="factor-line__weight">{f.weight.toFixed(1)}×</span> {f.label}
+                </div>
+              ))}
+            </div>
+            <div>
+              <div className="summary-label bear mb-1">Bear factors</div>
+              {bearFactors.length === 0 && <span className="text-sm-muted">None</span>}
+              {bearFactors.map((f, i) => (
+                <div key={`r-${i}`} className="factor-line">
+                  <span className="factor-line__weight">{f.weight.toFixed(1)}×</span> {f.label}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
 
-      <div style={{ marginTop: '14px' }}>
-        <div className="summary-label" style={{ marginBottom: '4px' }}>Scenario tree</div>
-        <div className="ai-rows">
-          <div className="ai-row"><span>Primary</span><span style={{ textAlign: 'right', maxWidth: '65%' }}>{scenarios.primary || '—'}</span></div>
-          <div className="ai-row"><span>Alternate</span><span style={{ textAlign: 'right', maxWidth: '65%' }}>{scenarios.alternate || '—'}</span></div>
-          <div className="ai-row"><span>Invalidation</span><span style={{ textAlign: 'right', maxWidth: '65%' }}>{scenarios.invalidation || '—'}</span></div>
+      <div className="panel-section">
+        <div className="panel-section__title">Scenario tree</div>
+        <div className="stack-2">
+          <div className="row-between"><span>Primary</span><span className="text-right">{scenarios.primary || '—'}</span></div>
+          <div className="row-between"><span>Alternate</span><span className="text-right">{scenarios.alternate || '—'}</span></div>
+          <div className="row-between"><span>Invalidation</span><span className="text-right">{scenarios.invalidation || '—'}</span></div>
         </div>
       </div>
 
       {management.summary && (
-        <div style={{ marginTop: '14px' }}>
-          <div className="summary-label" style={{ marginBottom: '4px' }}>Management plan</div>
-          <p className="ai-signal-note" style={{ margin: 0 }}>{management.summary}</p>
+        <div className="panel-section">
+          <div className="panel-section__title">Management plan</div>
+          <p className="ai-signal-note">{management.summary}</p>
           {management.breakeven?.rule && (
-            <div className="ai-row" style={{ marginTop: '4px' }}>
+            <div className="row-between mt-1">
               <span>Breakeven</span>
-              <span style={{ textAlign: 'right', maxWidth: '65%' }}>{management.breakeven.rule}</span>
+              <span className="text-right">{management.breakeven.rule}</span>
             </div>
           )}
           {management.trail?.rule && (
-            <div className="ai-row">
+            <div className="row-between">
               <span>Trail</span>
-              <span style={{ textAlign: 'right', maxWidth: '65%' }}>{management.trail.rule}</span>
+              <span className="text-right">{management.trail.rule}</span>
             </div>
           )}
           {management.partials?.length > 0 && (
-            <div className="ai-row">
+            <div className="row-between">
               <span>Partials</span>
               <span>
                 {management.partials.map((p) => `${Math.round(p.fraction * 100)}% @ ${p.at}`).join(' · ')}

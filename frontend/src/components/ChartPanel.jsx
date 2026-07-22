@@ -34,6 +34,7 @@ import {
   PIVOT_LEVEL_KEYS,
   PIVOT_SEGMENT_CAP,
 } from '@forge/pivot'
+import { anchoredVwap } from '@forge/vwap'
 import {
   PIVOT_LEVEL_LABELS,
   STANDARD_PIVOT_COLOR,
@@ -42,6 +43,18 @@ import {
   getEnabledPivotLevels,
 } from '../utils/pivotChartPrefs'
 import { PivotSegmentsPrimitive } from '../utils/pivotSegmentsPrimitive'
+import { DrawingsPrimitive } from '../utils/drawingsPrimitive'
+import {
+  DRAWING_TOOLS,
+  createDrawing,
+  findCandleIndexByTime,
+  hitTestDrawings,
+  loadDrawings,
+  saveDrawings,
+  snapToCandle,
+} from '../utils/drawingTools'
+import DrawingToolbar from './DrawingToolbar'
+import { supabase } from '../supabaseClient'
 import { getChartTheme, getCurrentChartTheme } from '../styles/chartTheme'
 
 function buildCandleDataWithWhitespace(candles, periodEndTime, interval) {
@@ -114,7 +127,7 @@ function getCryptoIcon(symbol, size = 18) {
   
   if (symbolUpper === 'BTC') {
     return (
-      <svg width={size} height={size} viewBox="0 0 32 32" style={{ borderRadius: '50%', flexShrink: 0 }}>
+      <svg width={size} height={size} viewBox="0 0 32 32" className="coin-icon">
         <rect width="32" height="32" fill="#f7931a" />
         <text x="16" y="23" fill="white" fontSize="18" fontWeight="bold" textAnchor="middle" fontFamily="sans-serif">₿</text>
       </svg>
@@ -122,7 +135,7 @@ function getCryptoIcon(symbol, size = 18) {
   }
   if (symbolUpper === 'ETH') {
     return (
-      <svg width={size} height={size} viewBox="0 0 32 32" style={{ borderRadius: '50%', flexShrink: 0 }}>
+      <svg width={size} height={size} viewBox="0 0 32 32" className="coin-icon">
         <rect width="32" height="32" fill="#627eea" />
         <text x="16" y="23" fill="white" fontSize="18" fontWeight="bold" textAnchor="middle" fontFamily="sans-serif">Ξ</text>
       </svg>
@@ -130,7 +143,7 @@ function getCryptoIcon(symbol, size = 18) {
   }
   if (symbolUpper === 'BNB') {
     return (
-      <svg width={size} height={size} viewBox="0 0 32 32" style={{ borderRadius: '50%', flexShrink: 0 }}>
+      <svg width={size} height={size} viewBox="0 0 32 32" className="coin-icon">
         <rect width="32" height="32" fill="#f3ba2f" />
         <path d="M16 8l5 5-5 5-5-5 5-5zm0 11l5 5-5 5-5-5 5-5z" fill="white" />
       </svg>
@@ -138,7 +151,7 @@ function getCryptoIcon(symbol, size = 18) {
   }
   if (symbolUpper === 'SOL') {
     return (
-      <svg width={size} height={size} viewBox="0 0 32 32" style={{ borderRadius: '50%', flexShrink: 0 }}>
+      <svg width={size} height={size} viewBox="0 0 32 32" className="coin-icon">
         <defs>
           <linearGradient id="solGrad" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor="#14f195" />
@@ -152,7 +165,7 @@ function getCryptoIcon(symbol, size = 18) {
   }
   if (symbolUpper === 'XRP') {
     return (
-      <svg width={size} height={size} viewBox="0 0 32 32" style={{ borderRadius: '50%', flexShrink: 0 }}>
+      <svg width={size} height={size} viewBox="0 0 32 32" className="coin-icon">
         <rect width="32" height="32" fill="#23292f" />
         <text x="16" y="22" fill="white" fontSize="16" fontWeight="bold" textAnchor="middle" fontFamily="sans-serif">✕</text>
       </svg>
@@ -160,7 +173,7 @@ function getCryptoIcon(symbol, size = 18) {
   }
   if (symbolUpper === 'ADA') {
     return (
-      <svg width={size} height={size} viewBox="0 0 32 32" style={{ borderRadius: '50%', flexShrink: 0 }}>
+      <svg width={size} height={size} viewBox="0 0 32 32" className="coin-icon">
         <rect width="32" height="32" fill="#0033ad" />
         <circle cx="16" cy="16" r="4" fill="white" />
         <circle cx="16" cy="9" r="2" fill="white" />
@@ -172,7 +185,7 @@ function getCryptoIcon(symbol, size = 18) {
   }
   if (symbolUpper === 'DOGE') {
     return (
-      <svg width={size} height={size} viewBox="0 0 32 32" style={{ borderRadius: '50%', flexShrink: 0 }}>
+      <svg width={size} height={size} viewBox="0 0 32 32" className="coin-icon">
         <rect width="32" height="32" fill="#c2a633" />
         <text x="16" y="23" fill="white" fontSize="18" fontWeight="bold" textAnchor="middle" fontFamily="sans-serif">Ð</text>
       </svg>
@@ -180,7 +193,7 @@ function getCryptoIcon(symbol, size = 18) {
   }
   if (symbolUpper === 'LTC') {
     return (
-      <svg width={size} height={size} viewBox="0 0 32 32" style={{ borderRadius: '50%', flexShrink: 0 }}>
+      <svg width={size} height={size} viewBox="0 0 32 32" className="coin-icon">
         <rect width="32" height="32" fill="#345d9d" />
         <text x="16" y="23" fill="white" fontSize="18" fontWeight="bold" textAnchor="middle" fontFamily="sans-serif">Ł</text>
       </svg>
@@ -188,7 +201,7 @@ function getCryptoIcon(symbol, size = 18) {
   }
   if (symbolUpper === 'LINK') {
     return (
-      <svg width={size} height={size} viewBox="0 0 32 32" style={{ borderRadius: '50%', flexShrink: 0 }}>
+      <svg width={size} height={size} viewBox="0 0 32 32" className="coin-icon">
         <rect width="32" height="32" fill="#2a6cbf" />
         <polygon points="16,6 25,11 25,21 16,26 7,21 7,11" fill="none" stroke="white" strokeWidth="2.5" />
       </svg>
@@ -196,7 +209,7 @@ function getCryptoIcon(symbol, size = 18) {
   }
 
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" style={{ borderRadius: '50%', flexShrink: 0 }}>
+    <svg width={size} height={size} viewBox="0 0 32 32" className="coin-icon">
       <rect width="32" height="32" fill="#4b5563" />
       <text x="16" y="22" fill="white" fontSize="15" fontWeight="bold" textAnchor="middle" fontFamily="sans-serif">{char}</text>
     </svg>
@@ -250,6 +263,7 @@ export default function ChartPanel({
   isMaximized,
   setIsMaximized,
   viewStateRef,
+  userKey = 'guest',
 }) {
   const priceContainerRef = useRef(null)
 
@@ -277,6 +291,7 @@ export default function ChartPanel({
   const zonePrimitiveRef = useRef(null)
   const volumeProfilePrimitiveRef = useRef(null)
   const confluencePrimitiveRef = useRef(null)
+  const drawingsPrimitiveRef = useRef(null)
   const stochKSeriesRef = useRef(null)
   const stochDSeriesRef = useRef(null)
   const squeezeMomSeriesRef = useRef(null)
@@ -297,11 +312,34 @@ export default function ChartPanel({
   const timeRangeAtPanStartRef = useRef(null)
   const VERTICAL_PAN_THRESHOLD_PX = 5
 
+  // Drawing tools — refs keep the one-shot chart init listeners in sync with React state.
+  const activeToolRef = useRef('pointer')
+  const magnetRef = useRef(false)
+  const drawingsRef = useRef([])
+  const pendingPointsRef = useRef([])
+  const selectedIdRef = useRef(null)
+  const colorDefaultsRef = useRef({})
+  const drawingsHiddenRef = useRef(false)
+  const drawingSaveTimerRef = useRef(null)
+  const drawingArmedScrollRef = useRef(null)
+  const intervalRef = useRef(interval)
+  const symbolRef = useRef(symbol)
+  const userKeyRef = useRef(userKey)
+  const drawingApiRef = useRef({})
+  const altMagnetHoldRef = useRef(false)
+
   const [showIndicatorPanel, setShowIndicatorPanel] = useState(false)
   const [hiddenIndicators, setHiddenIndicators] = useState([])
   const [showPivotSettings, setShowPivotSettings] = useState(false)
   const [legendCollapsed, setLegendCollapsed] = useState(false)
   const [paneLabelTops, setPaneLabelTops] = useState({ rsi: null, macd: null })
+  const [activeTool, setActiveTool] = useState('pointer')
+  const [magnet, setMagnet] = useState(false)
+  const [drawings, setDrawings] = useState([])
+  const [selectedId, setSelectedId] = useState(null)
+  const [popoverPos, setPopoverPos] = useState(null)
+  const [drawingsHidden, setDrawingsHidden] = useState(false)
+  const [drawingAlertStatus, setDrawingAlertStatus] = useState('')
 
   const pairSelectorRef = useRef(null)
   const [showPairDropdown, setShowPairDropdown] = useState(false)
@@ -313,6 +351,293 @@ export default function ChartPanel({
   useEffect(() => {
     candlesRef.current = candles
   }, [candles])
+
+  useEffect(() => {
+    intervalRef.current = interval
+    symbolRef.current = symbol
+    userKeyRef.current = userKey
+  }, [interval, symbol, userKey])
+
+  useEffect(() => { activeToolRef.current = activeTool }, [activeTool])
+  useEffect(() => { magnetRef.current = magnet }, [magnet])
+  useEffect(() => { drawingsRef.current = drawings }, [drawings])
+  useEffect(() => { selectedIdRef.current = selectedId }, [selectedId])
+  useEffect(() => { drawingsHiddenRef.current = drawingsHidden }, [drawingsHidden])
+
+  const selectedDrawing = useMemo(
+    () => drawings.find((d) => d.id === selectedId) || null,
+    [drawings, selectedId],
+  )
+
+  const persistDrawings = (nextDrawings, nextDefaults = colorDefaultsRef.current) => {
+    if (drawingSaveTimerRef.current) window.clearTimeout(drawingSaveTimerRef.current)
+    drawingSaveTimerRef.current = window.setTimeout(() => {
+      saveDrawings(userKeyRef.current, symbolRef.current, nextDrawings, nextDefaults)
+    }, 250)
+  }
+
+  const refreshAvwapCache = (list, primitive = drawingsPrimitiveRef.current) => {
+    if (!primitive) return
+    const source = candlesRef.current || []
+    for (const d of list) {
+      if (d.type !== 'avwap') continue
+      const idx = d.meta?.anchorIndex ?? findCandleIndexByTime(source, d.points[0]?.time)
+      if (idx < 0 || !source.length) {
+        primitive.setAvwapSeries(d.id, null)
+        continue
+      }
+      const result = anchoredVwap(source, idx, 'custom')
+      const seriesPoints = source.map((c, i) => ({
+        time: c.time,
+        vwap: result.series[i]?.vwap ?? null,
+        upper1: result.series[i]?.upper1 ?? null,
+        lower1: result.series[i]?.lower1 ?? null,
+        upper2: result.series[i]?.upper2 ?? null,
+        lower2: result.series[i]?.lower2 ?? null,
+      }))
+      primitive.setAvwapSeries(d.id, seriesPoints)
+    }
+  }
+
+  const applyDrawingsToPrimitive = (list) => {
+    const primitive = drawingsPrimitiveRef.current
+    if (!primitive) return
+    primitive.setDrawings(list.filter((d) => d.type !== 'measure'))
+    primitive.setSelection(selectedIdRef.current)
+    primitive.setHidden(drawingsHiddenRef.current)
+    refreshAvwapCache(list, primitive)
+  }
+
+  const setDrawingsAndPersist = (updater) => {
+    setDrawings((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater
+      drawingsRef.current = next
+      applyDrawingsToPrimitive(next)
+      persistDrawings(next)
+      return next
+    })
+  }
+
+  const armTool = (toolId) => {
+    const chart = priceChartRef.current
+    setActiveTool(toolId)
+    activeToolRef.current = toolId
+    pendingPointsRef.current = []
+    drawingsPrimitiveRef.current?.setPreview(null)
+
+    if (!chart) return
+    if (toolId && toolId !== 'pointer') {
+      if (!drawingArmedScrollRef.current) {
+        drawingArmedScrollRef.current = {
+          handleScroll: {
+            mouseWheel: false,
+            pressedMouseMove: true,
+            horzTouchDrag: true,
+            vertTouchDrag: true,
+          },
+          handleScale: true,
+        }
+      }
+      chart.applyOptions({ handleScroll: false, handleScale: false })
+    } else if (drawingArmedScrollRef.current) {
+      chart.applyOptions({
+        handleScroll: drawingArmedScrollRef.current.handleScroll,
+        handleScale: drawingArmedScrollRef.current.handleScale,
+      })
+      drawingArmedScrollRef.current = null
+    }
+  }
+
+  const screenToModel = (clientX, clientY) => {
+    const container = priceContainerRef.current
+    const chart = priceChartRef.current
+    const series = candleSeriesRef.current
+    const source = candlesRef.current
+    if (!container || !chart || !series || !source?.length) return null
+
+    const rect = container.getBoundingClientRect()
+    const x = clientX - rect.left
+    const y = clientY - rect.top
+    if (isOverPriceScale(container, clientX)) return null
+
+    let price = series.coordinateToPrice(y)
+    let time = chart.timeScale().coordinateToTime(x)
+
+    if (time == null) {
+      const last = source[source.length - 1]
+      const xLast = chart.timeScale().timeToCoordinate(last.time)
+      if (xLast == null) return null
+      const barSpacing = chart.timeScale().options().barSpacing || 6
+      const intervalSeconds = getChartIntervalSeconds(intervalRef.current, source)
+      const bars = Math.round((x - xLast) / barSpacing)
+      time = last.time + bars * intervalSeconds
+    }
+    if (price == null || !Number.isFinite(price) || !Number.isFinite(time)) return null
+
+    let point = { time, price }
+    if (magnetRef.current) {
+      point = snapToCandle(point, source, {
+        priceToY: (p) => series.priceToCoordinate(p),
+        tolerancePx: 8,
+      })
+    }
+    return point
+  }
+
+  // Keep drawingApiRef fresh for the capture-phase listeners registered once in chart init.
+  useEffect(() => {
+    drawingApiRef.current = {
+      isArmed: () => activeToolRef.current && activeToolRef.current !== 'pointer',
+      handleDown(e) {
+        const toolId = activeToolRef.current
+        if (!toolId || toolId === 'pointer') return false
+        const point = screenToModel(e.clientX, e.clientY)
+        if (!point) return true
+
+        const tool = DRAWING_TOOLS[toolId]
+        if (!tool) return true
+
+        const pending = [...pendingPointsRef.current, point]
+        pendingPointsRef.current = pending
+
+        if (pending.length < tool.points) {
+          const padded = [...pending]
+          while (padded.length < tool.points) padded.push({ ...pending[pending.length - 1] })
+          try {
+            const preview = createDrawing(toolId === 'measure' ? 'measure' : toolId, padded, {
+              color: colorDefaultsRef.current[toolId],
+              meta: toolId === 'position' ? { side: 'long' } : undefined,
+            })
+            drawingsPrimitiveRef.current?.setPreview(preview)
+          } catch {
+            // ignore preview build errors
+          }
+          return true
+        }
+
+        // Final point
+        if (tool.ephemeral) {
+          const preview = createDrawing('measure', pending, { color: colorDefaultsRef.current.measure || '#ffb74d' })
+          drawingsPrimitiveRef.current?.setPreview(preview)
+          pendingPointsRef.current = pending
+          return true
+        }
+
+        const color = colorDefaultsRef.current[toolId]
+        let meta = undefined
+        if (toolId === 'avwap') {
+          const idx = findCandleIndexByTime(candlesRef.current, point.time)
+          meta = { showBands: true, anchorIndex: Math.max(0, idx) }
+        }
+        if (toolId === 'text') {
+          meta = { text: 'Note' }
+        }
+        if (toolId === 'position') {
+          meta = { side: pending[1].price < pending[0].price ? 'long' : 'short' }
+        }
+
+        const drawing = createDrawing(toolId, pending, { color, meta })
+        colorDefaultsRef.current = { ...colorDefaultsRef.current, [toolId]: drawing.color }
+        setDrawingsAndPersist((prev) => [...prev, drawing])
+        pendingPointsRef.current = []
+        drawingsPrimitiveRef.current?.setPreview(null)
+        setSelectedId(drawing.id)
+        selectedIdRef.current = drawing.id
+        setPopoverPos({ x: e.clientX + 12, y: e.clientY + 12 })
+        armTool('pointer')
+        return true
+      },
+      handleMove(e) {
+        const toolId = activeToolRef.current
+        const pending = pendingPointsRef.current
+        if (!toolId || toolId === 'pointer' || !pending.length) return
+        const point = screenToModel(e.clientX, e.clientY)
+        if (!point) return
+        const tool = DRAWING_TOOLS[toolId]
+        if (!tool) return
+        const pts = [...pending, point]
+        while (pts.length < tool.points) pts.push(point)
+        try {
+          const preview = createDrawing(toolId === 'measure' ? 'measure' : toolId, pts.slice(0, tool.points), {
+            color: colorDefaultsRef.current[toolId] || (toolId === 'measure' ? '#ffb74d' : undefined),
+          })
+          drawingsPrimitiveRef.current?.setPreview(preview)
+        } catch {
+          // Incomplete points for strict createDrawing — ignore
+        }
+      },
+      handleUp() {
+        const toolId = activeToolRef.current
+        if (toolId === 'measure' && pendingPointsRef.current.length >= 2) {
+          pendingPointsRef.current = []
+          drawingsPrimitiveRef.current?.setPreview(null)
+          armTool('pointer')
+        }
+      },
+      handleSelect(e) {
+        if (activeToolRef.current !== 'pointer') return false
+        const primitive = drawingsPrimitiveRef.current
+        const chart = priceChartRef.current
+        const container = priceContainerRef.current
+        if (!primitive || !chart || !container) return false
+
+        const rect = container.getBoundingClientRect()
+        const x = e.clientX - rect.left
+        const y = e.clientY - rect.top
+        const paneHeight = chart.paneSize(0)?.height ?? rect.height
+
+        const hit = hitTestDrawings(
+          drawingsRef.current,
+          { x, y },
+          (p) => primitive.projectPoint(p),
+          { width: rect.width, height: paneHeight },
+        )
+
+        if (hit) {
+          setSelectedId(hit.id)
+          selectedIdRef.current = hit.id
+          primitive.setSelection(hit.id)
+          setPopoverPos({ x: e.clientX + 12, y: e.clientY + 12 })
+          return true
+        }
+
+        setSelectedId(null)
+        selectedIdRef.current = null
+        primitive.setSelection(null)
+        setPopoverPos(null)
+        return false
+      },
+    }
+  })
+
+  // Load drawings when user or symbol changes.
+  useEffect(() => {
+    const { drawings: loaded, defaults } = loadDrawings(userKey, symbol)
+    colorDefaultsRef.current = defaults || {}
+    drawingsRef.current = loaded
+    selectedIdRef.current = null
+    pendingPointsRef.current = []
+    // Sync React state from localStorage for this symbol — intentional mount/symbol effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- external store hydrate
+    setDrawings(loaded)
+    setSelectedId(null)
+    setPopoverPos(null)
+    applyDrawingsToPrimitive(loaded)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- applyDrawingsToPrimitive is stable enough via refs
+  }, [userKey, symbol])
+
+  // Push drawings / context into the primitive whenever candles or drawings change.
+  useEffect(() => {
+    const primitive = drawingsPrimitiveRef.current
+    if (!primitive) return
+    const source = candles
+    primitive.setContext({
+      candles: source,
+      intervalSeconds: getChartIntervalSeconds(interval, source),
+    })
+    applyDrawingsToPrimitive(drawings)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candles, interval, drawings, drawingsHidden, selectedId])
 
   const updatePreference = (key) => {
     onChartPreferencesChange((prev) => ({
@@ -623,6 +948,16 @@ export default function ChartPanel({
     candleSeries.attachPrimitive(confluencePrimitive)
     confluencePrimitiveRef.current = confluencePrimitive
 
+    const drawingsPrimitive = new DrawingsPrimitive()
+    candleSeries.attachPrimitive(drawingsPrimitive)
+    drawingsPrimitiveRef.current = drawingsPrimitive
+    drawingsPrimitive.setContext({
+      candles: candlesRef.current || [],
+      intervalSeconds: getChartIntervalSeconds(intervalRef.current, candlesRef.current || []),
+    })
+    drawingsPrimitive.setDrawings(drawingsRef.current.filter((d) => d.type !== 'measure'))
+    refreshAvwapCache(drawingsRef.current, drawingsPrimitive)
+
     // Captured for the cleanup below: reading overlaySeriesRef.current at teardown time could see
     // a different Map than the one this chart's series were registered in.
     const managedOverlays = overlaySeriesRef.current
@@ -792,6 +1127,20 @@ export default function ChartPanel({
       if (isOverPriceScale(container, e.clientX)) return
       if (!isWithinMainPane(e.clientY)) return
 
+      // Drawing tools own the click while armed; selection runs on pointer mode.
+      if (drawingApiRef.current.isArmed?.()) {
+        e.preventDefault()
+        e.stopPropagation()
+        drawingApiRef.current.handleDown?.(e)
+        return
+      }
+
+      if (drawingApiRef.current.handleSelect?.(e)) {
+        // Selection consumed the click — don't start a price pan.
+        dragStartRef.current.pending = false
+        return
+      }
+
       timeRangeAtPanStartRef.current = chart.timeScale().getVisibleLogicalRange()
 
       dragStartRef.current = {
@@ -805,6 +1154,11 @@ export default function ChartPanel({
     }
 
     const handlePriceMouseMove = (e) => {
+      if (drawingApiRef.current.isArmed?.()) {
+        drawingApiRef.current.handleMove?.(e)
+        return
+      }
+
       const drag = dragStartRef.current
       if (!drag.pending && !drag.isDragging) return
 
@@ -854,11 +1208,77 @@ export default function ChartPanel({
     }
 
     const handlePriceMouseUp = () => {
+      drawingApiRef.current.handleUp?.()
       dragStartRef.current.pending = false
       timeRangeAtPanStartRef.current = null
       if (dragStartRef.current.isDragging) {
         dragStartRef.current.isDragging = false
         restoreChartScroll()
+      }
+    }
+
+    const handleDrawingKeyDown = (e) => {
+      const tag = e.target?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable) return
+
+      if (e.key === 'Escape') {
+        if (pendingPointsRef.current.length || (activeToolRef.current && activeToolRef.current !== 'pointer')) {
+          e.preventDefault()
+          pendingPointsRef.current = []
+          drawingsPrimitiveRef.current?.setPreview(null)
+          // Restore scroll via armTool path
+          const chart = priceChartRef.current
+          activeToolRef.current = 'pointer'
+          setActiveTool('pointer')
+          if (chart && drawingArmedScrollRef.current) {
+            chart.applyOptions({
+              handleScroll: drawingArmedScrollRef.current.handleScroll,
+              handleScale: drawingArmedScrollRef.current.handleScale,
+            })
+            drawingArmedScrollRef.current = null
+          }
+          return
+        }
+        setSelectedId(null)
+        selectedIdRef.current = null
+        drawingsPrimitiveRef.current?.setSelection(null)
+        setPopoverPos(null)
+        return
+      }
+
+      if (e.key === 'Alt') {
+        if (!magnetRef.current) {
+          altMagnetHoldRef.current = true
+          magnetRef.current = true
+          setMagnet(true)
+        }
+        return
+      }
+
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIdRef.current) {
+        const id = selectedIdRef.current
+        const target = drawingsRef.current.find((d) => d.id === id)
+        if (target?.locked) return
+        e.preventDefault()
+        setDrawings((prev) => {
+          const next = prev.filter((d) => d.id !== id)
+          drawingsRef.current = next
+          drawingsPrimitiveRef.current?.setDrawings(next)
+          persistDrawings(next)
+          return next
+        })
+        setSelectedId(null)
+        selectedIdRef.current = null
+        drawingsPrimitiveRef.current?.setSelection(null)
+        setPopoverPos(null)
+      }
+    }
+
+    const handleDrawingKeyUp = (e) => {
+      if (e.key === 'Alt' && altMagnetHoldRef.current) {
+        altMagnetHoldRef.current = false
+        magnetRef.current = false
+        setMagnet(false)
       }
     }
 
@@ -873,6 +1293,8 @@ export default function ChartPanel({
 
     window.addEventListener('resize', handleResize)
     window.addEventListener('themeChanged', handleThemeChange)
+    window.addEventListener('keydown', handleDrawingKeyDown)
+    window.addEventListener('keyup', handleDrawingKeyUp)
 
     return () => {
       if (priceContainer) {
@@ -884,6 +1306,8 @@ export default function ChartPanel({
       window.removeEventListener('mouseup', handlePriceMouseUp)
       window.removeEventListener('resize', handleResize)
       window.removeEventListener('themeChanged', handleThemeChange)
+      window.removeEventListener('keydown', handleDrawingKeyDown)
+      window.removeEventListener('keyup', handleDrawingKeyUp)
       try {
         if (viewStateRef && priceChart) {
           viewStateRef.current = {
@@ -899,6 +1323,7 @@ export default function ChartPanel({
       zonePrimitiveRef.current = null
       volumeProfilePrimitiveRef.current = null
       confluencePrimitiveRef.current = null
+      drawingsPrimitiveRef.current = null
       priceChartRef.current = null
       rsiSeriesRef.current = null
       macdSeriesRef.current = null
@@ -1266,7 +1691,7 @@ export default function ChartPanel({
 
     const labelStyle = {
       showLabels: chartPreferences.showPivotLabels !== false,
-      showPrices: chartPreferences.showPivotPrices !== false,
+      showPrices: chartPreferences.showPivotPrices === true,
       labelsPosition: chartPreferences.pivotLabelsPosition === 'right' ? 'right' : 'left',
     }
 
@@ -1552,215 +1977,137 @@ export default function ChartPanel({
 
   return (
     <div className={`chart-card ${isMaximized ? 'chart-card-maximized' : ''}`}>
-      <div className="chart-card-header" style={{ position: 'relative', padding: '4px 16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', flexWrap: 'wrap', gap: '16px' }}>
-          
-          {/* Pair & Timeframe Controls (TradingView / Binance layout style) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-            
-            {/* Searchable Pair Dropdown Selector */}
-            <div style={{ position: 'relative' }} ref={pairSelectorRef}>
-              <button
-                className="pair-selector-btn"
-                onClick={() => setShowPairDropdown(!showPairDropdown)}
-              >
-                {getCryptoIcon(symbol, 18)}
-                <span>{symbol}</span>
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-              </button>
+      <div className="chart-toolbar">
+        {/* Searchable Pair Dropdown Selector */}
+        <div className="pair-selector" ref={pairSelectorRef}>
+          <button
+            className="pair-selector-btn"
+            onClick={() => setShowPairDropdown(!showPairDropdown)}
+          >
+            {getCryptoIcon(symbol, 18)}
+            <span>{symbol}</span>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`pair-selector-chevron${showPairDropdown ? ' open' : ''}`}><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </button>
 
-              {/* Searchable Pair Dropdown Panel */}
-              {showPairDropdown && (
-                <div className="glass-panel" style={{
-                  position: 'absolute',
-                  top: '38px',
-                  left: '0',
-                  zIndex: 200,
-                  background: 'var(--surface-overlay)',
-                  border: '1px solid var(--border-medium)',
-                  borderRadius: '16px',
-                  padding: '18px',
-                  width: 'min(440px, calc(100vw - 32px))',
-                  boxShadow: 'var(--shadow-popover)',
-                  animation: 'fadeIn 0.15s ease-out',
-                  backdropFilter: 'blur(20px)',
-                  fontFamily: 'var(--font-ui), sans-serif'
-                }}>
-                  {/* Search Input Box */}
-                  <div style={{ position: 'relative', marginBottom: '14px' }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                    <input
-                      type="text"
-                      placeholder="Search pair..."
-                      value={pairSearchQuery}
-                      onChange={(e) => setPairSearchQuery(e.target.value.toUpperCase())}
-                      style={{
-                        width: '100%',
-                        padding: '10px 14px 10px 34px',
-                        background: 'var(--bg-raised)',
-                        border: '1px solid var(--border-medium)',
-                        borderRadius: '10px',
-                        fontSize: '14px',
-                        color: 'var(--text-primary)',
-                        outline: 'none',
-                        fontFamily: 'var(--font-mono)'
-                      }}
-                      autoFocus
-                    />
-                  </div>
+          {/* Searchable Pair Dropdown Panel */}
+          {showPairDropdown && (
+            <div className="pair-dropdown-panel">
+              {/* Search Input Box */}
+              <div className="pair-dropdown-search">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input
+                  type="text"
+                  className="field"
+                  placeholder="Search pair..."
+                  value={pairSearchQuery}
+                  onChange={(e) => setPairSearchQuery(e.target.value.toUpperCase())}
+                  autoFocus
+                />
+              </div>
 
-                  {/* Tabs Row */}
-                  <div style={{ display: 'flex', gap: '16px', marginBottom: '14px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '10px' }}>
-                    {['USDⓈ-M', 'COIN-M', 'Favorites'].map(tab => (
-                      <span key={tab} style={{
-                        fontSize: '13px',
-                        fontWeight: 600,
-                        color: tab === 'USDⓈ-M' ? 'var(--accent-primary)' : 'var(--text-secondary)',
-                        borderBottom: tab === 'USDⓈ-M' ? '2px solid var(--accent-primary)' : 'none',
-                        paddingBottom: '8px',
-                        cursor: 'pointer'
-                      }}>{tab}</span>
-                    ))}
-                  </div>
+              {/* Tabs Row */}
+              <div className="pair-dropdown-tabs">
+                {['USDⓈ-M', 'COIN-M', 'Favorites'].map(tab => (
+                  <span key={tab} className={`pair-dropdown-tab ${tab === 'USDⓈ-M' ? 'active' : ''}`}>{tab}</span>
+                ))}
+              </div>
 
-                  {/* Table Column Headers */}
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1.4fr 1.1fr 1fr',
-                    fontSize: '11px',
-                    fontWeight: 600,
-                    color: 'var(--text-muted)',
-                    padding: '0 10px 8px',
-                    borderBottom: '1px solid var(--border-subtle)'
-                  }}>
-                    <span>Symbol / Vol</span>
-                    <span style={{ textAlign: 'right' }}>Last Price</span>
-                    <span style={{ textAlign: 'right' }}>24h Chg</span>
-                  </div>
+              {/* Table Column Headers */}
+              <div className="pair-dropdown-columns">
+                <span>Symbol / Vol</span>
+                <span>Last Price</span>
+                <span>24h Chg</span>
+              </div>
 
-                  {/* Tickers Scroll Area */}
-                  <div style={{ maxHeight: '250px', overflowY: 'auto', marginTop: '8px', paddingRight: '4px' }}>
-                    {pairsData
-                      .filter(p => p.symbol.includes(pairSearchQuery))
-                      .map(p => {
-                        const isBear = p.change.startsWith('-')
-                        return (
-                          <div
-                            key={p.symbol}
-                            onClick={() => {
-                              setSymbolInput(p.symbol)
-                              setShowPairDropdown(false)
-                              onLoadChart(p.symbol, interval)
-                            }}
-                            style={{
-                              display: 'grid',
-                              gridTemplateColumns: '1.4fr 1.1fr 1fr',
-                              alignItems: 'center',
-                              padding: '10px 10px',
-                              borderRadius: '8px',
-                              cursor: 'pointer',
-                              transition: 'background 0.12s ease'
-                            }}
-                            className="pair-row-hover"
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              {getCryptoIcon(p.symbol, 18)}
-                              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{p.symbol}</span>
-                                  <span style={{ fontSize: '9.5px', color: 'var(--accent-primary)', background: 'var(--accent-subtle)', padding: '1px 4px', borderRadius: '3px', fontWeight: 600 }}>Perp</span>
-                                </div>
-                                <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{p.volume}</span>
-                              </div>
+              {/* Tickers Scroll Area */}
+              <div className="pair-dropdown-list">
+                {pairsData
+                  .filter(p => p.symbol.includes(pairSearchQuery))
+                  .map(p => {
+                    const isBear = p.change.startsWith('-')
+                    return (
+                      <div
+                        key={p.symbol}
+                        onClick={() => {
+                          setSymbolInput(p.symbol)
+                          setShowPairDropdown(false)
+                          onLoadChart(p.symbol, interval)
+                        }}
+                        className="pair-dropdown-row"
+                      >
+                        <div className="pair-row-main">
+                          {getCryptoIcon(p.symbol, 18)}
+                          <div className="pair-row-meta">
+                            <div className="pair-row-symbol-line">
+                              <span className="pair-row-symbol">{p.symbol}</span>
+                              <span className="tag tag--accent">Perp</span>
                             </div>
-                            <span style={{ textAlign: 'right', fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{p.price}</span>
-                            <span style={{
-                              textAlign: 'right',
-                              fontSize: '13px',
-                              fontWeight: 600,
-                              color: isBear ? 'var(--color-bear)' : 'var(--color-bull)',
-                              fontFamily: 'var(--font-mono)'
-                            }}>{p.change}</span>
+                            <span className="pair-row-volume">{p.volume}</span>
                           </div>
-                        )
-                      })}
-                  </div>
-                </div>
-              )}
+                        </div>
+                        <span className="pair-row-price">{p.price}</span>
+                        <span className={`pair-row-change ${isBear ? 'bear' : 'bull'}`}>{p.change}</span>
+                      </div>
+                    )
+                  })}
+              </div>
             </div>
-
-            {/* Timeframe Select Dropdown (TradingView-styled pill) */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '12px' }}>
-              <select
-                id="timeframe-select-chart"
-                value={interval}
-                onChange={(e) => onIntervalChange(e.target.value)}
-                style={{
-                  background: 'var(--bg-raised)',
-                  border: '1px solid var(--border-medium)',
-                  borderRadius: '12px',
-                  padding: '6px 12px',
-                  fontSize: '13px',
-                  fontFamily: 'var(--font-ui)',
-                  fontWeight: 600,
-                  color: 'var(--text-secondary)',
-                  outline: 'none',
-                  cursor: 'pointer',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
-                }}
-              >
-                <option value="15m">15m</option>
-                <option value="1h">1H</option>
-                <option value="4h">4H</option>
-                <option value="1d">1D</option>
-                <option value="1w">1W</option>
-              </select>
-            </div>
-
-            <button
-              className="btn-primary chart-load-btn"
-              onClick={() => onLoadChart(symbolInput, interval)}
-              disabled={loading}
-            >
-              {loading ? 'Loading…' : 'Load'}
-            </button>
-          </div>
-
-          {/* Indicators and Screen Controls on Right */}
-          <div className="chart-toggles chart-toggles-inline">
-            <button
-              className={`toggle-btn ${chartPreferences.showCandles ? 'active' : ''}`}
-              onClick={() => updatePreference('showCandles')}
-            >
-              Candles
-            </button>
-            <button
-              className={`toggle-btn ${showIndicatorPanel ? 'active' : ''}`}
-              onClick={() => setShowIndicatorPanel((prev) => !prev)}
-            >
-              Indicators
-            </button>
-            <button
-              className={`toggle-btn ${isMaximized ? 'active' : ''}`}
-              onClick={() => setIsMaximized((prev) => !prev)}
-              title={isMaximized ? 'Exit Fullscreen' : 'Fullscreen'}
-              aria-label={isMaximized ? 'Exit fullscreen' : 'Fullscreen'}
-            >
-              {isMaximized ? (
-                /* Restore / Exit Fullscreen (pointing inwards) */
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
-                  <path d="M4 14h3v3m0-3l-4 4m16-4h-3v3m0-3l4 4M4 10h3V7m0 3L3 6m16 4h-3V7m0 3l4-4" />
-                </svg>
-              ) : (
-                /* Maximize / Fullscreen (pointing outwards) */
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
-                  <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
-                </svg>
-              )}
-            </button>
-          </div>
-
+          )}
         </div>
+
+        {/* Interval segmented control */}
+        <div className="segmented">
+          {['15m', '1h', '4h', '1d', '1w'].map((tf) => (
+            <button
+              key={tf}
+              className={`segmented-option ${interval === tf ? 'active' : ''}`}
+              onClick={() => onIntervalChange(tf)}
+            >
+              {tf.toUpperCase()}
+            </button>
+          ))}
+        </div>
+
+        <button
+          className="btn-primary chart-load-btn"
+          onClick={() => onLoadChart(symbolInput, interval)}
+          disabled={loading}
+        >
+          {loading ? 'Loading…' : 'Load'}
+        </button>
+
+        <div className="chart-toolbar-spacer" />
+
+        <button
+          className={'chart-tool-btn' + (chartPreferences.showCandles ? ' active' : '')}
+          onClick={() => updatePreference('showCandles')}
+        >
+          Candles
+        </button>
+        <button
+          className={'chart-tool-btn' + (showIndicatorPanel ? ' active' : '')}
+          onClick={() => setShowIndicatorPanel((prev) => !prev)}
+        >
+          Indicators
+        </button>
+        <button
+          className={'chart-tool-btn chart-tool-btn--icon' + (isMaximized ? ' active' : '')}
+          onClick={() => setIsMaximized((prev) => !prev)}
+          title={isMaximized ? 'Exit Fullscreen' : 'Fullscreen'}
+          aria-label={isMaximized ? 'Exit fullscreen' : 'Fullscreen'}
+        >
+          {isMaximized ? (
+            /* Restore / Exit Fullscreen (pointing inwards) */
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 14h3v3m0-3l-4 4m16-4h-3v3m0-3l4 4M4 10h3V7m0 3L3 6m16 4h-3V7m0 3l4-4" />
+            </svg>
+          ) : (
+            /* Maximize / Fullscreen (pointing outwards) */
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+            </svg>
+          )}
+        </button>
       </div>
 
       <AnimatePresence>
@@ -1774,7 +2121,7 @@ export default function ChartPanel({
           transition={{ duration: 0.15 }}
         >
           <m.div
-            className="indicator-modal glass-panel"
+            className="indicator-modal"
             onClick={(e) => e.stopPropagation()}
             initial={{ opacity: 0, scale: 0.96, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -1789,24 +2136,15 @@ export default function ChartPanel({
               <button className="indicator-modal-close" onClick={() => setShowIndicatorPanel(false)} aria-label="Close indicators">×</button>
             </div>
 
-            <div className="indicator-preset-row" style={{
-              display: 'flex', flexWrap: 'wrap', gap: '6px',
-              padding: '0 4px 12px', borderBottom: '1px solid var(--border-subtle)', marginBottom: '8px',
-            }}>
-              <span style={{
-                fontSize: '10px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase',
-                color: 'var(--text-muted)', width: '100%', marginBottom: '2px',
-              }}>
-                Presets
-              </span>
+            <div className="indicator-preset-row">
+              <span className="indicator-preset-label">Presets</span>
               {Object.entries(INDICATOR_PRESETS).map(([key, preset]) => (
                 <button
                   key={key}
                   type="button"
-                  className="btn-ghost"
+                  className="btn-ghost indicator-preset-btn"
                   title={preset.description}
                   onClick={() => applyPreset(preset)}
-                  style={{ fontSize: '11px', padding: '4px 10px' }}
                 >
                   {preset.label}
                 </button>
@@ -1814,127 +2152,155 @@ export default function ChartPanel({
             </div>
 
             <div className="indicator-list">
-              {groupedIndicators.map((section) => (
-                <div key={section.group} className="indicator-group">
-                  <div style={{
-                    fontSize: '10px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase',
-                    color: 'var(--text-muted)', padding: '10px 8px 6px',
-                  }}>
-                    {section.group}
-                  </div>
-                  {section.items.map((item) => (
-                <div key={item.id} className="indicator-item-container" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <div className={`indicator-row ${item.applied ? 'applied' : ''}`}>
-                    <button type="button" className="indicator-row-main" onClick={item.onToggle}>
-                      <span className="indicator-row-label-wrap">
-                        <span className="indicator-row-label">{item.label}</span>
-                        <span className="indicator-row-description">{item.description}</span>
-                      </span>
-                      <span className={`indicator-status ${item.applied ? 'on' : 'off'}`}>
-                        {item.applied ? 'Applied' : 'Hidden'}
-                      </span>
-                    </button>
-                    <a
-                      className="indicator-help"
-                      href={item.href}
-                      aria-label={`Open education for ${item.label}`}
-                      title={`Open education for ${item.label}`}
-                    >
-                      ?
-                    </a>
-                  </div>
-                  {item.id === 'standard-pivots' && item.applied && (
-                    <div className="indicator-settings-subrow" style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '8px 16px',
-                      borderRadius: '12px',
-                      background: 'rgba(255, 255, 255, 0.02)',
-                      border: '1px dashed var(--border-subtle)',
-                      marginLeft: '8px',
-                      marginRight: '8px',
-                      animation: 'fadeIn 0.2s ease-in-out'
-                    }}>
-                      <label htmlFor="pivot-type-select" style={{
-                        fontSize: '12px',
-                        fontWeight: 500,
-                        color: 'var(--text-secondary)'
-                      }}>Calculation Method</label>
-                      <select
-                        id="pivot-type-select"
-                        value={chartPreferences.pivotType || 'traditional'}
-                        onChange={(e) => {
-                          onChartPreferencesChange((prev) => ({
-                            ...prev,
-                            pivotType: e.target.value
-                          }))
-                        }}
-                        style={{
-                          background: 'var(--bg-raised)',
-                          border: '1px solid var(--border-medium)',
-                          borderRadius: '8px',
-                          padding: '4px 8px',
-                          fontSize: '12px',
-                          color: 'var(--text-primary)',
-                          outline: 'none',
-                          cursor: 'pointer'
-                        }}
+              {groupedIndicators.flatMap((section) => [
+                <div key={`${section.group}-header`} className="indicator-group-header">
+                  {section.group}
+                </div>,
+                ...section.items.map((item) => (
+                  <div key={item.id} className="indicator-item-container">
+                    <div className={`indicator-row ${item.applied ? 'applied' : ''}`}>
+                      <button type="button" className="indicator-row-main" onClick={item.onToggle}>
+                        <span className="indicator-row-label-wrap">
+                          <span className="indicator-row-label">{item.label}</span>
+                          <span className="indicator-row-description">{item.description}</span>
+                        </span>
+                        <span className={`indicator-status ${item.applied ? 'on' : 'off'}`}>
+                          {item.applied ? 'Applied' : 'Hidden'}
+                        </span>
+                      </button>
+                      <a
+                        className="indicator-help"
+                        href={item.href}
+                        aria-label={`Open education for ${item.label}`}
+                        title={`Open education for ${item.label}`}
                       >
-                        <option value="traditional">Traditional</option>
-                        <option value="fibonacci">Fibonacci</option>
-                        <option value="woodie">Woodie</option>
-                        <option value="classic">Classic</option>
-                        <option value="dm">DM (DeMark)</option>
-                        <option value="camarilla">Camarilla</option>
-                      </select>
+                        ?
+                      </a>
                     </div>
-                  )}
-                </div>
-                  ))}
-                </div>
-              ))}
+                    {item.id === 'standard-pivots' && item.applied && (
+                      <div className="indicator-settings-subrow">
+                        <label htmlFor="pivot-type-select" className="field-label">Calculation Method</label>
+                        <select
+                          id="pivot-type-select"
+                          className="field"
+                          value={chartPreferences.pivotType || 'traditional'}
+                          onChange={(e) => {
+                            onChartPreferencesChange((prev) => ({
+                              ...prev,
+                              pivotType: e.target.value
+                            }))
+                          }}
+                        >
+                          <option value="traditional">Traditional</option>
+                          <option value="fibonacci">Fibonacci</option>
+                          <option value="woodie">Woodie</option>
+                          <option value="classic">Classic</option>
+                          <option value="dm">DM (DeMark)</option>
+                          <option value="camarilla">Camarilla</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )),
+              ])}
             </div>
           </m.div>
         </m.div>
       )}
       </AnimatePresence>
 
-      <div className="chart-container-shell" style={{ position: 'relative' }}>
+      <div className="chart-container-shell">
+        <DrawingToolbar
+          activeTool={activeTool}
+          onToolChange={(id) => armTool(id)}
+          magnet={magnet}
+          onMagnetChange={(on) => {
+            altMagnetHoldRef.current = false
+            setMagnet(on)
+            magnetRef.current = on
+          }}
+          hidden={drawingsHidden}
+          onHiddenChange={(on) => {
+            setDrawingsHidden(on)
+            drawingsHiddenRef.current = on
+            drawingsPrimitiveRef.current?.setHidden(on)
+          }}
+          onClearAll={() => {
+            if (!drawingsRef.current.length) return
+            if (!window.confirm('Clear all drawings on this symbol?')) return
+            setDrawingsAndPersist([])
+            setSelectedId(null)
+            selectedIdRef.current = null
+            setPopoverPos(null)
+            drawingsPrimitiveRef.current?.setSelection(null)
+            drawingsPrimitiveRef.current?.clear()
+          }}
+          selectedDrawing={selectedDrawing}
+          popoverPos={popoverPos}
+          onDrawingChange={(next) => {
+            colorDefaultsRef.current = { ...colorDefaultsRef.current, [next.type]: next.color }
+            setDrawingsAndPersist((prev) => prev.map((d) => (d.id === next.id ? next : d)))
+          }}
+          onDeleteSelected={() => {
+            if (!selectedId) return
+            const target = drawingsRef.current.find((d) => d.id === selectedId)
+            if (target?.locked) return
+            setDrawingsAndPersist((prev) => prev.filter((d) => d.id !== selectedId))
+            setSelectedId(null)
+            selectedIdRef.current = null
+            setPopoverPos(null)
+            drawingsPrimitiveRef.current?.setSelection(null)
+          }}
+          onClosePopover={() => {
+            setSelectedId(null)
+            selectedIdRef.current = null
+            setPopoverPos(null)
+            drawingsPrimitiveRef.current?.setSelection(null)
+            setDrawingAlertStatus('')
+          }}
+          onArmAlert={async (drawing) => {
+            const level = Number(drawing?.points?.[0]?.price)
+            if (!supabase || !Number.isFinite(level) || level <= 0) {
+              setDrawingAlertStatus('Sign in and pick a valid level.')
+              return
+            }
+            const alertSymbol = String(symbolRef.current || '').toUpperCase()
+            try {
+              const { data: { user } } = await supabase.auth.getUser()
+              if (!user?.id) {
+                setDrawingAlertStatus('Sign in to arm price alerts.')
+                return
+              }
+              const source = candlesRef.current || []
+              const currentPrice = source[source.length - 1]?.close
+              const direction = currentPrice != null && level >= currentPrice ? 'above' : 'below'
+              const { error: insertError } = await supabase.from('price_alerts').insert({
+                user_id: user.id,
+                symbol: alertSymbol,
+                level,
+                direction,
+                source: 'manual',
+                armed: true,
+                analysis_id: null,
+              })
+              if (insertError) {
+                setDrawingAlertStatus(insertError.message || 'Failed to create alert.')
+                return
+              }
+              setDrawingAlertStatus(`Alert armed @ ${level}`)
+            } catch (err) {
+              setDrawingAlertStatus(err.message || 'Failed to create alert.')
+            }
+          }}
+          alertStatus={drawingAlertStatus}
+        />
+
         {/* Dynamic Sliding Legend list */}
-        <div className="chart-legend-container" style={{
-          position: 'absolute',
-          top: '12px',
-          left: '12px',
-          zIndex: 40,
-          fontFamily: 'var(--font-ui), ui-sans-serif, system-ui, sans-serif',
-          display: 'flex',
-          alignItems: 'flex-start',
-          gap: '8px',
-          pointerEvents: 'auto',
-          userSelect: 'none',
-          transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-          transform: legendCollapsed ? 'translateX(-10px)' : 'none'
-        }}>
+        <div className={`chart-legend-container ${legendCollapsed ? 'collapsed' : ''}`}>
           {/* Collapse/Expand Toggle Button */}
           <button
             onClick={() => setLegendCollapsed(!legendCollapsed)}
-            style={{
-              background: 'var(--surface-overlay)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: '6px',
-              width: '24px',
-              height: '24px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'var(--text-secondary)',
-              cursor: 'pointer',
-              fontSize: '12px',
-              transition: 'all 0.2s ease',
-              backdropFilter: 'blur(8px)',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-            }}
+            className="chart-legend chart-legend-toggle"
             title={legendCollapsed ? 'Expand Legend' : 'Collapse Legend'}
           >
             {legendCollapsed ? '»' : '«'}
@@ -1942,12 +2308,7 @@ export default function ChartPanel({
 
           {/* List of active indicator badges */}
           {!legendCollapsed && (
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '6px',
-              transition: 'all 0.3s ease'
-            }}>
+            <div className="chart-legend-badges">
               {[
                 {
                   id: 'ema20',
@@ -2014,26 +2375,10 @@ export default function ChartPanel({
                 return (
                   <div
                     key={ind.id}
-                    className="indicator-legend-badge"
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      background: 'var(--surface-overlay)',
-                      border: '1px solid var(--border-subtle)',
-                      borderRadius: '6px',
-                      padding: '4px 8px',
-                      fontSize: '11px',
-                      fontWeight: 500,
-                      color: isHidden ? 'var(--text-muted)' : 'var(--text-primary)',
-                      backdropFilter: 'blur(8px)',
-                      opacity: isHidden ? 0.6 : 1,
-                      transition: 'all 0.2s ease',
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-                    }}
+                    className={`chart-overlay-legend chart-legend-badge ${isHidden ? 'hidden-indicator' : ''}`}
                   >
                     <span>{ind.label}</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div className="chart-legend-badge-actions">
                       {/* Hide/Show Eye Icon */}
                       <button
                         onClick={() => {
@@ -2041,16 +2386,7 @@ export default function ChartPanel({
                             prev.includes(ind.id) ? prev.filter(x => x !== ind.id) : [...prev, ind.id]
                           )
                         }}
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          color: isHidden ? 'var(--text-muted)' : 'var(--text-secondary)',
-                          cursor: 'pointer',
-                          padding: '2px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          fontSize: '11px'
-                        }}
+                        className={`chart-legend-icon-btn ${isHidden ? 'muted' : ''}`}
                         title={isHidden ? 'Show' : 'Hide'}
                         aria-label={isHidden ? `Show ${ind.label}` : `Hide ${ind.label}`}
                         aria-pressed={!isHidden}
@@ -2066,16 +2402,7 @@ export default function ChartPanel({
                       {ind.hasSettings && !isHidden && (
                         <button
                           onClick={() => setShowPivotSettings(!showPivotSettings)}
-                          style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: 'var(--text-secondary)',
-                            cursor: 'pointer',
-                            padding: '2px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            fontSize: '11px'
-                          }}
+                          className="chart-legend-icon-btn"
                           title="Settings"
                           aria-label="Pivot settings"
                         >
@@ -2087,16 +2414,7 @@ export default function ChartPanel({
                       {ind.onRemove && (
                         <button
                           onClick={ind.onRemove}
-                          style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: 'var(--color-bear)',
-                            cursor: 'pointer',
-                            padding: '2px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            fontSize: '11px'
-                          }}
+                          className="chart-legend-icon-btn danger"
                           title="Remove"
                         >
                           ✕
@@ -2110,7 +2428,7 @@ export default function ChartPanel({
           )}
         </div>
 
-        {/* Dynamic Glassmorphic settings popover overlay */}
+        {/* Standard pivots settings popover */}
         {showPivotSettings && chartPreferences.showStandardPivots && !hiddenIndicators.includes('standard-pivots') && (() => {
           const levelOptions = chartPreferences.pivotLevelOptions || createDefaultPivotLevelOptions()
           const enabledCount = getEnabledPivotLevels(levelOptions).length
@@ -2119,43 +2437,18 @@ export default function ChartPanel({
             chartPreferences.pivotType || 'traditional',
             levelOptions,
           )
-          const inputStyle = {
-            background: 'var(--bg-raised)',
-            border: '1px solid var(--border-medium)',
-            borderRadius: '8px',
-            padding: '6px 10px',
-            fontSize: '12px',
-            color: 'var(--text-primary)',
-            outline: 'none',
-          }
 
           return (
-          <div className="pivot-settings-popover glass-panel" style={{
-            position: 'absolute',
-            top: '40px',
-            left: '180px',
-            zIndex: 80,
-            background: 'var(--surface-overlay)',
-            border: '1px solid var(--border-medium)',
-            borderRadius: '16px',
-            padding: '20px',
-            width: 'min(340px, calc(100vw - 32px))',
-            maxHeight: 'min(80vh, 640px)',
-            overflowY: 'auto',
-            boxShadow: 'var(--shadow-popover)',
-            animation: 'fadeIn 0.2s ease-in-out',
-            color: 'var(--text-primary)',
-            fontFamily: 'var(--font-ui), ui-sans-serif, system-ui, sans-serif',
-            backdropFilter: 'blur(16px)'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '8px' }}>
-              <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)' }}>Standard Pivots Settings</span>
-              <button type="button" onClick={() => setShowPivotSettings(false)} aria-label="Close pivot settings" style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '16px' }}>&times;</button>
+          <div className="pivot-popover">
+            <div className="pivot-popover-header">
+              <span className="head">Standard Pivots Settings</span>
+              <button type="button" onClick={() => setShowPivotSettings(false)} aria-label="Close pivot settings" className="pivot-popover-close">&times;</button>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Calculation Type</label>
+            <div className="stack-3">
+              <div className="field-group">
+                <label className="field-label">Calculation Type</label>
                 <select
+                  className="field"
                   value={chartPreferences.pivotType || 'traditional'}
                   onChange={(e) => {
                     const pivotType = e.target.value
@@ -2164,10 +2457,6 @@ export default function ChartPanel({
                       pivotType,
                       pivotsBack: clampPivotsBack(prev.pivotsBack, pivotType, prev.pivotLevelOptions),
                     }))
-                  }}
-                  style={{
-                    ...inputStyle,
-                    cursor: 'pointer',
                   }}
                 >
                   <option value="traditional">Traditional</option>
@@ -2179,32 +2468,23 @@ export default function ChartPanel({
                 </select>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-                <label style={{ fontSize: '12px', color: 'var(--text-primary)' }}>Show historical pivots</label>
+              <div className="row-between">
+                <label>Show historical pivots</label>
                 <input
                   type="checkbox"
+                  className="checkbox"
                   checked={chartPreferences.showHistoricalPivots !== false}
                   onChange={(e) => onChartPreferencesChange((prev) => ({ ...prev, showHistoricalPivots: e.target.checked }))}
-                  style={{ width: '14px', height: '14px', cursor: 'pointer' }}
                 />
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Pivots Timeframe</label>
+              <div className="field-group">
+                <label className="field-label">Pivots Timeframe</label>
                 <select
+                  className="field"
                   value={chartPreferences.pivotTimeframe || 'auto'}
                   onChange={(e) => {
                     onChartPreferencesChange((prev) => ({ ...prev, pivotTimeframe: e.target.value }))
-                  }}
-                  style={{
-                    background: 'var(--bg-raised)',
-                    border: '1px solid var(--border-medium)',
-                    borderRadius: '8px',
-                    padding: '6px 10px',
-                    fontSize: '12px',
-                    color: 'var(--text-primary)',
-                    outline: 'none',
-                    cursor: 'pointer',
                   }}
                 >
                   <option value="auto">Auto</option>
@@ -2214,7 +2494,7 @@ export default function ChartPanel({
                   <option value="yearly">Yearly</option>
                 </select>
                 {chartPreferences.pivotTimeframe === 'auto' && (
-                  <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                  <span className="field-hint">
                     Resolves to {getPivotPeriodLabel(
                       pivotData?.standardPeriods?.periodType
                         ?? resolvePivotPeriod(interval, 'auto'),
@@ -2223,10 +2503,11 @@ export default function ChartPanel({
                 )}
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Number of Pivots Back</label>
+              <div className="field-group">
+                <label className="field-label">Number of Pivots Back</label>
                 <input
                   type="number"
+                  className="field"
                   min="1"
                   max={pivotsBackMax}
                   value={chartPreferences.pivotsBack || 15}
@@ -2238,49 +2519,49 @@ export default function ChartPanel({
                     )
                     onChartPreferencesChange((prev) => ({ ...prev, pivotsBack: val }))
                   }}
-                  style={inputStyle}
                 />
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                <span className="field-hint">
                   Max {pivotsBackMax} ({enabledCount} levels, {PIVOT_SEGMENT_CAP} segment cap)
                 </span>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-                <label style={{ fontSize: '12px', color: 'var(--text-primary)' }}>Show labels</label>
+              <div className="row-between">
+                <label>Show labels</label>
                 <input
                   type="checkbox"
+                  className="checkbox"
                   checked={chartPreferences.showPivotLabels !== false}
                   onChange={(e) => onChartPreferencesChange((prev) => ({ ...prev, showPivotLabels: e.target.checked }))}
-                  style={{ width: '14px', height: '14px', cursor: 'pointer' }}
                 />
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-                <label style={{ fontSize: '12px', color: 'var(--text-primary)' }}>Show prices</label>
+              <div className="row-between">
+                <label>Show prices</label>
                 <input
                   type="checkbox"
-                  checked={chartPreferences.showPivotPrices !== false}
+                  className="checkbox"
+                  checked={chartPreferences.showPivotPrices === true}
                   onChange={(e) => onChartPreferencesChange((prev) => ({ ...prev, showPivotPrices: e.target.checked }))}
-                  style={{ width: '14px', height: '14px', cursor: 'pointer' }}
                 />
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Labels position</label>
+              <div className="field-group">
+                <label className="field-label">Labels position</label>
                 <select
+                  className="field"
                   value={chartPreferences.pivotLabelsPosition === 'right' ? 'right' : 'left'}
                   onChange={(e) => onChartPreferencesChange((prev) => ({ ...prev, pivotLabelsPosition: e.target.value }))}
-                  style={{ ...inputStyle, cursor: 'pointer' }}
                 >
                   <option value="left">Left</option>
                   <option value="right">Right</option>
                 </select>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Line width</label>
+              <div className="field-group">
+                <label className="field-label">Line width</label>
                 <input
                   type="number"
+                  className="field"
                   min="1"
                   max="4"
                   value={chartPreferences.pivotLineWidth || 1}
@@ -2288,21 +2569,21 @@ export default function ChartPanel({
                     const val = Math.max(1, Math.min(4, parseInt(e.target.value, 10) || 1))
                     onChartPreferencesChange((prev) => ({ ...prev, pivotLineWidth: val }))
                   }}
-                  style={inputStyle}
                 />
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
-                <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Levels</label>
+              <div className="field-group">
+                <label className="field-label">Levels</label>
                 {PIVOT_LEVEL_KEYS.map((level) => {
                   const cfg = levelOptions[level] || { enabled: true, color: STANDARD_PIVOT_COLOR }
                   const checkboxId = `pivot-level-${level}`
                   const colorId = `pivot-color-${level}`
                   return (
-                    <div key={level} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div key={level} className="pivot-level-row">
                       <input
                         id={checkboxId}
                         type="checkbox"
+                        className="checkbox"
                         checked={cfg.enabled !== false}
                         aria-label={`Show ${PIVOT_LEVEL_LABELS[level]} pivot level`}
                         onChange={(e) => {
@@ -2321,15 +2602,15 @@ export default function ChartPanel({
                             }
                           })
                         }}
-                        style={{ width: '14px', height: '14px', cursor: 'pointer', flexShrink: 0 }}
                       />
-                      <label htmlFor={checkboxId} style={{ fontSize: '11px', width: '28px', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                      <label htmlFor={checkboxId} className="pivot-level-label">
                         {PIVOT_LEVEL_LABELS[level]}
                       </label>
                       <input
                         id={colorId}
                         type="color"
-                        value={cfg.color?.startsWith('#') ? cfg.color : '#748fb4'}
+                        className="color-swatch"
+                        value={cfg.color?.startsWith('#') ? cfg.color : '#FB8C00'}
                         aria-label={`${PIVOT_LEVEL_LABELS[level]} pivot color`}
                         onChange={(e) => {
                           onChartPreferencesChange((prev) => ({
@@ -2343,17 +2624,15 @@ export default function ChartPanel({
                             },
                           }))
                         }}
-                        style={{ width: '28px', height: '22px', padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }}
                       />
                     </div>
                   )
                 })}
               </div>
             </div>
-            <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end' }}>
+            <div className="pivot-popover-footer">
               <button
                 className="btn-primary"
-                style={{ height: '30px', padding: '0 14px', fontSize: '12px' }}
                 onClick={() => setShowPivotSettings(false)}
               >
                 Apply

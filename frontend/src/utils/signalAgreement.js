@@ -37,8 +37,11 @@ export function deriveSignalAgreement(analysis, pivotAnalysis = null) {
     atInflectionPoint: Boolean(pivotAnalysis?.atInflectionPoint),
   })
 
+  const label = signalAgreementLabel(score)
+
   return {
     score,
+    label,
     primaryTrend,
     // Pivot checks contribute up to 30 of the 100 points; without pivot data loaded the score
     // cannot reach its ceiling, and the UI says so rather than silently under-reporting.

@@ -111,34 +111,36 @@
   --bg-raised:  hsl(220, 16%, 95%);
   --bg-overlay: hsl(220, 14%, 91%);
 
-  --accent-primary: hsl(215, 32%, 40%);
-  --accent-hover:   hsl(215, 34%, 34%);
-  --accent-active:  hsl(215, 34%, 30%);
-  --accent-subtle:  hsla(215, 32%, 40%, 0.09);
+  --accent-primary: hsl(215, 36%, 36%);
+  --accent-hover:   hsl(215, 38%, 30%);
+  --accent-active:  hsl(215, 38%, 26%);
+  --accent-subtle:  hsla(215, 36%, 36%, 0.10);
   --on-accent:      hsl(0, 0%, 100%);
 
+  /* Darker secondary/muted so captions stay readable on white cards. */
   --text-primary:   hsl(220, 18%, 12%);
-  --text-secondary: hsl(219, 12%, 38%);
-  --text-muted:     hsl(219, 9%, 52%);
+  --text-secondary: hsl(219, 14%, 30%);
+  --text-muted:     hsl(219, 10%, 40%);
   --text-inverse:   hsl(220, 20%, 98%);
 
-  --color-bull:    hsl(152, 45%, 32%);
-  --color-bear:    hsl(4, 55%, 42%);
-  --color-flat:    hsl(219, 10%, 48%);
-  --color-neutral: hsl(40, 55%, 38%);
+  /* Semantic colors: darker + more saturated for WCAG-friendly contrast on white. */
+  --color-bull:    hsl(152, 62%, 26%);
+  --color-bear:    hsl(2, 72%, 38%);
+  --color-flat:    hsl(219, 12%, 40%);
+  --color-neutral: hsl(36, 62%, 34%);
 
   --bull: var(--color-bull);
   --bear: var(--color-bear);
   --neutral: var(--color-neutral);
   --info: var(--accent-primary);
 
-  --bull-soft:    hsla(152, 45%, 32%, 0.10);
-  --bear-soft:    hsla(4, 55%, 42%, 0.10);
-  --neutral-soft: hsla(40, 55%, 38%, 0.10);
-  --info-soft:    hsla(215, 32%, 40%, 0.10);
+  --bull-soft:    hsla(152, 62%, 26%, 0.14);
+  --bear-soft:    hsla(2, 72%, 38%, 0.14);
+  --neutral-soft: hsla(36, 62%, 34%, 0.14);
+  --info-soft:    hsla(215, 36%, 36%, 0.12);
 
-  --border-subtle: hsla(220, 25%, 20%, 0.09);
-  --border-medium: hsla(220, 25%, 20%, 0.16);
+  --border-subtle: hsla(220, 25%, 20%, 0.10);
+  --border-medium: hsla(220, 25%, 20%, 0.18);
 
   --shadow-1: 0 1px 2px hsla(220, 30%, 20%, 0.08);
   --shadow-2: 0 4px 16px hsla(220, 30%, 20%, 0.08);
@@ -147,9 +149,9 @@
   --shadow-popover: 0 20px 50px hsla(220, 30%, 20%, 0.18);
 
   --chart-bg:        hsl(0, 0%, 100%);
-  --chart-grid:      hsla(220, 25%, 20%, 0.05);
+  --chart-grid:      hsla(220, 25%, 20%, 0.06);
   --chart-crosshair: hsla(220, 20%, 30%, 0.3);
-  --chart-text:      hsl(219, 10%, 45%);
+  --chart-text:      hsl(219, 12%, 38%);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -52,3 +52,26 @@ Deno.test("scorePlanAgainstCandles invalid without geometry", () => {
   const result = scorePlanAgainstCandles({ ...basePlan, stop_loss: null }, [{ high: 110, low: 100 }]);
   assertEquals(result.outcome, "invalid");
 });
+
+Deno.test("scorePlanAgainstCandles ladder locks 50% at T1 then stop leaves partial positive R", () => {
+  const ladderPlan: TradePlan = {
+    ...basePlan,
+    targets: [
+      { label: "T1", price: 110, risk_reward: 2 },
+      { label: "T2", price: 120, risk_reward: 4 },
+    ],
+  };
+
+  const result = scorePlanAgainstCandles(ladderPlan, [
+    { high: 101, low: 99 },
+    { high: 111, low: 100 },
+    { high: 102, low: 94 },
+  ], 20);
+
+  assertEquals(result.outcome, "stop_hit");
+  assertEquals(result.ladder?.[0]?.hit, true);
+  assertEquals(result.ladder?.[0]?.realized_r, 1);
+  // 50% at +2R (+1R) then remaining 50% stopped (−0.5R) before fees.
+  assertEquals(result.realized_r != null && result.realized_r > 0, true);
+  assertEquals(result.realized_r! < 0.5, true);
+});

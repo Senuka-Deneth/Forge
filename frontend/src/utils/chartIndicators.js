@@ -24,6 +24,7 @@ import { buildAnchoredVwaps } from '@forge/vwap'
 import { buildLiquidityMap } from '@forge/liquidity-map'
 import { buildVolumeProfile } from '@forge/volume-profile'
 import { buildMarketStructure } from '@forge/market-structure'
+import { buildConfluenceMap, topConfluenceClusters } from '@forge/confluence'
 
 /** Lightweight Charts rejects null values, so every series is filtered to defined points. */
 function toLine(candles, values) {
@@ -58,6 +59,7 @@ export function computeChartOverlays(candles) {
     liquidityPools: [],
     sweeps: [],
     volumeProfile: null,
+    confluenceClusters: [],
   }
 
   if (!Array.isArray(candles) || candles.length < 60) return empty
@@ -74,6 +76,51 @@ export function computeChartOverlays(candles) {
 
   const structure = buildMarketStructure(candles, candles.map((c) => c.rsi14 ?? null))
   const liquidity = buildLiquidityMap(candles, structure.swingHighs, structure.swingLows)
+  const latest = candles[candles.length - 1]
+  const price = latest?.close ?? null
+  const atr = latest?.atr14 ?? null
+
+  // Chart-side confluence from the levels the overlays already know about. Not a full server
+  // map (no pivots/session/CME here), but enough for the trader to see where independent
+  // analyses stack — the same module the AI reasons over.
+  const confluenceLevels = []
+  for (const z of structure.srZones?.supports ?? []) {
+    confluenceLevels.push({ price: z.mid, source: 'swing_support', label: 'support zone' })
+  }
+  for (const z of structure.srZones?.resistances ?? []) {
+    confluenceLevels.push({ price: z.mid, source: 'swing_resistance', label: 'resistance zone' })
+  }
+  if (latest?.ema20 != null) confluenceLevels.push({ price: latest.ema20, source: 'ema20', label: 'EMA20' })
+  if (latest?.ema50 != null) confluenceLevels.push({ price: latest.ema50, source: 'ema50', label: 'EMA50' })
+  for (const fvg of liquidity.fairValueGaps ?? []) {
+    if (fvg.filled) continue
+    const mid = (fvg.top + fvg.bottom) / 2
+    confluenceLevels.push({ price: mid, source: 'fvg', label: 'FVG' })
+  }
+  for (const ob of liquidity.orderBlocks ?? []) {
+    if (ob.mitigated) continue
+    const mid = (ob.top + ob.bottom) / 2
+    confluenceLevels.push({ price: mid, source: 'order_block', label: 'OB' })
+  }
+  for (const pool of liquidity.pools ?? []) {
+    confluenceLevels.push({
+      price: pool.price,
+      source: 'liquidity_pool',
+      label: pool.side === 'buy_side' ? 'EQH' : 'EQL',
+    })
+  }
+  const volumeProfile = buildVolumeProfile(candles, 60)
+  if (volumeProfile?.poc != null) {
+    confluenceLevels.push({ price: volumeProfile.poc, source: 'volume_profile_poc', label: 'POC' })
+  }
+  if (volumeProfile?.vah != null) {
+    confluenceLevels.push({ price: volumeProfile.vah, source: 'volume_profile_va', label: 'VAH' })
+  }
+  if (volumeProfile?.val != null) {
+    confluenceLevels.push({ price: volumeProfile.val, source: 'volume_profile_va', label: 'VAL' })
+  }
+
+  const confluenceClusters = topConfluenceClusters(buildConfluenceMap(confluenceLevels, atr, price), 8)
 
   // Anchored VWAPs carry their own metadata (anchor kind and bar) so the legend can name them.
   const anchoredVwaps = buildAnchoredVwaps(candles, structure.swingHighs, structure.swingLows).map((v) => ({
@@ -133,7 +180,8 @@ export function computeChartOverlays(candles) {
     orderBlocks: liquidity.orderBlocks,
     liquidityPools: liquidity.pools,
     sweeps: liquidity.sweeps,
-    volumeProfile: buildVolumeProfile(candles, 60),
+    volumeProfile,
+    confluenceClusters,
   }
 }
 

@@ -6,6 +6,8 @@ import ChartPanel from './components/ChartPanel'
 import AnalysisPanel from './components/AnalysisPanel'
 import AIAnalysisPanel from './components/AIAnalysisPanel'
 import AccuracyPanel from './components/AccuracyPanel'
+import ScannerPanel from './components/ScannerPanel'
+import EdgePanel from './components/EdgePanel'
 import EducationPanel from './components/EducationPanel'
 import JournalPanel from './components/JournalPanel'
 import { useAuth } from './hooks/useAuth'
@@ -928,7 +930,16 @@ export default function App() {
                aiError={aiError}
                onRefresh={() => runAIAnalysis(candles)}
             />
+            <ScannerPanel
+              onSelectSymbol={(nextSymbol, nextInterval) => {
+                setSymbolInput(nextSymbol)
+                setSymbol(nextSymbol)
+                if (nextInterval) setChartInterval(nextInterval)
+                loadChart(nextSymbol, nextInterval || chartInterval)
+              }}
+            />
             <AccuracyPanel />
+            <EdgePanel />
           </m.div>
         )}
 

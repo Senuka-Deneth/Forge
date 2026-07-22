@@ -36,6 +36,7 @@ export const DEFAULT_CHART_PREFERENCES = {
   showVolumeProfile: false,
   showLiquidityPools: false,
   showSweeps: false,
+  showConfluence: false,
 
   ...DEFAULT_PIVOT_CHART_PREFS,
 }
@@ -59,7 +60,7 @@ export const INDICATOR_PRESETS = {
       showKeltner: false, showSqueeze: false, showStochRsi: false, showSupertrend: false,
       showChandelier: false, showDonchian: false, showIchimoku: false, showAnchoredVwap: false,
       showVwapBands: false, showFvg: false, showOrderBlocks: false, showVolumeProfile: false,
-      showLiquidityPools: false, showSweeps: false, showSupport: false, showResistance: false,
+      showLiquidityPools: false, showSweeps: false, showConfluence: false, showSupport: false, showResistance: false,
     },
   },
   trend: {

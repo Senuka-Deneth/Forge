@@ -1,5 +1,5 @@
 import React from 'react';
-import { resolveIconId } from '../data/educationData';
+import { ICONS as EDU_ICONS, resolveIconId } from '../data/educationData';
 
 const iconStyle = { display: 'flex', alignItems: 'center', width: 18, height: 18, flexShrink: 0 };
 
@@ -141,9 +141,27 @@ const ICONS = {
   ),
 };
 
+function SvgFromString({ svg }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={iconStyle}
+      aria-hidden="true"
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  );
+}
+
 export function getIcon(id) {
   const key = resolveIconId(id);
-  return ICONS[key] ?? ICONS.default;
+  if (ICONS[key]) return ICONS[key];
+  if (EDU_ICONS[key]) return <SvgFromString svg={EDU_ICONS[key]} />;
+  return ICONS.default;
 }
 
 export default function EducationIcon({ id }) {

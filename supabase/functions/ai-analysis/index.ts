@@ -30,6 +30,7 @@ import {
 import type { DivergenceResult } from "../_shared/marketStructure.ts";
 import type { PivotBias } from "../_shared/pivotPoints.ts";
 import type { MarketRegime } from "../_shared/regime.ts";
+import { bookQualityFromOrderFlow, buildVerdict, type Factor } from "../_shared/verdict.ts";
 
 export type AnalysisMeta = {
   model: string;
@@ -153,6 +154,18 @@ async function fetchEmpiricalCalibration(
   setupType: SetupType,
   regime: string | null,
 ): Promise<EmpiricalCalibration | null> {
+  // Prefer the newest scoring version that has enough decided samples; fall back to the pooled
+  // history rather than waiting weeks for a cold v3 bucket to fill.
+  const { data: v3data, error: v3error } = await supabase
+    .from("ai_analysis_logs")
+    .select("outcome, setup_type, regime, scoring_version")
+    .eq("status", "success")
+    .not("evaluated_at", "is", null)
+    .in("outcome", ["target_hit", "stop_hit", "expired", "no_fill"])
+    .eq("scoring_version", 3)
+    .limit(500);
+  const useV3 = !v3error && (v3data?.length ?? 0) >= 20;
+
   const { data: v2data, error: v2error } = await supabase
     .from("ai_analysis_logs")
     .select("outcome, setup_type, regime, scoring_version")
@@ -161,7 +174,7 @@ async function fetchEmpiricalCalibration(
     .in("outcome", ["target_hit", "stop_hit", "expired", "no_fill"])
     .eq("scoring_version", 2)
     .limit(500);
-  const useV2 = !v2error && (v2data?.length ?? 0) >= 20;
+  const useV2 = !useV3 && !v2error && (v2data?.length ?? 0) >= 20;
 
   const { data, error } = await supabase
     .from("ai_analysis_logs")
@@ -173,7 +186,7 @@ async function fetchEmpiricalCalibration(
     .limit(500);
   if (error || !data?.length) return null;
 
-  const rows = (useV2 ? (v2data ?? []) : data) as CalibrationRow[];
+  const rows = (useV3 ? (v3data ?? []) : useV2 ? (v2data ?? []) : data) as CalibrationRow[];
   return selectCalibrationBucket(rows, setupType, regime);
 }
 
@@ -185,51 +198,147 @@ const CALIBRATION_BUCKET_LABEL: Record<EmpiricalCalibration["bucket"], string> =
   global: "all setups pooled",
 };
 
-function attachEmpiricalConfidence(
+function deriveFactors(ctx: MarketContext, bias: TradePlan["bias"]): Factor[] {
+  const factors: Factor[] = [];
+  const push = (side: "bull" | "bear", label: string, weight: number) => {
+    factors.push({ side, label, weight });
+  };
+
+  if (ctx.latest.ema20 != null && ctx.latest.ema50 != null) {
+    if (ctx.price > ctx.latest.ema20 && ctx.latest.ema20 > ctx.latest.ema50) {
+      push("bull", "EMA stack bullish (price > EMA20 > EMA50)", 1.2);
+    } else if (ctx.price < ctx.latest.ema20 && ctx.latest.ema20 < ctx.latest.ema50) {
+      push("bear", "EMA stack bearish (price < EMA20 < EMA50)", 1.2);
+    }
+  }
+  if (ctx.latest.rsi14 != null) {
+    if (ctx.latest.rsi14 >= 55) push("bull", `RSI ${ctx.latest.rsi14.toFixed(1)} in bullish zone`, 0.8);
+    else if (ctx.latest.rsi14 <= 45) push("bear", `RSI ${ctx.latest.rsi14.toFixed(1)} in bearish zone`, 0.8);
+  }
+  if (ctx.latest.macd != null && ctx.latest.macdSignal != null) {
+    if (ctx.latest.macd > ctx.latest.macdSignal) push("bull", "MACD above signal", 0.9);
+    else push("bear", "MACD below signal", 0.9);
+  }
+  if (ctx.htfBias === "bullish") push("bull", "Higher-timeframe bias bullish", 1.1);
+  if (ctx.htfBias === "bearish") push("bear", "Higher-timeframe bias bearish", 1.1);
+  if (ctx.rsiDivergence.type === "bullish") push("bull", "RSI bullish divergence", 1.3);
+  if (ctx.rsiDivergence.type === "bearish") push("bear", "RSI bearish divergence", 1.3);
+  if (ctx.macdDivergence.type === "bullish") push("bull", "MACD bullish divergence", 1.2);
+  if (ctx.macdDivergence.type === "bearish") push("bear", "MACD bearish divergence", 1.2);
+  if (ctx.regime === "volatile_chop") {
+    push("bear", "Volatile chop regime — directional edge degraded", 1.5);
+    push("bull", "Volatile chop regime — directional edge degraded", 1.5);
+  }
+  if (bias === "wait") {
+    // Keep the ledger informative even when standing aside.
+  }
+  return factors;
+}
+
+/**
+ * Attach calibrated confidence, expected-value verdict, management plan and guardrails.
+ *
+ * EV and guardrails are computed here — never by the model. Called for both the live AI path and
+ * the deterministic fallback so the UI always receives the same decision-layer shape.
+ */
+function attachDecisionLayer(
   analysis: Record<string, unknown>,
   calibration: EmpiricalCalibration | null,
   setupType: SetupType,
+  ctx: MarketContext,
 ): void {
-  if (!calibration) return;
   const tradePlan = analysis.trade_plan as TradePlan;
   if (!tradePlan || typeof tradePlan !== "object") return;
-  tradePlan.empirical_confidence = Number((calibration.empirical_hit_rate * 100).toFixed(1));
-  const pct = (calibration.empirical_hit_rate * 100).toFixed(1);
-  tradePlan.rationale = `${tradePlan.rationale} Historically ${CALIBRATION_BUCKET_LABEL[calibration.bucket]} has hit ${pct}% over ${calibration.n} decided instances — don't report confidence far above this without stating why.`;
 
-  const summary = analysis.summary as Record<string, unknown> | undefined;
-  if (summary && typeof summary.confidence === "number") {
-    const { confidence, capped } = clampModelConfidence(summary.confidence as number, calibration);
-    summary.confidence = confidence;
-    if (capped) {
-      analysis._meta = {
-        ...(analysis._meta as Record<string, unknown>),
-        confidence_capped: true,
-      };
+  if (calibration) {
+    tradePlan.empirical_confidence = Number((calibration.empirical_hit_rate * 100).toFixed(1));
+    const pct = (calibration.empirical_hit_rate * 100).toFixed(1);
+    tradePlan.rationale = `${tradePlan.rationale} Historically ${CALIBRATION_BUCKET_LABEL[calibration.bucket]} has hit ${pct}% over ${calibration.n} decided instances — don't report confidence far above this without stating why.`;
+
+    const summary = analysis.summary as Record<string, unknown> | undefined;
+    if (summary && typeof summary.confidence === "number") {
+      const { confidence, capped } = clampModelConfidence(summary.confidence as number, calibration);
+      summary.confidence = confidence;
+      if (capped) {
+        analysis._meta = {
+          ...(analysis._meta as Record<string, unknown>),
+          confidence_capped: true,
+        };
+      }
     }
-  }
-  if (typeof tradePlan.confidence === "number") {
-    const { confidence, capped } = clampModelConfidence(tradePlan.confidence, calibration);
-    tradePlan.confidence = confidence;
-    if (capped) {
-      analysis._meta = {
-        ...(analysis._meta as Record<string, unknown>),
-        confidence_capped: true,
-      };
+    if (typeof tradePlan.confidence === "number") {
+      const { confidence, capped } = clampModelConfidence(tradePlan.confidence, calibration);
+      tradePlan.confidence = confidence;
+      if (capped) {
+        analysis._meta = {
+          ...(analysis._meta as Record<string, unknown>),
+          confidence_capped: true,
+        };
+      }
     }
   }
 
   analysis.trade_plan = tradePlan;
+
+  const tradeLogic = analysis.trade_logic as Record<string, unknown> | undefined;
+  const verdict = buildVerdict({
+    plan: tradePlan,
+    regime: ctx.regime,
+    calibration,
+    funding: ctx.sessions?.fundingWindow ?? null,
+    blackout: ctx.sessions?.eventBlackout ?? null,
+    book: bookQualityFromOrderFlow(ctx.orderFlow),
+    factors: deriveFactors(ctx, tradePlan.bias),
+    scenarios: {
+      primary: String(tradeLogic?.bullish_scenario ?? tradePlan.rationale ?? "No primary scenario."),
+      alternate: String(tradeLogic?.bearish_scenario ?? "No alternate scenario."),
+      invalidation: tradePlan.bias === "long"
+        ? `Bull idea fails beyond stop ${tradePlan.stop_loss ?? tradeLogic?.invalidation_bull ?? "n/a"}.`
+        : tradePlan.bias === "short"
+        ? `Bear idea fails beyond stop ${tradePlan.stop_loss ?? tradeLogic?.invalidation_bear ?? "n/a"}.`
+        : "No directional plan — no invalidation.",
+    },
+  });
+
+  analysis.verdict = verdict;
+  analysis.management = verdict.management;
+  analysis.expectancy = verdict.expectancy;
+  analysis.guardrails = verdict.guardrails;
+
   analysis._meta = {
     ...(analysis._meta as Record<string, unknown>),
     setup_type: setupType,
-    calibration: {
-      setup_type: setupType,
-      n: calibration.n,
-      empirical_hit_rate: calibration.empirical_hit_rate,
-      bucket: calibration.bucket,
-    },
+    verdict: verdict.verdict,
+    ...(calibration
+      ? {
+        calibration: {
+          setup_type: setupType,
+          n: calibration.n,
+          empirical_hit_rate: calibration.empirical_hit_rate,
+          bucket: calibration.bucket,
+        },
+      }
+      : {}),
   };
+}
+
+/** @deprecated Use attachDecisionLayer — kept as a thin alias for any external callers. */
+function attachEmpiricalConfidence(
+  analysis: Record<string, unknown>,
+  calibration: EmpiricalCalibration | null,
+  setupType: SetupType,
+  ctx?: MarketContext,
+): void {
+  if (ctx) {
+    attachDecisionLayer(analysis, calibration, setupType, ctx);
+    return;
+  }
+  // Legacy path without context: only the calibration clamp, no verdict.
+  if (!calibration) return;
+  const tradePlan = analysis.trade_plan as TradePlan;
+  if (!tradePlan || typeof tradePlan !== "object") return;
+  tradePlan.empirical_confidence = Number((calibration.empirical_hit_rate * 100).toFixed(1));
+  analysis.trade_plan = tradePlan;
 }
 
 function safeFloat(value: unknown, fallback: number | null = null): number | null {
@@ -1110,7 +1219,7 @@ Deno.serve(async (req) => {
     const analysis = normalizeModelOutput(parsed, ctx);
     const setupType = analysis._meta.setup_type ?? "wait";
     const calibration = await fetchEmpiricalCalibration(supabase, setupType, ctx.regime);
-    attachEmpiricalConfidence(analysis as Record<string, unknown>, calibration, setupType);
+    attachDecisionLayer(analysis as Record<string, unknown>, calibration, setupType, ctx);
     const latencyMs = Date.now() - started;
 
     await writeAnalysisCache(supabase, cacheKey, analysis as Record<string, unknown>);
@@ -1147,6 +1256,9 @@ Deno.serve(async (req) => {
       const ctx = ctxForFallback ?? (symbol && interval ? await gatherMarketContext(symbol, interval) : null);
       if (ctx) {
         const fallback = deterministicFallback(ctx, `fallback: ${errorMessage}`);
+        const setupType = fallback._meta.setup_type ?? "wait";
+        const calibration = await fetchEmpiricalCalibration(supabase, setupType, ctx.regime).catch(() => null);
+        attachDecisionLayer(fallback as Record<string, unknown>, calibration, setupType, ctx);
         fallback._meta = { ...fallback._meta, analysis_id: fallbackAnalysisId };
         return jsonResponse(req, { success: true, analysis: fallback });
       }

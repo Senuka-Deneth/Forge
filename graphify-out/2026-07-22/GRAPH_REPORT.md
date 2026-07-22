@@ -1,11 +1,11 @@
 # Graph Report - Forge  (2026-07-22)
 
 ## Corpus Check
-- 139 files · ~150,103 words
+- 139 files · ~150,578 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1040 nodes · 2093 edges · 72 communities (60 shown, 12 thin omitted)
+- 1040 nodes · 2094 edges · 72 communities (60 shown, 12 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 15 edges (avg confidence: 0.7)
 - Token cost: 0 input · 0 output
 
@@ -346,6 +346,6 @@ _Questions this graph is uniquely positioned to answer:_
 - **Should `pivotPoints.ts` be split into smaller, more focused modules?**
   _Cohesion score 0.06693877551020408 - nodes in this community are weakly interconnected._
 - **Should `main.jsx` be split into smaller, more focused modules?**
-  _Cohesion score 0.05970149253731343 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.0601404741000878 - nodes in this community are weakly interconnected._
 - **Should `package.json` be split into smaller, more focused modules?**
   _Cohesion score 0.13333333333333333 - nodes in this community are weakly interconnected._

@@ -965,6 +965,7 @@ export default function App() {
                   isMaximized={isChartMaximized}
                   setIsMaximized={setIsChartMaximized}
                   viewStateRef={chartViewStateRef}
+                  userKey={currentUserId}
                 />
               </ChartPanelErrorBoundary>
             </div>

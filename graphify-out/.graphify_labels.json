@@ -56,6 +56,7 @@
   "54": "userPreferences.js",
   "55": "chartOverlays.js",
   "56": "ChartPanelErrorBoundary",
+  "57": "drawingTools.js",
   "58": "index.ts",
   "59": "crossMarket.ts",
   "60": "calibration.ts",
@@ -67,8 +68,18 @@
   "66": "expectancy.ts",
   "67": "cors.ts",
   "68": "scripts",
+  "69": "supabaseClient.js",
   "70": "package.json",
   "71": "dompurify",
+  "72": "incrementalIndicators.js",
   "73": "20260722100000_user_preferences_extended_keys.sql",
-  "74": "20260722110000_check_alerts_cron.sql"
+  "74": "20260722110000_check_alerts_cron.sql",
+  "75": "liquidation.ts",
+  "76": "SignUp.jsx",
+  "77": "AnalysisPanel.jsx",
+  "78": "index.ts",
+  "79": "userPreferences.js",
+  "80": "ChartPanelErrorBoundary",
+  "81": "StatusBar.jsx",
+  "82": "fetchBinanceHtfKlines"
 }

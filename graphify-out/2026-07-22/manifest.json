@@ -5,8 +5,8 @@
     "semantic_hash": ""
   },
   "frontend/src/App.jsx": {
-    "mtime": 1784707189.2446067,
-    "ast_hash": "13385eb523968f334b13c41b80681e41",
+    "mtime": 1784710344.372674,
+    "ast_hash": "27753c49e1553edd72a3cb836e7565ec",
     "semantic_hash": ""
   },
   "frontend/src/components/AIAnalysisPanel.jsx": {
@@ -15,18 +15,18 @@
     "semantic_hash": ""
   },
   "frontend/src/components/AnalysisPanel.jsx": {
-    "mtime": 1784707776.9961216,
-    "ast_hash": "71749b81454d805ab098a26592ffd8fd",
+    "mtime": 1784710361.3050778,
+    "ast_hash": "57ae4d488bd1c134030e14146319051e",
     "semantic_hash": ""
   },
   "frontend/src/components/AuthShell.jsx": {
-    "mtime": 1784707204.2728884,
-    "ast_hash": "1f2683b87d0b8374b1a17fcd691a7227",
+    "mtime": 1784708821.8466363,
+    "ast_hash": "feb600c56683ea03531da1b9ebcfcf1d",
     "semantic_hash": ""
   },
   "frontend/src/components/ChartPanel.jsx": {
-    "mtime": 1784707976.1205037,
-    "ast_hash": "08dda4b1b93fe629de9e8d77e9e62283",
+    "mtime": 1784710337.5726771,
+    "ast_hash": "041affa4f6c40c6a655100ac12ae7217",
     "semantic_hash": ""
   },
   "frontend/src/components/EducationPanel.jsx": {
@@ -40,8 +40,8 @@
     "semantic_hash": ""
   },
   "frontend/src/components/HeaderControls.jsx": {
-    "mtime": 1784707197.7688534,
-    "ast_hash": "1b3b91320027f0582443b00cc45df9b7",
+    "mtime": 1784708821.8224614,
+    "ast_hash": "968c181c00ca2970c019f3c70f67a37a",
     "semantic_hash": ""
   },
   "frontend/src/components/ProtectedRoute.jsx": {
@@ -55,8 +55,8 @@
     "semantic_hash": ""
   },
   "frontend/src/components/StatusBar.jsx": {
-    "mtime": 1784707201.6334078,
-    "ast_hash": "95dd6d40bc5b8eb54c3b5de875bcfc8e",
+    "mtime": 1784710353.0404491,
+    "ast_hash": "3e444abff202e08a8ca1d023869249f9",
     "semantic_hash": ""
   },
   "frontend/src/context/AuthContext.jsx": {
@@ -65,8 +65,8 @@
     "semantic_hash": ""
   },
   "frontend/src/data/educationData.js": {
-    "mtime": 1784708489.1094065,
-    "ast_hash": "8e9a54fffb5df7134b63dfc90ca5a70a",
+    "mtime": 1784708821.8920605,
+    "ast_hash": "9635e05132e7513dbf337a1b72372260",
     "semantic_hash": ""
   },
   "frontend/src/hooks/useAuth.js": {
@@ -110,8 +110,8 @@
     "semantic_hash": ""
   },
   "frontend/src/utils/pivotChartPrefs.js": {
-    "mtime": 1784707131.5527596,
-    "ast_hash": "3a28271ed193b55d1ea44d5f2b20fa5e",
+    "mtime": 1784710307.315168,
+    "ast_hash": "34e41a7a5d04ac54767dfdee1a5d0170",
     "semantic_hash": ""
   },
   "frontend/src/utils/pivotPoints.test.js": {
@@ -120,13 +120,13 @@
     "semantic_hash": ""
   },
   "frontend/src/utils/pivotSegmentsPrimitive.js": {
-    "mtime": 1784427946.1906848,
-    "ast_hash": "b68ea1d580aa948a98b5384edc07da34",
+    "mtime": 1784710308.870188,
+    "ast_hash": "933a02f26f6a5cbd213f85e2a12bd08f",
     "semantic_hash": ""
   },
   "frontend/src/utils/userPreferences.js": {
-    "mtime": 1784707104.8218231,
-    "ast_hash": "3824ade39841ab5d92f215841c954201",
+    "mtime": 1784710316.7377188,
+    "ast_hash": "86ebb4ebe58f4b18a506d35a531eddbf",
     "semantic_hash": ""
   },
   "frontend/vite.config.js": {
@@ -200,8 +200,8 @@
     "semantic_hash": ""
   },
   "frontend/index.html": {
-    "mtime": 1784707106.091159,
-    "ast_hash": "f40427067cb84ddc17734bf09807ad0a",
+    "mtime": 1784708821.788002,
+    "ast_hash": "6d3160c8091070eccadbdb0885517eee",
     "semantic_hash": ""
   },
   "frontend/src/utils/marketStructure.test.js": {
@@ -335,8 +335,8 @@
     "semantic_hash": ""
   },
   "frontend/src/styles/chartTheme.js": {
-    "mtime": 1784707104.637666,
-    "ast_hash": "5c1d5fe3373896b12d8fcc76604183bb",
+    "mtime": 1784708821.764123,
+    "ast_hash": "5a2ee97287087db540e14d90944fc060",
     "semantic_hash": ""
   },
   "frontend/welcome.html": {
@@ -490,13 +490,13 @@
     "semantic_hash": ""
   },
   ".claude/settings.local.json": {
-    "mtime": 1784694788.8895438,
-    "ast_hash": "28decb8dd1abc086f814139ddfcbee91",
+    "mtime": 1784709471.5994754,
+    "ast_hash": "e59bdeedcb2de414ba89d789fdbc5efc",
     "semantic_hash": ""
   },
   "frontend/src/utils/signalAgreement.js": {
-    "mtime": 1784662858.4235091,
-    "ast_hash": "0aa84d986c710de8fcdc34ca3f79e3c6",
+    "mtime": 1784710317.944283,
+    "ast_hash": "1e6f14b0f479c13e5d2c756be156223b",
     "semantic_hash": ""
   },
   "frontend/src/utils/signalAgreement.test.js": {
@@ -570,8 +570,8 @@
     "semantic_hash": ""
   },
   "frontend/src/utils/userPreferences.test.js": {
-    "mtime": 1784708505.2304692,
-    "ast_hash": "58422701fed10e1ba10435bc3f70eb96",
+    "mtime": 1784708821.938362,
+    "ast_hash": "e8acbab9ee5ef66e2b196cbe13fdffdc",
     "semantic_hash": ""
   },
   "frontend/src/utils/volumeProfilePrimitive.js": {
@@ -635,8 +635,8 @@
     "semantic_hash": ""
   },
   "frontend/src/utils/confluencePrimitive.js": {
-    "mtime": 1784708489.3446176,
-    "ast_hash": "8f5af4f6889590411f3c13b3c502abfd",
+    "mtime": 1784708821.9126427,
+    "ast_hash": "a4f869c89fb6ac0319ae5dea62f265e4",
     "semantic_hash": ""
   },
   "supabase/functions/_shared/expectancy.ts": {

@@ -247,34 +247,66 @@ export function buildCrossMarketContext(
  * fetch degrades to `available: false` exactly like the other optional context blocks
  * (futures, liquidation, order book).
  */
+export type CrossMarketPrefetch = {
+  btc: Candle[];
+  eth: Candle[];
+};
+
+/** Prefetch BTC + ETH klines once per scan/interval so watchlist symbols share the major-pair fetch. */
+export async function fetchBtcEthKlines(
+  interval: string,
+  limit = 300,
+): Promise<CrossMarketPrefetch> {
+  const [btcRaw, ethRaw] = await Promise.all([
+    fetchBinanceKlines("BTCUSDT", interval, limit),
+    fetchBinanceKlines("ETHUSDT", interval, limit),
+  ]);
+  const btcClosed = sliceClosedCandles(btcRaw, interval);
+  const ethClosed = sliceClosedCandles(ethRaw, interval);
+  return {
+    btc: enrichCandles(btcClosed.length ? btcClosed : btcRaw),
+    eth: enrichCandles(ethClosed.length ? ethClosed : ethRaw),
+  };
+}
+
 export async function fetchCrossMarketContext(
   symbol: string,
   interval: string,
   symbolCandles: Array<{ time: number; close: number }>,
   limit = 300,
+  prefetched: CrossMarketPrefetch | null = null,
 ): Promise<CrossMarketContext> {
   try {
-    const [btcRaw, ethRaw] = await Promise.all([
-      symbol === "BTCUSDT" ? Promise.resolve(null) : fetchBinanceKlines("BTCUSDT", interval, limit),
-      symbol === "ETHUSDT" ? Promise.resolve(null) : fetchBinanceKlines("ETHUSDT", interval, limit),
-    ]);
-
     if (symbol === "BTCUSDT") {
       // BTC's own history doubles as "BTC candles" here — no second fetch needed.
       const selfCandles = enrichCandles(
         symbolCandles.map((c) => ({ ...c, open: c.close, high: c.close, low: c.close, volume: 0 })),
       );
-      return buildCrossMarketContext(symbol, symbolCandles, selfCandles, null);
+      return buildCrossMarketContext(symbol, symbolCandles, selfCandles, prefetched?.eth ?? null);
     }
 
-    const btcClosed = btcRaw ? sliceClosedCandles(btcRaw, interval) : [];
-    const ethClosed = ethRaw ? sliceClosedCandles(ethRaw, interval) : [];
+    const btcCandles = prefetched?.btc ?? enrichCandles(
+      await (async () => {
+        const btcRaw = await fetchBinanceKlines("BTCUSDT", interval, limit);
+        const closed = sliceClosedCandles(btcRaw, interval);
+        return closed.length ? closed : btcRaw;
+      })(),
+    );
+    const ethCandles = prefetched?.eth ?? (
+      symbol === "ETHUSDT" ? null : enrichCandles(
+        await (async () => {
+          const ethRaw = await fetchBinanceKlines("ETHUSDT", interval, limit);
+          const closed = sliceClosedCandles(ethRaw, interval);
+          return closed.length ? closed : ethRaw;
+        })(),
+      )
+    );
 
     return buildCrossMarketContext(
       symbol,
       symbolCandles,
-      btcClosed.length ? btcClosed : btcRaw ?? [],
-      ethClosed.length ? ethClosed : ethRaw,
+      btcCandles,
+      ethCandles,
     );
   } catch {
     return { ...UNAVAILABLE_CROSS_MARKET_CONTEXT, isBtcOrEth: symbol === "BTCUSDT" || symbol === "ETHUSDT" };

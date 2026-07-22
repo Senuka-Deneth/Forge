@@ -803,11 +803,11 @@ export const educationData = [
         tag: "Calibration",
         title: "Base Rates & Baselines",
         subtitle: "Priors Before Live Data",
-        whatIsIt: "setup_baselines stores backtest-seeded hit rates per setup_type × regime × symbol × interval for cold start. Live scored outcomes replace priors as n grows.",
-        howToRead: "Baselines prevent fantasy 90% confidence on day one. They are starting guesses — verify against your live reliability curve over time.",
-        howToUse: "Seed baselines via backtest --upload workflow (intended) from walk-forward results. Until uploaded, global/setup buckets may be broad.",
+        whatIsIt: "setup_baselines stores backtest-seeded hit rates per setup_type × regime × symbol × interval for cold start. When no live scored outcomes exist yet, Forge labels the rate as backtest_prior and still computes EV from that prior. Live scored outcomes replace priors as n grows.",
+        howToRead: "Baselines prevent fantasy 90% confidence on day one. A backtest_prior bucket is honestly labeled — verify against your live reliability curve over time.",
+        howToUse: "Seed baselines via `npm run backtest -- --upload` from walk-forward results. Until uploaded, EV stays WAIT with no calibrated hit rate.",
         visualHtml: `<div class="edu-tips">
-<div class="edu-tip info">Table: public.setup_baselines — readable by authenticated users.</div>
+<div class="edu-tip info">Table: public.setup_baselines — readable by authenticated users. Bucket label: backtest_prior.</div>
 </div>`
       }
     ]

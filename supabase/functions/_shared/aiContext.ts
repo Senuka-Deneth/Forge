@@ -52,6 +52,7 @@ import {
   type SupertrendResult,
 } from "./volatility.ts";
 import {
+  anchoredVwap,
   buildAnchoredVwaps,
   classifyVwapRelation,
   type AnchoredVwap,
@@ -92,6 +93,17 @@ export const PRIMARY_CANDLE_LIMIT = 500;
 export const MTF_CANDLE_LIMIT = 150;
 export const SERIES_WINDOW = 12;
 const DAILY_PLUS_INTERVALS = new Set(["1d", "3d", "1w", "1M"]);
+
+/** Index of the most recent Monday bar (UTC week boundary). Falls back to series start. */
+function findLastWeeklyBoundaryIndex(
+  candles: Array<{ time: number }>,
+): number | null {
+  if (!candles.length) return null;
+  for (let i = candles.length - 1; i >= 0; i -= 1) {
+    if (new Date(candles[i].time * 1000).getUTCDay() === 1) return i;
+  }
+  return 0;
+}
 
 export type MtfRead = {
   interval: string;
@@ -204,6 +216,8 @@ export type BuildContextOptions = {
    * applyCrossMarketGating already treats as "skip this check" — never a silent wrong answer.
    */
   crossMarket?: CrossMarketContext | null;
+  /** Prefetched BTC/ETH candles (e.g. once per watchlist scan) to avoid duplicate major-pair fetches. */
+  crossMarketPrefetch?: import("./crossMarket.ts").CrossMarketPrefetch | null;
 };
 
 function clamp(value: number, low: number, high: number): number {
@@ -504,7 +518,15 @@ export async function buildContextFromCandles(
   const regimeInfo = deriveRegime(primaryCandles, htfBias !== "mixed");
 
   if (DAILY_PLUS_INTERVALS.has(interval)) {
-    latest.vwap = null;
+    // Session VWAP (UTC-day reset) is meaningless on daily+ bars. Re-anchor from the last weekly
+    // boundary so the field still carries a usable mean-price reference.
+    const weekStartIdx = findLastWeeklyBoundaryIndex(primaryCandles);
+    if (weekStartIdx != null) {
+      const weekly = anchoredVwap(primaryCandles, weekStartIdx, "custom");
+      latest.vwap = weekly.latest.vwap;
+    } else {
+      latest.vwap = null;
+    }
   }
 
   let vwapRelation: MarketContext["vwapRelation"] = "unknown";
@@ -565,7 +587,10 @@ export async function buildContextFromCandles(
   // proximity reads from the already-optional `futures` block and degrades to nulls with it.
   const intervalMs = intervalDurationMs(interval);
   const sessionRanges = computeSessionRanges(rawPrimary);
-  const cmeGap = intervalMs != null ? findLatestCmeGap(rawPrimary, intervalMs / 1000) : null;
+  // CME gap is a BTC futures phenomenon — estimating it on alts from their own spot series is noise.
+  const cmeGap = symbol.startsWith("BTC") && intervalMs != null
+    ? findLatestCmeGap(rawPrimary, intervalMs / 1000)
+    : null;
   const fundingWindow = computeFundingWindow(futures.nextFundingTime);
   const eventBlackout = checkEventBlackout();
 
@@ -673,7 +698,13 @@ export async function buildContextFromCandles(
   };
 }
 
-export async function gatherMarketContext(symbol: string, interval: string): Promise<MarketContext> {
+export async function gatherMarketContext(
+  symbol: string,
+  interval: string,
+  opts?: {
+    crossMarketPrefetch?: import("./crossMarket.ts").CrossMarketPrefetch | null;
+  },
+): Promise<MarketContext> {
   const rawPrimary = await fetchBinanceKlines(symbol, interval, PRIMARY_CANDLE_LIMIT);
   if (!rawPrimary.length) throw new Error("No candle data returned for this symbol/interval.");
 
@@ -684,7 +715,7 @@ export async function gatherMarketContext(symbol: string, interval: string): Pro
     fetchOrderBookImbalance(symbol),
     fetchFuturesContext(symbol),
     fetchTicker24hr(symbol),
-    fetchCrossMarketContext(symbol, interval, analysisCandles),
+    fetchCrossMarketContext(symbol, interval, analysisCandles, 300, opts?.crossMarketPrefetch ?? null),
   ]);
 
   const ctx = await buildContextFromCandles(symbol, interval, analysisCandles, {

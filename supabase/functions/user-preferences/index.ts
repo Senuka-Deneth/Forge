@@ -1,9 +1,39 @@
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.105.4";
 import { handleOptions, jsonResponse } from "../_shared/cors.ts";
 import { safeError } from "../_shared/http.ts";
-import { sanitizePivotTimeframe } from "../_shared/pivotPoints.ts";
+import { PIVOT_LEVEL_KEYS, sanitizePivotTimeframe } from "../_shared/pivotPoints.ts";
 
-const DEFAULT_CHART_PREFERENCES = {
+const STANDARD_PIVOT_COLOR = "rgba(116, 143, 180, 0.92)";
+
+function createDefaultPivotLevelOptions(): Record<string, { enabled: boolean; color: string }> {
+  const options: Record<string, { enabled: boolean; color: string }> = {};
+  for (const level of PIVOT_LEVEL_KEYS) {
+    options[level] = { enabled: true, color: STANDARD_PIVOT_COLOR };
+  }
+  return options;
+}
+
+function sanitizePivotLevelOptions(raw: unknown): Record<string, { enabled: boolean; color: string }> {
+  const defaults = createDefaultPivotLevelOptions();
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return defaults;
+  const source = raw as Record<string, unknown>;
+  const sanitized = { ...defaults };
+  for (const level of PIVOT_LEVEL_KEYS) {
+    const entry = source[level];
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const row = entry as Record<string, unknown>;
+    sanitized[level] = {
+      enabled: row.enabled !== false,
+      color: typeof row.color === "string" && row.color.trim()
+        ? row.color.trim()
+        : STANDARD_PIVOT_COLOR,
+    };
+  }
+  return sanitized;
+}
+
+/** Keep in sync with frontend/src/utils/userPreferences.js DEFAULT_CHART_PREFERENCES. */
+const DEFAULT_CHART_PREFERENCES: Record<string, unknown> = {
   showCandles: true,
   showEma20: false,
   showEma50: false,
@@ -11,12 +41,35 @@ const DEFAULT_CHART_PREFERENCES = {
   showMacd: false,
   showSupport: false,
   showResistance: false,
+  // Legacy key retained so older rows / DB allowlist stay valid.
   showPivots: false,
   showStandardPivots: false,
   showHistoricalPivots: true,
   pivotType: "traditional",
   pivotTimeframe: "auto",
   pivotsBack: 15,
+
+  showKeltner: false,
+  showSqueeze: false,
+  showStochRsi: false,
+  showSupertrend: false,
+  showChandelier: false,
+  showDonchian: false,
+  showIchimoku: false,
+  showAnchoredVwap: false,
+  showVwapBands: false,
+  showFvg: false,
+  showOrderBlocks: false,
+  showVolumeProfile: false,
+  showLiquidityPools: false,
+  showSweeps: false,
+  showConfluence: false,
+
+  showPivotLabels: true,
+  showPivotPrices: true,
+  pivotLabelsPosition: "left",
+  pivotLineWidth: 1,
+  pivotLevelOptions: createDefaultPivotLevelOptions(),
 };
 
 const USER_KEY_REGEX = /^[a-zA-Z0-9_.@-]{3,128}$/;
@@ -64,21 +117,31 @@ function resolveRequestedUserId(raw: unknown, authenticatedUserId: string):
 
 function sanitizePreferences(payload: unknown) {
   const sanitized = { ...DEFAULT_CHART_PREFERENCES } as Record<string, unknown>;
+  sanitized.pivotLevelOptions = createDefaultPivotLevelOptions();
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return sanitized;
   const source = payload as Record<string, unknown>;
+
   for (const key of Object.keys(DEFAULT_CHART_PREFERENCES)) {
-    if (key in source) {
-      if (key === "pivotType") {
-        sanitized[key] = String(source[key]);
-      } else if (key === "pivotTimeframe") {
-        sanitized[key] = sanitizePivotTimeframe(source[key]);
-      } else if (key === "pivotsBack") {
-        sanitized[key] = Math.max(1, Math.min(50, Number(source[key]) || 15));
-      } else {
-        sanitized[key] = Boolean(source[key]);
-      }
+    if (!(key in source)) continue;
+    if (key === "pivotType") {
+      sanitized[key] = String(source[key]);
+    } else if (key === "pivotTimeframe") {
+      sanitized[key] = sanitizePivotTimeframe(source[key]);
+    } else if (key === "pivotsBack") {
+      sanitized[key] = Math.max(1, Math.min(50, Number(source[key]) || 15));
+    } else if (key === "pivotLabelsPosition") {
+      sanitized[key] = source[key] === "right" ? "right" : "left";
+    } else if (key === "pivotLineWidth") {
+      sanitized[key] = Math.max(1, Math.min(4, Number(source[key]) || 1));
+    } else if (key === "pivotLevelOptions") {
+      sanitized[key] = sanitizePivotLevelOptions(source[key]);
+    } else if (key === "showPivotLabels" || key === "showPivotPrices") {
+      sanitized[key] = Boolean(source[key]);
+    } else {
+      sanitized[key] = Boolean(source[key]);
     }
   }
+
   return sanitized;
 }
 

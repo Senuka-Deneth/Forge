@@ -102,7 +102,10 @@ export default function JournalPanel({ symbol, latestPrice, aiAnalysis }) {
   }
 
   useEffect(() => {
-    loadEntries()
+    const timer = setTimeout(() => {
+      loadEntries()
+    }, 0)
+    return () => clearTimeout(timer)
   }, [])
 
   useEffect(() => {

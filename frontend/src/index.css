@@ -1123,7 +1123,8 @@ body, #root {
 .chart-legend-container {
   position: absolute;
   top: 10px;
-  left: 10px;
+  /* Sit to the right of the drawing rail (~38px wide + 8px inset + gap). */
+  left: 52px;
   z-index: 40;
   display: flex;
   align-items: flex-start;
@@ -1325,7 +1326,7 @@ body, #root {
 /* ── Drawing tools rail + popover ── */
 .drawing-rail {
   position: absolute;
-  top: 48px;
+  top: 10px;
   left: 8px;
   z-index: 50;
   display: flex;
@@ -1448,7 +1449,7 @@ body, #root {
 }
 
 .chart-card.chart-card-maximized .drawing-rail {
-  top: 56px;
+  top: 10px;
 }
 
 @media (max-width: 900px) {
@@ -1466,6 +1467,11 @@ body, #root {
     width: 1px;
     height: 22px;
     margin: 2px 4px;
+  }
+
+  /* Rail moves to the bottom on small screens — legend can reclaim the left edge. */
+  .chart-legend-container {
+    left: 10px;
   }
 }
 
@@ -1690,8 +1696,10 @@ select.field {
   color: var(--text-muted);
 }
 
-.plevel--r .plevel__label { color: var(--bear); }
-.plevel--s .plevel__label { color: var(--bull); }
+.plevel--r .plevel__label,
+.plevel--r .plevel__value { color: var(--bear); }
+.plevel--s .plevel__label,
+.plevel--s .plevel__value { color: var(--bull); }
 
 .plevel--pp {
   background: var(--accent-subtle);
@@ -2027,11 +2035,11 @@ mark {
   border-radius: 4px;
 }
 .swing-badge.sh {
-  background: var(--bull-soft);
+  background: color-mix(in srgb, var(--color-bull) 18%, transparent);
   color: var(--color-bull);
 }
 .swing-badge.sl {
-  background: var(--bear-soft);
+  background: color-mix(in srgb, var(--color-bear) 18%, transparent);
   color: var(--color-bear);
 }
 
@@ -2249,7 +2257,7 @@ mark {
   align-items: center;
   gap: 12px;
   background: var(--neutral-soft);
-  border: 1px solid transparent;
+  border: 1px solid color-mix(in srgb, var(--color-neutral) 28%, transparent);
   border-radius: var(--radius-md);
   padding: 16px 28px;
   font-family: var(--font-ui);
@@ -2348,12 +2356,12 @@ mark {
 
 .bull-scenario {
   background: var(--bull-soft);
-  border: 1px solid transparent;
+  border: 1px solid color-mix(in srgb, var(--color-bull) 28%, transparent);
 }
 
 .bear-scenario {
   background: var(--bear-soft);
-  border: 1px solid transparent;
+  border: 1px solid color-mix(in srgb, var(--color-bear) 28%, transparent);
 }
 
 .scenario-header {

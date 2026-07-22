@@ -1322,6 +1322,153 @@ body, #root {
   justify-content: flex-end;
 }
 
+/* ── Drawing tools rail + popover ── */
+.drawing-rail {
+  position: absolute;
+  top: 48px;
+  left: 8px;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  background: color-mix(in srgb, var(--bg-raised) 92%, transparent);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-popover);
+  max-height: calc(100% - 64px);
+  overflow-y: auto;
+}
+
+.drawing-tool-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.drawing-tool-btn:hover {
+  color: var(--text-primary);
+  background: var(--hover-overlay);
+}
+
+.drawing-tool-btn.active {
+  color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 16%, transparent);
+}
+
+.drawing-tool-btn.danger:hover {
+  color: var(--bear);
+  background: color-mix(in srgb, var(--bear) 12%, transparent);
+}
+
+.drawing-rail-sep {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--border-medium);
+}
+
+.drawing-popover {
+  position: fixed;
+  z-index: 70;
+  width: 280px;
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-popover);
+  padding: var(--space-4);
+}
+
+.drawing-popover .stack-3 {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.drawing-popover .field-group {
+  margin-bottom: 0;
+}
+
+.drawing-popover .field-label {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.drawing-popover .row-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.drawing-popover .field-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.drawing-color-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.drawing-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.drawing-palette-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--border-medium) 80%, transparent);
+  padding: 0;
+  cursor: pointer;
+}
+
+.drawing-palette-swatch.active {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 1px;
+}
+
+.drawing-alert-btn {
+  width: 100%;
+  justify-content: center;
+}
+
+.chart-card.chart-card-maximized .drawing-rail {
+  top: 56px;
+}
+
+@media (max-width: 900px) {
+  .drawing-rail {
+    top: auto;
+    bottom: 12px;
+    left: 8px;
+    flex-direction: row;
+    flex-wrap: wrap;
+    max-width: calc(100% - 16px);
+    max-height: none;
+  }
+
+  .drawing-rail-sep {
+    width: 1px;
+    height: 22px;
+    margin: 2px 4px;
+  }
+}
+
 .field {
   width: 100%;
   height: 36px;

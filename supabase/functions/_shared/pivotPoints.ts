@@ -32,6 +32,8 @@ export type PivotLevels = Record<string, number | null | string | unknown> & {
   S5: number | null;
 };
 
+export type PivotBias = "bullish" | "bearish" | "neutral";
+
 export type PivotPeriodType = "daily" | "weekly" | "monthly" | "yearly";
 export type PivotTimeframePreference = "auto" | PivotPeriodType;
 
@@ -413,9 +415,20 @@ export function analyzePriceVsPivots(currentPrice: number, pivots: PivotLevels, 
   const nearestLevel = levelsWithDist[0];
   const atInflectionPoint = nearestLevel ? nearestLevel.dist < threshold : false;
 
+  // Typed explicitly — without it this ternary chain widens to `string`, which breaks callers
+  // (e.g. computeSignalAgreement) that expect the literal "bullish"|"bearish"|"neutral" union and
+  // would otherwise need an unsafe cast at every call site.
+  const bias: PivotBias = pp === null
+    ? "neutral"
+    : currentPrice > pp
+    ? "bullish"
+    : currentPrice < pp
+    ? "bearish"
+    : "neutral";
+
   return {
     zone,
-    bias: pp === null ? "neutral" : currentPrice > pp ? "bullish" : currentPrice < pp ? "bearish" : "neutral",
+    bias,
     nearestResistance,
     nearestSupport,
     distToResistance: nearestResistance

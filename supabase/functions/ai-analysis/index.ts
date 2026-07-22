@@ -27,6 +27,28 @@ import {
   type TradePlanTarget,
   validateTradePlanGeometry,
 } from "../_shared/tradePlan.ts";
+import type { DivergenceResult } from "../_shared/marketStructure.ts";
+import type { PivotBias } from "../_shared/pivotPoints.ts";
+import type { MarketRegime } from "../_shared/regime.ts";
+
+export type AnalysisMeta = {
+  model: string;
+  source: string;
+  timestamp: string;
+  validated: boolean;
+  confluence_score: number;
+  signal_strength: number;
+  setup_type: SetupType;
+  data_completeness: { futures_available: boolean; order_book_available: boolean; liquidation_available: boolean };
+  model_field_ratio?: number;
+  trade_plan_geometry_valid?: boolean;
+  analysis_id?: string | null;
+  latency_ms?: number;
+  confluence_breakdown?: MarketContext["confluenceBreakdown"];
+  cached?: boolean;
+  calibration?: { setup_type: SetupType; n: number; empirical_hit_rate: number };
+  confidence_capped?: boolean;
+};
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_MODEL = "nvidia/nemotron-super-49b-v1:free";
@@ -120,6 +142,7 @@ function toGatingContext(ctx: MarketContext): GatingContext {
     pivots: ctx.pivots,
     nearestSupport: ctx.nearestSupport,
     nearestResistance: ctx.nearestResistance,
+    crossMarket: ctx.crossMarket,
   };
 }
 
@@ -227,6 +250,40 @@ function asEnum<T extends string>(value: unknown, allowed: Set<T>, fallback: T):
   const normalized = String(value ?? "").trim().toLowerCase() as T;
   return allowed.has(normalized) ? normalized : fallback;
 }
+
+type PrimaryTrend = "bullish" | "bearish" | "sideways";
+type MomentumState = "strong_bullish" | "bullish" | "neutral" | "bearish" | "strong_bearish";
+type MarketPhase = "accumulation" | "markup" | "distribution" | "markdown" | "consolidation";
+type SummaryBias = "long" | "short" | "neutral";
+type RsiState = "overbought" | "bullish_zone" | "neutral" | "bearish_zone" | "oversold";
+type MacdState = "bullish_crossover" | "bearish_crossover" | "bullish_momentum" | "bearish_momentum";
+type EmaAlignment = "bullish" | "bearish" | "mixed";
+type PriceVsEma = "above" | "below" | "at";
+type SignificanceLevel = "high" | "medium" | "low";
+type DominantSide = "buyers" | "sellers" | "neutral";
+type VolatilityState = MarketContext["volatilityState"];
+type AnalysisMarketRegime = MarketRegime | "breakout" | "reversal";
+type AnomalyType = "divergence" | "liquidity_trap" | "trend_exhaustion" | "pivot_confluence" | "volume_spike" | "none";
+type SeverityLevel = "low" | "medium" | "high";
+
+const PRIMARY_TREND_SET = new Set<PrimaryTrend>(["bullish", "bearish", "sideways"]);
+const MOMENTUM_SET = new Set<MomentumState>(["strong_bullish", "bullish", "neutral", "bearish", "strong_bearish"]);
+const MARKET_PHASE_SET = new Set<MarketPhase>(["accumulation", "markup", "distribution", "markdown", "consolidation"]);
+const SUMMARY_BIAS_SET = new Set<SummaryBias>(["long", "short", "neutral"]);
+const RSI_STATE_SET = new Set<RsiState>(["overbought", "bullish_zone", "neutral", "bearish_zone", "oversold"]);
+const DIVERGENCE_SET = new Set<DivergenceResult>(["bullish", "bearish", "none"]);
+const MACD_STATE_SET = new Set<MacdState>(["bullish_crossover", "bearish_crossover", "bullish_momentum", "bearish_momentum"]);
+const EMA_ALIGNMENT_SET = new Set<EmaAlignment>(["bullish", "bearish", "mixed"]);
+const PRICE_VS_EMA_SET = new Set<PriceVsEma>(["above", "below", "at"]);
+const SIGNIFICANCE_SET = new Set<SignificanceLevel>(["high", "medium", "low"]);
+const PIVOT_BIAS_SET = new Set<PivotBias>(["bullish", "bearish", "neutral"]);
+const BREAKOUT_WATCH_SET = new Set<DivergenceResult>(["bullish", "bearish", "none"]);
+const DOMINANT_SIDE_SET = new Set<DominantSide>(["buyers", "sellers", "neutral"]);
+const TRADE_BIAS_SET = new Set<TradePlan["bias"]>(["long", "short", "wait"]);
+const ANOMALY_TYPE_SET = new Set<AnomalyType>(["divergence", "liquidity_trap", "trend_exhaustion", "pivot_confluence", "volume_spike", "none"]);
+const SEVERITY_SET = new Set<SeverityLevel>(["low", "medium", "high"]);
+const VOLATILITY_SET = new Set<VolatilityState>(["low", "medium", "high"]);
+const ANALYSIS_REGIME_SET = new Set<AnalysisMarketRegime>(["trending", "ranging", "volatile_chop", "breakout", "reversal"]);
 
 function asObject(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -353,8 +410,25 @@ function deterministicFallback(ctx: MarketContext, source = "local-fallback") {
   // the system recommends.
   const summaryBias = tradePlan.bias === "wait" ? "neutral" : tradePlan.bias;
   const gatedNote = summaryBias !== bias
-    ? ` Raw signal read ${bias}; ${ctx.regime} regime gating downgraded it to ${summaryBias}.`
+    ? gated.crossMarketNote
+      ? ` Raw signal read ${bias}; downgraded to ${summaryBias}. ${gated.crossMarketNote}`
+      : ` Raw signal read ${bias}; ${ctx.regime} regime gating downgraded it to ${summaryBias}.`
     : "";
+
+  const meta: AnalysisMeta = {
+    model: MODEL,
+    source,
+    timestamp: new Date().toISOString(),
+    validated: true,
+    confluence_score: ctx.confluenceScore,
+    signal_strength: ctx.signalAgreement,
+    setup_type: gated.setupType,
+    data_completeness: {
+      futures_available: ctx.futures.available,
+      order_book_available: ctx.orderFlow.obi != null,
+      liquidation_available: ctx.liquidation.available,
+    },
+  };
 
   const legacy = {
     summary: {
@@ -434,20 +508,7 @@ function deterministicFallback(ctx: MarketContext, source = "local-fallback") {
       htf_bias: ctx.htfBias,
     },
     trade_plan: tradePlan,
-    _meta: {
-      model: MODEL,
-      source,
-      timestamp: new Date().toISOString(),
-      validated: true,
-      confluence_score: ctx.confluenceScore,
-      signal_strength: ctx.signalAgreement,
-      setup_type: gated.setupType,
-      data_completeness: {
-        futures_available: ctx.futures.available,
-        order_book_available: ctx.orderFlow.obi != null,
-        liquidation_available: ctx.liquidation.available,
-      },
-    },
+    _meta: meta,
   };
 
   return {
@@ -654,8 +715,23 @@ Reasoning rules:
   reasonably agree; otherwise use "wait" with entry_zone null and empty targets.
 - Regime gating: volatile_chop => wait; ranging => only fade within 0.5×ATR of S/R zones;
   if 2+ HTF reads contradict bias => wait; if 1 contradicts => lower confidence ~15pts.
-- Base stop_loss and targets on the supplied pivot levels, swing structure, and ATR — never invent
-  price levels that are not derivable from the provided data.
+- Cross-market gating (only applies when cross_market.available is true and the symbol is not BTC
+  or ETH itself): if beta_to_btc >= 0.7 and BTC's trend contradicts the proposed bias, treat it like
+  an HTF contradiction — wait if BTC is itself trending against the trade, otherwise lower
+  confidence ~10-15pts. A high-beta altcoin long against a trending-down BTC is a BTC short wearing
+  a different ticker; say so explicitly in the rationale when this applies.
+- Base stop_loss and targets on the confluence map's highest-scored nearby clusters first, then the
+  supplied pivot levels, swing structure, and ATR — never invent price levels that are not
+  derivable from the provided data. A cluster backed by several independent sources (e.g. a pivot,
+  a volume-profile POC, and an anchored VWAP all landing together) is stronger evidence than a lone
+  pivot level and should be preferred for stop/target placement when one is nearby.
+- A liquidity sweep that reclaimed (wicked through a level and closed back inside) is meaningfully
+  different from a plain breakout of the same level — treat a reclaimed sweep against the prevailing
+  trend as a real reversal signal, not noise. A TTM squeeze release (state "fired") in the direction
+  of the proposed bias adds confidence; a squeeze still compressing ("squeeze") is not itself a
+  signal to act on.
+- If funding_window.imminent is true, mention the upcoming settlement as a timing consideration but
+  do not let it alone drive bias or confidence.
 - Price above the classic PP is bullish session bias; below is bearish. RSI >= 70 is overbought,
   <= 30 is oversold. MACD is bullish when the MACD line is above its signal line. EMA alignment is
   bullish if price > EMA20 > EMA50, bearish if price < EMA20 < EMA50, otherwise mixed.
@@ -696,34 +772,34 @@ function normalizeModelOutput(parsed: Record<string, unknown>, ctx: MarketContex
   const baseTradePlan = base.trade_plan as TradePlan;
 
   const validatedSummary = {
-    primary_trend: asEnum(summary.primary_trend, new Set(["bullish", "bearish", "sideways"]), baseSummary.primary_trend as string),
-    momentum: asEnum(summary.momentum, new Set(["strong_bullish", "bullish", "neutral", "bearish", "strong_bearish"]), baseSummary.momentum as string),
-    phase: asEnum(summary.phase, new Set(["accumulation", "markup", "distribution", "markdown", "consolidation"]), baseSummary.phase as string),
+    primary_trend: asEnum(summary.primary_trend, PRIMARY_TREND_SET, baseSummary.primary_trend as PrimaryTrend),
+    momentum: asEnum(summary.momentum, MOMENTUM_SET, baseSummary.momentum as MomentumState),
+    phase: asEnum(summary.phase, MARKET_PHASE_SET, baseSummary.phase as MarketPhase),
     confidence: clamp(safeInt(summary.confidence, baseSummary.confidence as number), 0, 100),
-    bias: asEnum(summary.bias, new Set(["long", "short", "neutral"]), baseSummary.bias as string),
+    bias: asEnum(summary.bias, SUMMARY_BIAS_SET, baseSummary.bias as SummaryBias),
     reasoning: String(summary.reasoning ?? baseSummary.reasoning),
   };
 
   const validatedIndicators = {
     rsi: {
       value: baseIndicators.rsi.value as number | null,
-      state: asEnum(rsiObj.state, new Set(["overbought", "bullish_zone", "neutral", "bearish_zone", "oversold"]), baseIndicators.rsi.state as string),
-      divergence: asEnum(rsiObj.divergence, new Set(["bullish", "bearish", "none"]), baseIndicators.rsi.divergence as string),
+      state: asEnum(rsiObj.state, RSI_STATE_SET, baseIndicators.rsi.state as RsiState),
+      divergence: asEnum(rsiObj.divergence, DIVERGENCE_SET, baseIndicators.rsi.divergence as DivergenceResult),
       signal: String(rsiObj.signal ?? baseIndicators.rsi.signal),
     },
     macd: {
       macd_line: baseIndicators.macd.macd_line as number | null,
       signal_line: baseIndicators.macd.signal_line as number | null,
       histogram: baseIndicators.macd.histogram as number | null,
-      state: asEnum(macdObj.state, new Set(["bullish_crossover", "bearish_crossover", "bullish_momentum", "bearish_momentum"]), baseIndicators.macd.state as string),
+      state: asEnum(macdObj.state, MACD_STATE_SET, baseIndicators.macd.state as MacdState),
       signal: String(macdObj.signal ?? baseIndicators.macd.signal),
     },
     ema: {
       ema20: baseIndicators.ema.ema20 as number | null,
       ema50: baseIndicators.ema.ema50 as number | null,
-      alignment: asEnum(emaObj.alignment, new Set(["bullish", "bearish", "mixed"]), baseIndicators.ema.alignment as string),
-      price_vs_ema20: asEnum(emaObj.price_vs_ema20, new Set(["above", "below", "at"]), baseIndicators.ema.price_vs_ema20 as string),
-      price_vs_ema50: asEnum(emaObj.price_vs_ema50, new Set(["above", "below", "at"]), baseIndicators.ema.price_vs_ema50 as string),
+      alignment: asEnum(emaObj.alignment, EMA_ALIGNMENT_SET, baseIndicators.ema.alignment as EmaAlignment),
+      price_vs_ema20: asEnum(emaObj.price_vs_ema20, PRICE_VS_EMA_SET, baseIndicators.ema.price_vs_ema20 as PriceVsEma),
+      price_vs_ema50: asEnum(emaObj.price_vs_ema50, PRICE_VS_EMA_SET, baseIndicators.ema.price_vs_ema50 as PriceVsEma),
       signal: String(emaObj.signal ?? baseIndicators.ema.signal),
     },
   };
@@ -738,14 +814,14 @@ function normalizeModelOutput(parsed: Record<string, unknown>, ctx: MarketContex
       level: String(c.level ?? "N/A"),
       price: safeFloat(c.price, null),
       confluent_with: String(c.confluent_with ?? "unknown"),
-      significance: asEnum(c.significance, new Set(["high", "medium", "low"]), "low"),
+      significance: asEnum(c.significance, SIGNIFICANCE_SET, "low"),
     }))
     .filter((c) => c.price != null);
 
   const validatedPivotAnalysis = {
     pp: basePivotAnalysis.pp as number | null,
     current_zone: String(pivotAnalysis.current_zone ?? basePivotAnalysis.current_zone),
-    session_bias: asEnum(pivotAnalysis.session_bias, new Set(["bullish", "bearish", "neutral"]), basePivotAnalysis.session_bias as string),
+    session_bias: asEnum(pivotAnalysis.session_bias, PIVOT_BIAS_SET, basePivotAnalysis.session_bias as PivotBias),
     nearest_pivot_resistance: nearestResistance,
     nearest_pivot_support: nearestSupport,
     distance_to_pivot_resistance_pct: safeFloat(pivotAnalysis.distance_to_pivot_resistance_pct, basePivotAnalysis.distance_to_pivot_resistance_pct as number | null),
@@ -772,13 +848,13 @@ function normalizeModelOutput(parsed: Record<string, unknown>, ctx: MarketContex
     key_support_levels: filterFiniteNumbers(structure.key_support_levels, baseStructure.key_support_levels, 5),
     key_resistance_levels: filterFiniteNumbers(structure.key_resistance_levels, baseStructure.key_resistance_levels, 5),
     range_bound: Boolean(structure.range_bound ?? baseStructure.range_bound),
-    breakout_watch: asEnum(structure.breakout_watch, new Set(["bullish", "bearish", "none"]), baseStructure.breakout_watch as string),
+    breakout_watch: asEnum(structure.breakout_watch, BREAKOUT_WATCH_SET, baseStructure.breakout_watch as DivergenceResult),
   };
 
   const validatedOrderFlow = {
     obi: safeFloat(orderFlow.obi, baseOrderFlow.obi as number | null),
     tfi: safeFloat(orderFlow.tfi, baseOrderFlow.tfi as number | null),
-    dominant_side: asEnum(orderFlow.dominant_side, new Set(["buyers", "sellers", "neutral"]), baseOrderFlow.dominant_side as string),
+    dominant_side: asEnum(orderFlow.dominant_side, DOMINANT_SIDE_SET, baseOrderFlow.dominant_side as DominantSide),
     interpretation: String(orderFlow.interpretation ?? baseOrderFlow.interpretation),
   };
 
@@ -787,7 +863,7 @@ function normalizeModelOutput(parsed: Record<string, unknown>, ctx: MarketContex
     bearish_scenario: String(tradeLogic.bearish_scenario ?? baseTradeLogic.bearish_scenario),
     invalidation_bull: safeFloat(tradeLogic.invalidation_bull, baseTradeLogic.invalidation_bull as number | null),
     invalidation_bear: safeFloat(tradeLogic.invalidation_bear, baseTradeLogic.invalidation_bear as number | null),
-    suggested_bias: asEnum(tradeLogic.suggested_bias, new Set(["long", "short", "wait"]), baseTradeLogic.suggested_bias as string),
+    suggested_bias: asEnum(tradeLogic.suggested_bias, TRADE_BIAS_SET, baseTradeLogic.suggested_bias as TradePlan["bias"]),
     risk_note: String(tradeLogic.risk_note ?? baseTradeLogic.risk_note),
   };
 
@@ -795,16 +871,16 @@ function normalizeModelOutput(parsed: Record<string, unknown>, ctx: MarketContex
   const validatedAnomalies = rawAnomalies
     .filter((a): a is Record<string, unknown> => !!a && typeof a === "object")
     .map((a) => ({
-      type: asEnum(a.type, new Set(["divergence", "liquidity_trap", "trend_exhaustion", "pivot_confluence", "volume_spike", "none"]), "none"),
+      type: asEnum(a.type, ANOMALY_TYPE_SET, "none"),
       description: String(a.description ?? ""),
-      severity: asEnum(a.severity, new Set(["low", "medium", "high"]), "low"),
+      severity: asEnum(a.severity, SEVERITY_SET, "low"),
     }));
 
   const validatedMarketRegime = {
-    volatility: asEnum(marketRegime.volatility, new Set(["low", "medium", "high"]), baseMarketRegime.volatility as string),
+    volatility: asEnum(marketRegime.volatility, VOLATILITY_SET, baseMarketRegime.volatility as VolatilityState),
     trend_strength: clamp(safeInt(marketRegime.trend_strength, baseMarketRegime.trend_strength as number), 0, 100),
     is_trending: Boolean(marketRegime.is_trending ?? baseMarketRegime.is_trending),
-    regime: asEnum(marketRegime.regime, new Set(["trending", "ranging", "volatile_chop", "breakout", "reversal"]), baseMarketRegime.regime as string),
+    regime: asEnum(marketRegime.regime, ANALYSIS_REGIME_SET, baseMarketRegime.regime as AnalysisMarketRegime),
   };
 
   const rawTargets = Array.isArray(tradePlanObj.targets) ? tradePlanObj.targets : [];
@@ -818,7 +894,7 @@ function normalizeModelOutput(parsed: Record<string, unknown>, ctx: MarketContex
     .filter((t) => t.price != null)
     .slice(0, 5);
 
-  const tradePlanBias = asEnum(tradePlanObj.bias, new Set(["long", "short", "wait"]), baseTradePlan.bias);
+  const tradePlanBias = asEnum(tradePlanObj.bias, TRADE_BIAS_SET, baseTradePlan.bias);
   const entryZoneObj = asObject(tradePlanObj.entry_zone);
   let validatedTradePlan: TradePlan = {
     bias: tradePlanBias,
@@ -851,7 +927,7 @@ function normalizeModelOutput(parsed: Record<string, unknown>, ctx: MarketContex
   const geometry = validateTradePlanGeometry(validatedTradePlan, ctx.price);
   let tradePlanGeometryValid = geometry.valid;
   const gatingCtx = toGatingContext(ctx);
-  const baseSetupType = (base._meta as Record<string, unknown>)?.setup_type as SetupType ?? "wait";
+  const baseSetupType = base._meta.setup_type ?? "wait";
   if (!geometry.valid && validatedTradePlan.bias !== "wait") {
     const fallbackBias = validatedTradePlan.bias === "long" ? "long" : validatedTradePlan.bias === "short" ? "short" : "neutral";
     const detBias = fallbackBias === "long" || fallbackBias === "short" ? fallbackBias : "neutral";
@@ -885,6 +961,23 @@ function normalizeModelOutput(parsed: Record<string, unknown>, ctx: MarketContex
   const modelFieldRatio = totalFieldCount > 0 ? modelFieldCount / totalFieldCount : 0;
   const source = modelFieldRatio >= 0.7 ? "openrouter" : modelFieldRatio > 0 ? "openrouter-partial" : "deterministic";
 
+  const meta: AnalysisMeta = {
+    model: MODEL,
+    source,
+    timestamp: new Date().toISOString(),
+    validated: true,
+    confluence_score: ctx.confluenceScore,
+    signal_strength: ctx.signalAgreement,
+    model_field_ratio: Number(modelFieldRatio.toFixed(3)),
+    trade_plan_geometry_valid: tradePlanGeometryValid,
+    setup_type: setupType,
+    data_completeness: {
+      futures_available: ctx.futures.available,
+      order_book_available: ctx.orderFlow.obi != null,
+      liquidation_available: ctx.liquidation.available,
+    },
+  };
+
   const out = {
     ...base,
     summary: validatedSummary,
@@ -896,22 +989,7 @@ function normalizeModelOutput(parsed: Record<string, unknown>, ctx: MarketContex
     anomalies: validatedAnomalies.length ? validatedAnomalies : base.anomalies,
     market_regime: validatedMarketRegime,
     trade_plan: validatedTradePlan,
-    _meta: {
-      model: MODEL,
-      source,
-      timestamp: new Date().toISOString(),
-      validated: true,
-      confluence_score: ctx.confluenceScore,
-      signal_strength: ctx.signalAgreement,
-      model_field_ratio: Number(modelFieldRatio.toFixed(3)),
-      trade_plan_geometry_valid: tradePlanGeometryValid,
-      setup_type: setupType,
-      data_completeness: {
-        futures_available: ctx.futures.available,
-        order_book_available: ctx.orderFlow.obi != null,
-        liquidation_available: ctx.liquidation.available,
-      },
-    },
+    _meta: meta,
   };
 
   return {
@@ -1030,7 +1108,7 @@ Deno.serve(async (req) => {
     const content = payload?.choices?.[0]?.message?.content ?? "";
     const parsed = extractJson(content);
     const analysis = normalizeModelOutput(parsed, ctx);
-    const setupType = (analysis._meta as Record<string, unknown>)?.setup_type as SetupType ?? "wait";
+    const setupType = analysis._meta.setup_type ?? "wait";
     const calibration = await fetchEmpiricalCalibration(supabase, setupType, ctx.regime);
     attachEmpiricalConfidence(analysis as Record<string, unknown>, calibration, setupType);
     const latencyMs = Date.now() - started;
@@ -1069,7 +1147,7 @@ Deno.serve(async (req) => {
       const ctx = ctxForFallback ?? (symbol && interval ? await gatherMarketContext(symbol, interval) : null);
       if (ctx) {
         const fallback = deterministicFallback(ctx, `fallback: ${errorMessage}`);
-        fallback._meta = { ...(fallback._meta as Record<string, unknown>), analysis_id: fallbackAnalysisId };
+        fallback._meta = { ...fallback._meta, analysis_id: fallbackAnalysisId };
         return jsonResponse(req, { success: true, analysis: fallback });
       }
     } catch { /* fall through to hard error below */ }

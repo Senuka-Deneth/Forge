@@ -31,6 +31,16 @@ import type { DivergenceResult } from "../_shared/marketStructure.ts";
 import type { PivotBias } from "../_shared/pivotPoints.ts";
 import type { MarketRegime } from "../_shared/regime.ts";
 import { bookQualityFromOrderFlow, buildVerdict, type Factor } from "../_shared/verdict.ts";
+import {
+  applyGuardrailVerdict,
+  evaluateGuardrails,
+  type GuardrailId,
+  type GuardrailResult,
+  type JournalSnapshot,
+  type RiskSettings,
+} from "../_shared/guardrails.ts";
+import { fetchJournalSnapshot, fetchRiskSettings } from "../_shared/journalSnapshot.ts";
+import type { ExpectancyResult } from "../_shared/expectancy.ts";
 
 export type AnalysisMeta = {
   model: string;
@@ -149,33 +159,51 @@ function toGatingContext(ctx: MarketContext): GatingContext {
 
 /** Empirical hit rate for the setup about to be recommended. Bucket selection lives in
  * _shared/calibration.ts so it can be unit-tested without a database. */
+async function fetchSetupBaseline(
+  supabase: SupabaseClient,
+  setupType: SetupType,
+  regime: string | null,
+  symbol: string,
+  interval: string,
+): Promise<{ hit_rate: number; n: number } | null> {
+  if (!regime) return null;
+
+  const { data: exact, error: exactError } = await supabase
+    .from("setup_baselines")
+    .select("hit_rate, n")
+    .eq("setup_type", setupType)
+    .eq("regime", regime)
+    .eq("symbol", symbol)
+    .eq("interval", interval)
+    .maybeSingle();
+  if (!exactError && exact?.hit_rate != null) {
+    return { hit_rate: Number(exact.hit_rate), n: Number(exact.n) || 0 };
+  }
+
+  // Pooled fallback: same setup×regime across symbols/intervals, prefer largest n.
+  const { data: pooled, error: pooledError } = await supabase
+    .from("setup_baselines")
+    .select("hit_rate, n")
+    .eq("setup_type", setupType)
+    .eq("regime", regime)
+    .order("n", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!pooledError && pooled?.hit_rate != null) {
+    return { hit_rate: Number(pooled.hit_rate), n: Number(pooled.n) || 0 };
+  }
+  return null;
+}
+
 async function fetchEmpiricalCalibration(
   supabase: SupabaseClient,
   setupType: SetupType,
   regime: string | null,
+  symbol?: string,
+  interval?: string,
 ): Promise<EmpiricalCalibration | null> {
-  // Prefer the newest scoring version that has enough decided samples; fall back to the pooled
-  // history rather than waiting weeks for a cold v3 bucket to fill.
-  const { data: v3data, error: v3error } = await supabase
-    .from("ai_analysis_logs")
-    .select("outcome, setup_type, regime, scoring_version")
-    .eq("status", "success")
-    .not("evaluated_at", "is", null)
-    .in("outcome", ["target_hit", "stop_hit", "expired", "no_fill"])
-    .eq("scoring_version", 3)
-    .limit(500);
-  const useV3 = !v3error && (v3data?.length ?? 0) >= 20;
-
-  const { data: v2data, error: v2error } = await supabase
-    .from("ai_analysis_logs")
-    .select("outcome, setup_type, regime, scoring_version")
-    .eq("status", "success")
-    .not("evaluated_at", "is", null)
-    .in("outcome", ["target_hit", "stop_hit", "expired", "no_fill"])
-    .eq("scoring_version", 2)
-    .limit(500);
-  const useV2 = !useV3 && !v2error && (v2data?.length ?? 0) >= 20;
-
+  // One ordered query; split by scoring_version in memory so .limit(500) is newest-first rather
+  // than an arbitrary subset (v2/v3 queries previously lacked an order clause).
   const { data, error } = await supabase
     .from("ai_analysis_logs")
     .select("outcome, setup_type, regime, scoring_version")
@@ -184,10 +212,25 @@ async function fetchEmpiricalCalibration(
     .in("outcome", ["target_hit", "stop_hit", "expired", "no_fill"])
     .order("created_at", { ascending: false })
     .limit(500);
-  if (error || !data?.length) return null;
+  if (error) return null;
 
-  const rows = (useV3 ? (v3data ?? []) : useV2 ? (v2data ?? []) : data) as CalibrationRow[];
-  return selectCalibrationBucket(rows, setupType, regime);
+  const all = (data ?? []) as Array<CalibrationRow & { scoring_version?: number | null }>;
+  const v3 = all.filter((r) => r.scoring_version === 3);
+  const v2 = all.filter((r) => r.scoring_version === 2);
+  const rows: CalibrationRow[] = v3.length >= 20 ? v3 : v2.length >= 20 ? v2 : all;
+
+  const baseline = symbol && interval
+    ? await fetchSetupBaseline(supabase, setupType, regime, symbol, interval)
+    : null;
+
+  return selectCalibrationBucket(
+    rows,
+    setupType,
+    regime,
+    undefined,
+    baseline?.hit_rate ?? null,
+    baseline?.n ?? 0,
+  );
 }
 
 const CALIBRATION_BUCKET_LABEL: Record<EmpiricalCalibration["bucket"], string> = {
@@ -196,7 +239,15 @@ const CALIBRATION_BUCKET_LABEL: Record<EmpiricalCalibration["bucket"], string> =
   setup_regime: "this setup type in this regime",
   setup: "this setup type across all regimes",
   global: "all setups pooled",
+  backtest_prior: "a backtest-seeded prior for this setup type in this regime",
 };
+
+const JOURNAL_GUARDRAIL_IDS: ReadonlySet<GuardrailId> = new Set([
+  "daily_loss_limit",
+  "max_open_r",
+  "loss_cooldown",
+  "correlated_exposure",
+]);
 
 function deriveFactors(ctx: MarketContext, bias: TradePlan["bias"]): Factor[] {
   const factors: Factor[] = [];
@@ -253,7 +304,11 @@ function attachDecisionLayer(
   if (calibration) {
     tradePlan.empirical_confidence = Number((calibration.empirical_hit_rate * 100).toFixed(1));
     const pct = (calibration.empirical_hit_rate * 100).toFixed(1);
-    tradePlan.rationale = `${tradePlan.rationale} Historically ${CALIBRATION_BUCKET_LABEL[calibration.bucket]} has hit ${pct}% over ${calibration.n} decided instances — don't report confidence far above this without stating why.`;
+    const alreadyLabeled = typeof tradePlan.rationale === "string" &&
+      tradePlan.rationale.includes("Historically ");
+    if (!alreadyLabeled) {
+      tradePlan.rationale = `${tradePlan.rationale} Historically ${CALIBRATION_BUCKET_LABEL[calibration.bucket]} has hit ${pct}% over ${calibration.n} decided instances — don't report confidence far above this without stating why.`;
+    }
 
     const summary = analysis.summary as Record<string, unknown> | undefined;
     if (summary && typeof summary.confidence === "number") {
@@ -281,6 +336,8 @@ function attachDecisionLayer(
   analysis.trade_plan = tradePlan;
 
   const tradeLogic = analysis.trade_logic as Record<string, unknown> | undefined;
+  // Market-side only — journal/settings are attached after cache write so the shared cache never
+  // stores per-user guardrails.
   const verdict = buildVerdict({
     plan: tradePlan,
     regime: ctx.regime,
@@ -320,6 +377,62 @@ function attachDecisionLayer(
       }
       : {}),
   };
+}
+
+/**
+ * Merge user-scoped journal guardrails onto a (possibly cached) analysis.
+ * Keeps market gates already present; replaces only the journal-family gates.
+ */
+function applyJournalGuardrails(
+  analysis: Record<string, unknown>,
+  journal: JournalSnapshot | null,
+  settings: Partial<RiskSettings> | null,
+): void {
+  const expectancy = (analysis.expectancy ??
+    (analysis.verdict as { expectancy?: ExpectancyResult } | undefined)?.expectancy) as
+      | ExpectancyResult
+      | undefined;
+  if (!expectancy) return;
+
+  const existing = (
+    (analysis.guardrails as GuardrailResult[] | undefined) ??
+    (analysis.verdict as { guardrails?: GuardrailResult[] } | undefined)?.guardrails ??
+    []
+  ).filter((g) => !JOURNAL_GUARDRAIL_IDS.has(g.id));
+
+  const journalGates = evaluateGuardrails({
+    expectancy,
+    journal,
+    settings: settings ?? undefined,
+  }).filter((g) => JOURNAL_GUARDRAIL_IDS.has(g.id));
+
+  const guardrails = [...existing, ...journalGates];
+  const { verdict } = applyGuardrailVerdict(expectancy, guardrails);
+
+  const previous = (analysis.verdict as Record<string, unknown> | undefined) ?? {};
+  analysis.guardrails = guardrails;
+  analysis.verdict = {
+    ...previous,
+    expectancy,
+    guardrails,
+    verdict,
+  };
+  analysis._meta = {
+    ...(analysis._meta as Record<string, unknown>),
+    verdict,
+  };
+}
+
+async function attachUserGuardrails(
+  supabase: SupabaseClient,
+  userId: string,
+  analysis: Record<string, unknown>,
+): Promise<void> {
+  const [journal, settings] = await Promise.all([
+    fetchJournalSnapshot(supabase, userId).catch(() => null),
+    fetchRiskSettings(supabase, userId).catch(() => null),
+  ]);
+  applyJournalGuardrails(analysis, journal, settings);
 }
 
 /** @deprecated Use attachDecisionLayer — kept as a thin alias for any external callers. */
@@ -1157,10 +1270,12 @@ Deno.serve(async (req) => {
 
     const cached = await readAnalysisCache(supabase, cacheKey);
     if (cached) {
-      return jsonResponse(req, {
-        success: true,
-        analysis: { ...cached, _meta: { ...(cached._meta as Record<string, unknown>), cached: true } },
-      });
+      const analysis = {
+        ...cached,
+        _meta: { ...(cached._meta as Record<string, unknown>), cached: true },
+      };
+      await attachUserGuardrails(supabase, userId, analysis);
+      return jsonResponse(req, { success: true, analysis });
     }
 
     const quota = await consumeQuota(supabase, userId, RATE_LIMIT_WINDOW_MS, RATE_LIMIT_MAX_CALLS, "ai_analysis");
@@ -1218,11 +1333,12 @@ Deno.serve(async (req) => {
     const parsed = extractJson(content);
     const analysis = normalizeModelOutput(parsed, ctx);
     const setupType = analysis._meta.setup_type ?? "wait";
-    const calibration = await fetchEmpiricalCalibration(supabase, setupType, ctx.regime);
+    const calibration = await fetchEmpiricalCalibration(supabase, setupType, ctx.regime, symbol, interval);
     attachDecisionLayer(analysis as Record<string, unknown>, calibration, setupType, ctx);
     const latencyMs = Date.now() - started;
 
-    await writeAnalysisCache(supabase, cacheKey, analysis as Record<string, unknown>);
+    // Log first so analysis_id exists, attach meta, THEN write cache — cached hits must retain
+    // analysis_id for journal/alert linking.
     const analysisId = await logAiAnalysis(supabase, {
       userId,
       symbol,
@@ -1243,6 +1359,9 @@ Deno.serve(async (req) => {
       confluence_breakdown: ctx.confluenceBreakdown,
     };
 
+    await writeAnalysisCache(supabase, cacheKey, analysis as Record<string, unknown>);
+    await attachUserGuardrails(supabase, userId, analysis as Record<string, unknown>);
+
     return jsonResponse(req, { success: true, analysis });
   } catch (error) {
     const latencyMs = Date.now() - started;
@@ -1257,9 +1376,10 @@ Deno.serve(async (req) => {
       if (ctx) {
         const fallback = deterministicFallback(ctx, `fallback: ${errorMessage}`);
         const setupType = fallback._meta.setup_type ?? "wait";
-        const calibration = await fetchEmpiricalCalibration(supabase, setupType, ctx.regime).catch(() => null);
+        const calibration = await fetchEmpiricalCalibration(supabase, setupType, ctx.regime, symbol, interval).catch(() => null);
         attachDecisionLayer(fallback as Record<string, unknown>, calibration, setupType, ctx);
         fallback._meta = { ...fallback._meta, analysis_id: fallbackAnalysisId };
+        await attachUserGuardrails(supabase, userId, fallback as Record<string, unknown>);
         return jsonResponse(req, { success: true, analysis: fallback });
       }
     } catch { /* fall through to hard error below */ }

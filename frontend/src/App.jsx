@@ -15,6 +15,7 @@ import {
   EDGE_FUNCTION_UNAVAILABLE_MESSAGE,
   invokeFunction,
   isEdgeFunctionUnavailableError,
+  supabase,
 } from './supabaseClient'
 import { buildPivotData, sanitizePivotTimeframe } from '@forge/pivot'
 import { buildMarketStructure } from '@forge/market-structure'
@@ -351,6 +352,8 @@ export default function App() {
   const [aiAnalysis, setAIAnalysis] = useState(null)
   const [aiLoading, setAILoading] = useState(false)
   const [aiError, setAIError] = useState('')
+  const [armedAlerts, setArmedAlerts] = useState([])
+  const [alertToast, setAlertToast] = useState('')
   const lastAICallRef = useRef(0)
   const loadIdRef = useRef(0)
   const skipIntervalReloadRef = useRef(true)
@@ -587,10 +590,18 @@ export default function App() {
         }
         preferencesCloudUnavailableRef.current = false
         setPreferencesSyncError('')
-        if (data?.success && data.preferences) {
-          const preferences = sanitizePreferences(data.preferences)
-          setChartPreferences((prev) => ({ ...prev, ...preferences }))
-          saveLocalPreferences(userKeyRef.current, preferences)
+        if (data?.success && data.preferences && typeof data.preferences === 'object') {
+          // Merge only keys present in the cloud payload so a stale server allowlist cannot
+          // clobber local toggles with sanitize defaults (false).
+          setChartPreferences((prev) => {
+            const merged = { ...prev }
+            for (const [key, value] of Object.entries(data.preferences)) {
+              if (key in DEFAULT_CHART_PREFERENCES) merged[key] = value
+            }
+            const preferences = sanitizePreferences(merged)
+            saveLocalPreferences(userKeyRef.current, preferences)
+            return preferences
+          })
         }
       } catch (err) {
         if (isEdgeFunctionUnavailableError(err)) {
@@ -606,6 +617,60 @@ export default function App() {
 
     fetchPreferences()
   }, [currentUserId])
+
+  // Armed price alerts + Realtime trigger toasts (Finding 6).
+  useEffect(() => {
+    if (!supabase || !user?.id || user.id === 'guest') {
+      const clearTimer = setTimeout(() => setArmedAlerts([]), 0)
+      return () => clearTimeout(clearTimer)
+    }
+
+    let cancelled = false
+    const loadArmed = async () => {
+      const { data, error } = await supabase
+        .from('price_alerts')
+        .select('id, symbol, level, direction, source, armed, triggered_at')
+        .eq('user_id', user.id)
+        .eq('armed', true)
+        .order('created_at', { ascending: false })
+        .limit(20)
+      if (!cancelled && !error) setArmedAlerts(data ?? [])
+    }
+    loadArmed()
+
+    const channel = supabase
+      .channel(`price-alerts-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'price_alerts',
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          const row = payload.new
+          if (!row) return
+          if (row.triggered_at) {
+            setAlertToast(`${row.symbol} alert triggered @ ${row.level}`)
+            setStatus(`${row.symbol} price alert triggered @ ${row.level}`)
+            setArmedAlerts((prev) => prev.filter((a) => a.id !== row.id))
+            setTimeout(() => setAlertToast(''), 6000)
+          } else if (row.armed) {
+            setArmedAlerts((prev) => {
+              const without = prev.filter((a) => a.id !== row.id)
+              return [row, ...without].slice(0, 20)
+            })
+          }
+        },
+      )
+      .subscribe()
+
+    return () => {
+      cancelled = true
+      supabase.removeChannel(channel)
+    }
+  }, [user?.id])
 
   useEffect(() => {
     if (!chartPrefsReady) return
@@ -866,6 +931,8 @@ export default function App() {
               priceChange={priceChange}
               latestCandle={latestCandle}
               aiAnalysis={aiAnalysis}
+              alertToast={alertToast}
+              armedAlerts={armedAlerts}
             />
           </>
         )}
@@ -929,8 +996,11 @@ export default function App() {
                aiLoading={aiLoading}
                aiError={aiError}
                onRefresh={() => runAIAnalysis(candles)}
+               symbol={symbol}
+               currentPrice={latestPrice}
             />
             <ScannerPanel
+              armedAlerts={armedAlerts}
               onSelectSymbol={(nextSymbol, nextInterval) => {
                 setSymbolInput(nextSymbol)
                 setSymbol(nextSymbol)

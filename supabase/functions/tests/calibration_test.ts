@@ -6,6 +6,7 @@ import {
   decidedCounts,
   empiricalConfidence,
   clampModelConfidence,
+  resolvePriorRate,
   selectCalibrationBucket,
 } from "../_shared/calibration.ts";
 
@@ -119,4 +120,26 @@ Deno.test("selectCalibrationBucket keeps a thin setup bucket honest rather than 
   const result = selectCalibrationBucket(data, "breakout", "trending");
   assertEquals(result?.bucket, "setup");
   assertEquals(result?.n, 4);
+});
+
+Deno.test("resolvePriorRate prefers a finite baseline over the live global rate", () => {
+  assertEquals(resolvePriorRate(0.42, 0.5), 0.42);
+  assertEquals(resolvePriorRate(null, 0.5), 0.5);
+  assertEquals(resolvePriorRate(1.5, 0.5), 0.5);
+});
+
+Deno.test("selectCalibrationBucket returns backtest_prior when live history is empty", () => {
+  const result = selectCalibrationBucket([], "breakout", "trending", 20, 0.55, 120);
+  assertEquals(result?.bucket, "backtest_prior");
+  assertEquals(result?.empirical_hit_rate, 0.55);
+  assertEquals(result?.n, 120);
+});
+
+Deno.test("selectCalibrationBucket uses baseline as Bayesian prior when live samples exist", () => {
+  // 2/2 live hits would be ~100% without a prior; a low baseline should pull the rate down.
+  const data = rows("breakout", "trending", 2, 0);
+  const withPrior = selectCalibrationBucket(data, "breakout", "trending", 20, 0.4, 100);
+  const withoutPrior = selectCalibrationBucket(data, "breakout", "trending");
+  assertEquals(withPrior?.bucket, "setup");
+  assertEquals(withPrior!.empirical_hit_rate < withoutPrior!.empirical_hit_rate, true);
 });

@@ -65,8 +65,13 @@ function entryFilled(
 }
 
 /**
- * Default partial fractions matching tradeManagement.ts: 50% at T1, 25% at T2, remainder on the
- * last target (or as the runner that expires / stops).
+ * Default partial fractions for the scoring ladder.
+ *
+ * tradeManagement describes a 50% / 25%+runner style plan in prose; for a two-target plan the
+ * scorer uses [0.5, 0.5] so the second target stands in for the runner remainder. Three-or-more
+ * targets use [0.5, 0.25, …, remainder on last]. Expiry is measured from forward[0] (analysis
+ * time), not from fill — a deliberate modeling choice so unfilled plans still age out on a fixed
+ * horizon; do not bump SCORING_VERSION solely to retarget the clock at fill.
  */
 function defaultFractions(count: number): number[] {
   if (count <= 0) return [];

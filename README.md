@@ -26,7 +26,7 @@ Analysis runs server-side in Supabase Edge Functions. The frontend chart mirrors
 - **Keltner channels**, **TTM squeeze** state and momentum
 - **Supertrend**, **Ichimoku**, **Donchian** channels
 - **Stochastic RSI**
-- **Realized volatility**, **Hurst exponent**, **Chandelier exit**, persistence metrics
+- **Realized volatility**, **Hurst exponent**, **Chandelier exit**, persistence metrics (Hurst / persistence are **context-only** today — surfaced in the analysis snapshot but not wired into `deriveRegime` gating until a backtest A/B justifies it)
 - **Market regime** (`trending` | `ranging` | `volatile_chop`) from ADX slope, ATR percentile, Bollinger bandwidth percentile
 
 ### Market structure and liquidity
@@ -106,9 +106,10 @@ Provenance badge: **Live AI** / **Partial AI** / **Baseline** (rules engine only
 Database schema (migration `20260722070000_decision_proactive_learning.sql`):
 
 - **`watchlist`** — per-user symbol + interval rows with `enabled` flag (scanner input list).
-- **`price_alerts`** — armed alerts on levels from plan targets, S/R, pivots, or manual price; `direction` above/below.
+- **`price_alerts`** — armed alerts on levels from plan entry / invalidation (Trade Plan buttons), or manual; `direction` above/below.
+- **`check-alerts`** — cron every minute (`X-Cron-Secret`); marks triggered rows and Realtime UPDATE events drive in-app toasts.
 
-Edge evaluation of alerts against live prices is intended to run on a schedule; wire-up may be partial in the UI. Treat watchlist/alerts as the persistence layer for proactive monitoring — not a promise of push notifications until your deployment connects the evaluator.
+Deploy the `check-alerts` cron migration and enable Realtime on `price_alerts` for toast delivery. Browser notifications are still out of scope — in-app status/toast is the v1 path.
 
 ---
 
@@ -218,6 +219,8 @@ Notable recent migrations:
 - `20260722050000_trade_journal.sql` — journal + scored outcomes
 - `20260722060000_regime_calibration_bucket.sql` — setup×regime calibration
 - `20260722070000_decision_proactive_learning.sql` — risk settings, watchlist, price_alerts, setup_baselines
+- `20260722100000_user_preferences_extended_keys.sql` — chart overlay + pivot pref allowlist
+- `20260722110000_check_alerts_cron.sql` — minutely `check-alerts` cron + Realtime on `price_alerts`
 
 Production: set secrets in **Project Settings → Edge Functions → Secrets**, deploy with `supabase functions deploy`.
 

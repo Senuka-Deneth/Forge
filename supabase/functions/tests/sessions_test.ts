@@ -128,48 +128,72 @@ Deno.test("classifySessionRelation places price against a session range", () => 
 // CME gap
 // ---------------------------------------------------------------------------
 
-Deno.test("findLatestCmeGap detects a weekend gap up and reports it unfilled", () => {
-  // Friday 21:00 UTC close, Monday 00:00 UTC reopen — a deliberately simple boundary case.
-  const fridayClose = ts(4, 21); // day 4 = Friday given Monday=day 0
-  const mondayOpen = ts(7, 0); // day 7 = next Monday
-  const candles = [
-    { time: fridayClose, open: 100, high: 101, low: 99, close: 100 },
-    { time: mondayOpen, open: 105, high: 106, low: 104, close: 105 },
-    { time: mondayOpen + HOUR, open: 105, high: 106, low: 104.5, close: 105.5 }, // stays above the gap
-  ];
+/** Contiguous hourly candles Fri 18:00 → Mon 02:00 with a price jump at Sunday 22:00. */
+function contiguousWeekendCandles(opts: {
+  fridayClose: number;
+  sundayOpen: number;
+  fillThroughFridayClose?: boolean;
+}) {
+  const candles: Array<{ time: number; open: number; high: number; low: number; close: number }> = [];
+  // day 4 = Friday, day 6 = Sunday, day 7 = Monday (from Monday=0 base)
+  for (let day = 4; day <= 7; day += 1) {
+    for (let hour = 0; hour < 24; hour += 1) {
+      if (day === 4 && hour < 18) continue;
+      if (day === 7 && hour > 2) continue;
+      const time = ts(day, hour);
+      const isReopen = day === 6 && hour === 22;
+      const afterReopen = day > 6 || (day === 6 && hour > 22);
+      const px = isReopen || afterReopen ? opts.sundayOpen : opts.fridayClose;
+      const low = opts.fillThroughFridayClose && afterReopen
+        ? Math.min(px, opts.fridayClose)
+        : px - 0.5;
+      candles.push({
+        time,
+        open: px,
+        high: px + 0.5,
+        low,
+        close: px,
+      });
+    }
+  }
+  return candles;
+}
+
+Deno.test("findLatestCmeGap detects a weekend gap up from Fri 21:00 / Sun 22:00 on contiguous data", () => {
+  const candles = contiguousWeekendCandles({ fridayClose: 100, sundayOpen: 105 });
   const gap = findLatestCmeGap(candles, HOUR);
   assertEquals(gap?.direction, "up");
   assertEquals(gap?.filled, false);
   assertEquals(gap!.gapPct > 0, true);
+  // Contiguous weekend bars must not collapse the gap to ~0.
+  assertEquals(Math.abs(gap!.gapPct) > 1, true);
 });
 
-Deno.test("findLatestCmeGap marks a gap filled once price trades back through it", () => {
-  const fridayClose = ts(4, 21);
-  const mondayOpen = ts(7, 0);
-  const candles = [
-    { time: fridayClose, open: 100, high: 101, low: 99, close: 100 },
-    { time: mondayOpen, open: 105, high: 106, low: 104, close: 105 },
-    { time: mondayOpen + HOUR, open: 105, high: 106, low: 99, close: 100 }, // wicks back through 100
-  ];
+Deno.test("findLatestCmeGap marks a gap filled once price trades back through Friday close", () => {
+  const candles = contiguousWeekendCandles({
+    fridayClose: 100,
+    sundayOpen: 105,
+    fillThroughFridayClose: true,
+  });
   const gap = findLatestCmeGap(candles, HOUR);
   assertEquals(gap?.filled, true);
 });
 
 Deno.test("findLatestCmeGap returns none direction for a negligible gap", () => {
-  const fridayClose = ts(4, 21);
-  const mondayOpen = ts(7, 0);
-  const candles = [
-    { time: fridayClose, open: 100, high: 101, low: 99, close: 100 },
-    { time: mondayOpen, open: 100.001, high: 101, low: 99, close: 100.001 },
-  ];
+  const candles = contiguousWeekendCandles({ fridayClose: 100, sundayOpen: 100.001 });
   assertEquals(findLatestCmeGap(candles, HOUR)?.direction, "none");
 });
 
+Deno.test("findLatestCmeGap does not treat contiguous weekend bars as a zero gap", () => {
+  // Regression: old adjacent-candle logic saw Sat→Sun continuity as gap≈0 / "none".
+  const candles = contiguousWeekendCandles({ fridayClose: 100, sundayOpen: 108 });
+  const gap = findLatestCmeGap(candles, HOUR);
+  assertEquals(gap?.direction, "up");
+  assertEquals(gap!.gapPct > 5, true);
+});
+
 Deno.test("findLatestCmeGap returns null on daily-plus intervals", () => {
-  const candles = [
-    { time: ts(4, 21), open: 100, high: 101, low: 99, close: 100 },
-    { time: ts(7, 0), open: 105, high: 106, low: 104, close: 105 },
-  ];
+  const candles = contiguousWeekendCandles({ fridayClose: 100, sundayOpen: 105 });
   assertEquals(findLatestCmeGap(candles, DAY), null);
 });
 

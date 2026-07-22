@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 
 /**
  * Decision-layer card rendered at the top of the AI tab.
@@ -25,20 +25,36 @@ function formatR(value) {
   return `${sign}${value.toFixed(2)}R`;
 }
 
+/** Mirror applyGuardrailVerdict: negative EV stays SKIP; WAIT-from-guardrails flips to TAKE only when every blocking gate is overridden and expectancy was TAKE. */
+function resolveDisplayedVerdict(expectancyVerdict, guardrails, overriddenIds) {
+  const active = (guardrails ?? []).filter((g) => g.blocked && !overriddenIds.has(g.id));
+  if (expectancyVerdict === 'WAIT') return 'WAIT';
+  if (expectancyVerdict === 'SKIP') return 'SKIP';
+  if (active.length) return 'WAIT';
+  return 'TAKE';
+}
+
 export default function VerdictPanel({ analysis, onOverride }) {
   const verdict = analysis?.verdict;
   const [overridden, setOverridden] = useState(() => new Set());
 
-  if (!verdict) return null;
-
-  const style = VERDICT_STYLES[verdict.verdict] ?? VERDICT_STYLES.WAIT;
-  const expectancy = verdict.expectancy ?? {};
-  const management = verdict.management ?? analysis?.management ?? {};
-  const guardrails = (verdict.guardrails ?? []).filter((g) => g.blocked);
-  const factors = verdict.factors ?? [];
+  const expectancy = verdict?.expectancy ?? {};
+  const management = verdict?.management ?? analysis?.management ?? {};
+  const guardrails = (verdict?.guardrails ?? []).filter((g) => g.blocked);
+  const factors = verdict?.factors ?? [];
   const bullFactors = factors.filter((f) => f.side === 'bull');
   const bearFactors = factors.filter((f) => f.side === 'bear');
-  const scenarios = verdict.scenarios ?? {};
+  const scenarios = verdict?.scenarios ?? {};
+
+  const displayedVerdict = useMemo(() => {
+    if (!verdict) return 'WAIT';
+    const expectancyVerdict = expectancy.verdict ?? verdict.verdict ?? 'WAIT';
+    return resolveDisplayedVerdict(expectancyVerdict, guardrails, overridden);
+  }, [verdict, expectancy.verdict, guardrails, overridden]);
+
+  if (!verdict) return null;
+
+  const style = VERDICT_STYLES[displayedVerdict] ?? VERDICT_STYLES.WAIT;
 
   const handleOverride = (id) => {
     setOverridden((prev) => {
@@ -146,7 +162,11 @@ export default function VerdictPanel({ analysis, onOverride }) {
             );
           })}
           {activeGuards.length === 0 && overridden.size > 0 && (
-            <p className="ai-signal-note">All blocking guardrails overridden — proceed with eyes open.</p>
+            <p className="ai-signal-note">
+              {displayedVerdict === 'TAKE'
+                ? 'All blocking guardrails overridden — verdict is TAKE. Proceed with eyes open.'
+                : 'All blocking guardrails overridden — proceed with eyes open.'}
+            </p>
           )}
         </div>
       )}

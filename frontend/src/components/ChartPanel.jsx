@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, m } from 'framer-motion'
 import {
   createChart,
@@ -16,6 +16,16 @@ import {
   isOverPriceScale,
   shouldHandleVerticalWheel,
 } from '../utils/manualPriceScale'
+import { computeChartOverlays } from '../utils/chartIndicators'
+import { INDICATOR_PRESETS } from '../utils/userPreferences'
+import {
+  buildLiquidityMarkers,
+  clearPriceOverlays,
+  syncAnchoredVwaps,
+  syncPriceOverlays,
+} from '../utils/chartOverlays'
+import { ZoneBoxPrimitive, buildLiquidityZones } from '../utils/zoneBoxPrimitive'
+import { VolumeProfilePrimitive, buildProfileBins } from '../utils/volumeProfilePrimitive'
 import {
   getPivotPeriodLabel,
   resolvePivotPeriod,
@@ -192,6 +202,35 @@ function getCryptoIcon(symbol, size = 18) {
   )
 }
 
+/**
+ * Overlays introduced in the chart-parity work. The pre-existing six (EMA20/50, RSI, MACD,
+ * support/resistance, pivots) have bespoke legend entries with their own labels and settings, so
+ * only these are generated from the indicator list.
+ */
+const EXTENDED_OVERLAY_IDS = new Set([
+  'supertrend', 'ichimoku', 'donchian', 'chandelier',
+  'stoch-rsi', 'keltner', 'squeeze',
+  'anchored-vwap', 'vwap-bands', 'volume-profile',
+  'liquidity-pools', 'sweeps', 'fvg', 'order-blocks',
+])
+
+/**
+ * Squeeze histogram bars, coloured by momentum sign and dimmed while the squeeze is still on.
+ * A bright bar means compression has released — that is the tradable moment, not the squeeze.
+ */
+function buildSqueezeBars(overlays, theme) {
+  const squeezeByTime = new Map((overlays.squeeze.flags ?? []).map((f) => [f.time, f.inSqueeze]))
+  return overlays.squeeze.momentum.map((point) => ({
+    time: point.time,
+    value: point.value,
+    color: squeezeByTime.get(point.time)
+      ? theme.squeeze.on
+      : point.value >= 0
+        ? theme.squeeze.momentumPos
+        : theme.squeeze.momentumNeg,
+  }))
+}
+
 export default function ChartPanel({
   symbol,
   interval,
@@ -231,6 +270,14 @@ export default function ChartPanel({
   const standardPivotSeriesRef = useRef([])
   const pivotPrimitiveRef = useRef(null)
   const pivotPeriodEndRef = useRef(null)
+
+  // Extended overlays (Phase 3). One map keyed by "<overlay>:<line>" rather than a ref per series.
+  const overlaySeriesRef = useRef(new Map())
+  const zonePrimitiveRef = useRef(null)
+  const volumeProfilePrimitiveRef = useRef(null)
+  const stochKSeriesRef = useRef(null)
+  const stochDSeriesRef = useRef(null)
+  const squeezeMomSeriesRef = useRef(null)
 
   const hasAppliedInitialZoomRef = useRef(false)
   const isInitializedRef = useRef(false)
@@ -272,8 +319,35 @@ export default function ChartPanel({
     }))
   }
 
+  // Each preset is a delta from the cleared state, so switching between them lands on the same
+  // result regardless of what was on before. Without the clean base, "Trend following" would
+  // silently inherit whatever liquidity overlays the previous preset happened to enable.
+  const applyPreset = (preset) => {
+    onChartPreferencesChange((prev) => ({
+      ...prev,
+      ...INDICATOR_PRESETS.clean.apply,
+      ...preset.apply,
+    }))
+  }
+
   const rsiVisible = chartPreferences.showRsi && !hiddenIndicators.includes('rsi')
   const macdVisible = chartPreferences.showMacd && !hiddenIndicators.includes('macd')
+  const stochVisible = chartPreferences.showStochRsi && !hiddenIndicators.includes('stoch-rsi')
+  const squeezeVisible = chartPreferences.showSqueeze && !hiddenIndicators.includes('squeeze')
+
+  /**
+   * Extended overlays, recomputed on bar close rather than on every websocket tick.
+   *
+   * Keying on the last bar's time (not the whole array) means an in-progress bar updating its
+   * close does not re-run Ichimoku, volume profile and the liquidity map several times a second.
+   * The live bar keeps its fast path through patchLastCandleIndicators for EMA/RSI/MACD.
+   */
+  const lastCandleTime = candles.length ? candles[candles.length - 1].time : null
+  const overlays = useMemo(
+    () => computeChartOverlays(candles),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed on bar close, not on every tick
+    [candles.length, lastCandleTime, symbol, interval],
+  )
 
   // Pins every sub-pane to SUBPANE_HEIGHT (pane 0 absorbs the rest) and
   // repositions the floating RSI/MACD pane labels.
@@ -533,6 +607,19 @@ export default function ChartPanel({
     const pivotPrimitive = new PivotSegmentsPrimitive()
     candleSeries.attachPrimitive(pivotPrimitive)
     pivotPrimitiveRef.current = pivotPrimitive
+
+    // Volume profile draws behind the zone boxes, which in turn sit behind the pivot labels.
+    const volumeProfilePrimitive = new VolumeProfilePrimitive()
+    candleSeries.attachPrimitive(volumeProfilePrimitive)
+    volumeProfilePrimitiveRef.current = volumeProfilePrimitive
+
+    const zonePrimitive = new ZoneBoxPrimitive()
+    candleSeries.attachPrimitive(zonePrimitive)
+    zonePrimitiveRef.current = zonePrimitive
+
+    // Captured for the cleanup below: reading overlaySeriesRef.current at teardown time could see
+    // a different Map than the one this chart's series were registered in.
+    const managedOverlays = overlaySeriesRef.current
     ema20SeriesRef.current = ema20Series
     ema50SeriesRef.current = ema50Series
 
@@ -801,12 +888,18 @@ export default function ChartPanel({
       } catch {
         // Chart may already be partially torn down
       }
+      clearPriceOverlays(priceChart, managedOverlays)
       pivotPrimitiveRef.current = null
+      zonePrimitiveRef.current = null
+      volumeProfilePrimitiveRef.current = null
       priceChartRef.current = null
       rsiSeriesRef.current = null
       macdSeriesRef.current = null
       macdSignalSeriesRef.current = null
       macdHistSeriesRef.current = null
+      stochKSeriesRef.current = null
+      stochDSeriesRef.current = null
+      squeezeMomSeriesRef.current = null
       priceChart.remove()
     }
   }, [])
@@ -878,6 +971,123 @@ export default function ChartPanel({
 
     updatePaneLayout()
   }, [rsiVisible, macdVisible])
+
+  // Creates/removes the StochRSI and squeeze panes, mirroring the RSI/MACD pattern above.
+  useEffect(() => {
+    const chart = priceChartRef.current
+    if (!chart) return
+
+    const ct = getCurrentChartTheme()
+
+    if (stochVisible && !stochKSeriesRef.current && overlays.stochRsi.k.length) {
+      const paneIndex = chart.panes().length
+      const kSeries = chart.addSeries(LineSeries, {
+        color: ct.stochRsi.k, lineWidth: 2, lineStyle: LineStyle.Solid, priceLineVisible: false,
+      }, paneIndex)
+      const dSeries = chart.addSeries(LineSeries, {
+        color: ct.stochRsi.d, lineWidth: 1, lineStyle: LineStyle.Solid, priceLineVisible: false,
+      }, paneIndex)
+      kSeries.setData(overlays.stochRsi.k)
+      dSeries.setData(overlays.stochRsi.d)
+      stochKSeriesRef.current = kSeries
+      stochDSeriesRef.current = dSeries
+    } else if (!stochVisible && stochKSeriesRef.current) {
+      chart.removeSeries(stochKSeriesRef.current)
+      if (stochDSeriesRef.current) chart.removeSeries(stochDSeriesRef.current)
+      stochKSeriesRef.current = null
+      stochDSeriesRef.current = null
+    }
+
+    if (squeezeVisible && !squeezeMomSeriesRef.current && overlays.squeeze.momentum.length) {
+      const paneIndex = chart.panes().length
+      const momSeries = chart.addSeries(HistogramSeries, {
+        priceFormat: { type: 'price', precision: 4, minMove: 0.0001 },
+      }, paneIndex)
+      momSeries.setData(buildSqueezeBars(overlays, ct))
+      squeezeMomSeriesRef.current = momSeries
+    } else if (!squeezeVisible && squeezeMomSeriesRef.current) {
+      chart.removeSeries(squeezeMomSeriesRef.current)
+      squeezeMomSeriesRef.current = null
+    }
+
+    updatePaneLayout()
+  }, [stochVisible, squeezeVisible, overlays])
+
+  // Syncs every price-pane overlay, the zone boxes, the volume profile and the sweep markers.
+  useEffect(() => {
+    const chart = priceChartRef.current
+    if (!chart || !candleSeriesRef.current) return
+
+    const ct = getCurrentChartTheme()
+
+    syncPriceOverlays(chart, overlaySeriesRef.current, {
+      overlays,
+      preferences: chartPreferences,
+      hiddenIndicators,
+      theme: ct,
+    })
+    syncAnchoredVwaps(chart, overlaySeriesRef.current, {
+      overlays,
+      preferences: chartPreferences,
+      hiddenIndicators,
+      theme: ct,
+    })
+
+    const showZones = (chartPreferences.showFvg && !hiddenIndicators.includes('fvg'))
+      || (chartPreferences.showOrderBlocks && !hiddenIndicators.includes('order-blocks'))
+    zonePrimitiveRef.current?.setZones(showZones
+      ? buildLiquidityZones({
+        candles,
+        fairValueGaps: chartPreferences.showFvg ? overlays.fairValueGaps : [],
+        orderBlocks: chartPreferences.showOrderBlocks ? overlays.orderBlocks : [],
+        theme: ct.zones,
+      })
+      : [])
+
+    const showProfile = chartPreferences.showVolumeProfile && !hiddenIndicators.includes('volume-profile')
+    volumeProfilePrimitiveRef.current?.setProfile(
+      showProfile ? buildProfileBins(candles, overlays.volumeProfile) : null,
+      ct.volumeProfile,
+    )
+
+    candleSeriesRef.current.setMarkers?.(
+      buildLiquidityMarkers({ overlays, preferences: chartPreferences, theme: ct }),
+    )
+  }, [overlays, chartPreferences, hiddenIndicators, candles])
+
+  // Draws stop pools as horizontal price lines — they are levels, not series.
+  useEffect(() => {
+    const series = candleSeriesRef.current
+    if (!series) return
+
+    const ct = getCurrentChartTheme()
+    const show = chartPreferences.showLiquidityPools && !hiddenIndicators.includes('liquidity-pools')
+    const lines = []
+
+    if (show) {
+      for (const pool of overlays.liquidityPools ?? []) {
+        if (pool.swept) continue // a taken pool is no longer resting liquidity
+        lines.push(series.createPriceLine({
+          price: pool.price,
+          color: pool.side === 'buy_side' ? ct.resistanceLine : ct.supportLine,
+          lineWidth: 1,
+          lineStyle: LineStyle.Dashed,
+          axisLabelVisible: true,
+          title: `${pool.side === 'buy_side' ? 'BSL' : 'SSL'} ×${pool.touches}`,
+        }))
+      }
+    }
+
+    return () => {
+      for (const line of lines) {
+        try {
+          series.removePriceLine(line)
+        } catch {
+          // Series already disposed with the chart.
+        }
+      }
+    }
+  }, [overlays, chartPreferences.showLiquidityPools, hiddenIndicators])
 
   useEffect(() => {
     if (!candles.length) return
@@ -1123,6 +1333,7 @@ export default function ChartPanel({
     {
       id: 'ema20',
       label: 'EMA 20',
+      group: 'Trend',
       description: 'Short-term trend filter',
       applied: chartPreferences.showEma20,
       href: '?tab=learning#ema',
@@ -1131,30 +1342,160 @@ export default function ChartPanel({
     {
       id: 'ema50',
       label: 'EMA 50',
+      group: 'Trend',
       description: 'Medium-term trend filter',
       applied: chartPreferences.showEma50,
       href: '?tab=learning#ema',
       onToggle: () => updatePreference('showEma50'),
     },
     {
+      id: 'supertrend',
+      label: 'Supertrend',
+      group: 'Trend',
+      description: 'ATR trailing stop that only moves with the trend',
+      applied: chartPreferences.showSupertrend,
+      href: '?tab=learning#supertrend',
+      onToggle: () => updatePreference('showSupertrend'),
+    },
+    {
+      id: 'ichimoku',
+      label: 'Ichimoku',
+      group: 'Trend',
+      description: 'Tenkan / Kijun and the forward-displaced cloud',
+      applied: chartPreferences.showIchimoku,
+      href: '?tab=learning#ichimoku',
+      onToggle: () => updatePreference('showIchimoku'),
+    },
+    {
+      id: 'donchian',
+      label: 'Donchian 20',
+      group: 'Trend',
+      description: 'The high/low a breakout actually breaks',
+      applied: chartPreferences.showDonchian,
+      href: '?tab=learning#donchian',
+      onToggle: () => updatePreference('showDonchian'),
+    },
+    {
+      id: 'chandelier',
+      label: 'Chandelier exit',
+      group: 'Trend',
+      description: 'ATR stop hung off the running extreme',
+      applied: chartPreferences.showChandelier,
+      href: '?tab=learning#chandelier',
+      onToggle: () => updatePreference('showChandelier'),
+    },
+    {
       id: 'rsi',
       label: 'RSI 14',
+      group: 'Momentum',
       description: 'Momentum / overbought-oversold',
       applied: chartPreferences.showRsi,
       href: '?tab=learning#rsi',
       onToggle: () => updatePreference('showRsi'),
     },
     {
+      id: 'stoch-rsi',
+      label: 'Stochastic RSI',
+      group: 'Momentum',
+      description: 'Where RSI sits inside its own recent range',
+      applied: chartPreferences.showStochRsi,
+      href: '?tab=learning#stoch-rsi',
+      onToggle: () => updatePreference('showStochRsi'),
+    },
+    {
       id: 'macd',
       label: 'MACD',
+      group: 'Momentum',
       description: 'Trend momentum confirmation',
       applied: chartPreferences.showMacd,
       href: '?tab=learning#macd',
       onToggle: () => updatePreference('showMacd'),
     },
     {
+      id: 'keltner',
+      label: 'Keltner channels',
+      group: 'Volatility',
+      description: 'EMA envelope scaled by ATR',
+      applied: chartPreferences.showKeltner,
+      href: '?tab=learning#keltner',
+      onToggle: () => updatePreference('showKeltner'),
+    },
+    {
+      id: 'squeeze',
+      label: 'TTM squeeze',
+      group: 'Volatility',
+      description: 'Bollinger inside Keltner — compression before expansion',
+      applied: chartPreferences.showSqueeze,
+      href: '?tab=learning#squeeze',
+      onToggle: () => updatePreference('showSqueeze'),
+    },
+    {
+      id: 'anchored-vwap',
+      label: 'Anchored VWAP',
+      group: 'Volume & Flow',
+      description: 'Average price paid since each significant swing',
+      applied: chartPreferences.showAnchoredVwap,
+      href: '?tab=learning#anchored-vwap',
+      onToggle: () => updatePreference('showAnchoredVwap'),
+    },
+    {
+      id: 'vwap-bands',
+      label: 'VWAP σ bands',
+      group: 'Volume & Flow',
+      description: '±1σ / ±2σ around each anchored VWAP',
+      applied: chartPreferences.showVwapBands,
+      href: '?tab=learning#anchored-vwap',
+      onToggle: () => updatePreference('showVwapBands'),
+    },
+    {
+      id: 'volume-profile',
+      label: 'Volume profile',
+      group: 'Volume & Flow',
+      description: 'Volume at price, with POC and value area',
+      applied: chartPreferences.showVolumeProfile,
+      href: '?tab=learning#volume-profile',
+      onToggle: () => updatePreference('showVolumeProfile'),
+    },
+    {
+      id: 'liquidity-pools',
+      label: 'Stop pools',
+      group: 'Structure & Liquidity',
+      description: 'Equal highs/lows where stops rest',
+      applied: chartPreferences.showLiquidityPools,
+      href: '?tab=learning#liquidity-pools',
+      onToggle: () => updatePreference('showLiquidityPools'),
+    },
+    {
+      id: 'sweeps',
+      label: 'Liquidity sweeps',
+      group: 'Structure & Liquidity',
+      description: 'Wick through a level that closed back inside',
+      applied: chartPreferences.showSweeps,
+      href: '?tab=learning#sweeps',
+      onToggle: () => updatePreference('showSweeps'),
+    },
+    {
+      id: 'fvg',
+      label: 'Fair value gaps',
+      group: 'Structure & Liquidity',
+      description: '3-bar imbalances, faded as they fill',
+      applied: chartPreferences.showFvg,
+      href: '?tab=learning#fvg',
+      onToggle: () => updatePreference('showFvg'),
+    },
+    {
+      id: 'order-blocks',
+      label: 'Order blocks',
+      group: 'Structure & Liquidity',
+      description: 'Last opposing candle before a displacement leg',
+      applied: chartPreferences.showOrderBlocks,
+      href: '?tab=learning#order-blocks',
+      onToggle: () => updatePreference('showOrderBlocks'),
+    },
+    {
       id: 'support',
       label: 'Support line',
+      group: 'Structure & Liquidity',
       description: 'Nearest swing floor',
       applied: chartPreferences.showSupport,
       href: '?tab=learning#pivot-levels',
@@ -1163,6 +1504,7 @@ export default function ChartPanel({
     {
       id: 'resistance',
       label: 'Resistance line',
+      group: 'Structure & Liquidity',
       description: 'Nearest swing ceiling',
       applied: chartPreferences.showResistance,
       href: '?tab=learning#pivot-levels',
@@ -1172,12 +1514,19 @@ export default function ChartPanel({
     {
       id: 'standard-pivots',
       label: 'Standard Pivots',
+      group: 'Structure & Liquidity',
       description: 'Time-separated traditional pivots',
       applied: chartPreferences.showStandardPivots,
       href: '?tab=learning#binance-pivots',
       onToggle: () => updatePreference('showStandardPivots'),
     },
   ]
+
+  // Preserve the declaration order within each group while collecting them under headings.
+  const INDICATOR_GROUP_ORDER = ['Trend', 'Momentum', 'Volatility', 'Volume & Flow', 'Structure & Liquidity']
+  const groupedIndicators = INDICATOR_GROUP_ORDER
+    .map((group) => ({ group, items: indicatorItems.filter((item) => item.group === group) }))
+    .filter((section) => section.items.length > 0)
 
   return (
     <div className={`chart-card ${isMaximized ? 'chart-card-maximized' : ''}`}>
@@ -1418,8 +1767,40 @@ export default function ChartPanel({
               <button className="indicator-modal-close" onClick={() => setShowIndicatorPanel(false)} aria-label="Close indicators">×</button>
             </div>
 
+            <div className="indicator-preset-row" style={{
+              display: 'flex', flexWrap: 'wrap', gap: '6px',
+              padding: '0 4px 12px', borderBottom: '1px solid var(--border-subtle)', marginBottom: '8px',
+            }}>
+              <span style={{
+                fontSize: '10px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase',
+                color: 'var(--text-muted)', width: '100%', marginBottom: '2px',
+              }}>
+                Presets
+              </span>
+              {Object.entries(INDICATOR_PRESETS).map(([key, preset]) => (
+                <button
+                  key={key}
+                  type="button"
+                  className="btn-ghost"
+                  title={preset.description}
+                  onClick={() => applyPreset(preset)}
+                  style={{ fontSize: '11px', padding: '4px 10px' }}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+
             <div className="indicator-list">
-              {indicatorItems.map((item) => (
+              {groupedIndicators.map((section) => (
+                <div key={section.group} className="indicator-group">
+                  <div style={{
+                    fontSize: '10px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase',
+                    color: 'var(--text-muted)', padding: '10px 8px 6px',
+                  }}>
+                    {section.group}
+                  </div>
+                  {section.items.map((item) => (
                 <div key={item.id} className="indicator-item-container" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <div className={`indicator-row ${item.applied ? 'applied' : ''}`}>
                     <button type="button" className="indicator-row-main" onClick={item.onToggle}>
@@ -1487,6 +1868,8 @@ export default function ChartPanel({
                       </select>
                     </div>
                   )}
+                </div>
+                  ))}
                 </div>
               ))}
             </div>
@@ -1593,7 +1976,17 @@ export default function ChartPanel({
                   active: chartPreferences.showStandardPivots,
                   hasSettings: true,
                   onRemove: () => updatePreference('showStandardPivots')
-                }
+                },
+                // Extended overlays are derived from indicatorItems rather than repeated here, so a
+                // new overlay shows up in the legend the moment it is added to the modal.
+                ...indicatorItems
+                  .filter((item) => EXTENDED_OVERLAY_IDS.has(item.id))
+                  .map((item) => ({
+                    id: item.id,
+                    label: item.label,
+                    active: item.applied,
+                    onRemove: item.onToggle,
+                  })),
               ].filter(ind => ind.active).map(ind => {
                 const isHidden = hiddenIndicators.includes(ind.id)
                 return (

@@ -1,13 +1,10 @@
 import type { Candle } from "./indicators.ts";
 import { fetchWithTimeout } from "./http.ts";
+import { buildVolumeProfile, type VolumeProfile } from "./volumeProfile.ts";
+
+export type { VolumeProfile };
 
 const BINANCE_FUTURES_BASE = "https://fapi.binance.com";
-
-export type VolumeProfile = {
-  poc: number | null;
-  vah: number | null;
-  val: number | null;
-};
 
 export type OiHistory = {
   delta4hPct: number | null;
@@ -52,55 +49,6 @@ function stddev(values: number[]): number {
   return Math.sqrt(variance);
 }
 
-export function computeVolumeProfile(candles: Candle[], bins = 40): VolumeProfile {
-  if (!candles.length) return { poc: null, vah: null, val: null };
-
-  const lows = candles.map((c) => c.low);
-  const highs = candles.map((c) => c.high);
-  const minPrice = Math.min(...lows);
-  const maxPrice = Math.max(...highs);
-  if (maxPrice <= minPrice) return { poc: null, vah: null, val: null };
-
-  const bucketSize = (maxPrice - minPrice) / bins;
-  const hist = new Array(bins).fill(0);
-
-  for (const c of candles) {
-    const mid = (c.high + c.low) / 2;
-    const idx = Math.min(bins - 1, Math.max(0, Math.floor((mid - minPrice) / bucketSize)));
-    hist[idx] += c.volume;
-  }
-
-  const totalVol = hist.reduce((a, b) => a + b, 0);
-  if (totalVol <= 0) return { poc: null, vah: null, val: null };
-
-  let pocIdx = 0;
-  for (let i = 1; i < bins; i += 1) {
-    if (hist[i] > hist[pocIdx]) pocIdx = i;
-  }
-  const poc = minPrice + (pocIdx + 0.5) * bucketSize;
-
-  const target = totalVol * 0.7;
-  let acc = hist[pocIdx];
-  let lo = pocIdx;
-  let hi = pocIdx;
-  while (acc < target && (lo > 0 || hi < bins - 1)) {
-    const expandLo = lo > 0 ? hist[lo - 1] : -1;
-    const expandHi = hi < bins - 1 ? hist[hi + 1] : -1;
-    if (expandHi >= expandLo) {
-      hi += 1;
-      acc += hist[hi];
-    } else {
-      lo -= 1;
-      acc += hist[lo];
-    }
-  }
-
-  return {
-    poc: Number(poc.toFixed(6)),
-    val: Number((minPrice + lo * bucketSize).toFixed(6)),
-    vah: Number((minPrice + (hi + 1) * bucketSize).toFixed(6)),
-  };
-}
 
 async function fetchJson(url: URL): Promise<unknown | null> {
   try {
@@ -217,7 +165,10 @@ export async function gatherMarketFeatures(
     oi,
     funding,
     takerRatio,
-    volumeProfile: computeVolumeProfile(primaryCandles),
+    // buildVolumeProfile (volumeProfile.ts) spreads each candle's volume across its full traded
+    // range rather than dumping it all at the midpoint — see that module's docstring for why the
+    // old approach here biased the point of control toward wherever wide bars happened to sit.
+    volumeProfile: buildVolumeProfile(primaryCandles),
     mtfDepth: buildMtfDepth(mtfCandles),
   };
 }

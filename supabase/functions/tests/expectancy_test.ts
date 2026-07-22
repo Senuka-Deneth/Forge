@@ -75,3 +75,53 @@ Deno.test("computeExpectancy WAIT when no calibrated p exists", () => {
   assertEquals(result.verdict, "WAIT");
   assertEquals(result.summary.includes("No calibrated hit rate"), true);
 });
+
+Deno.test("computeExpectancy treats a null target price as missing, not as price 0", () => {
+  // Regression: Number(null) is 0 and Number.isFinite(0) is true, so the old finite() helper read
+  // a null target price as the price level 0. The reward then resolved to a real number computed
+  // against a level that does not exist, and the plan got a confident SKIP instead of a WAIT.
+  const plan: TradePlan = {
+    bias: "long",
+    entry_zone: { low: 100, high: 100 },
+    stop_loss: 98,
+    targets: [{ label: "T1", price: null, risk_reward: null }],
+    risk_reward_summary: "unknown",
+    confidence: 60,
+    rationale: "test",
+  };
+  const result = computeExpectancy(plan, { p: 0.5, n: 60, hits: 30 });
+  assertEquals(result.reward_r, null);
+  assertEquals(result.verdict, "WAIT");
+  assertEquals(result.summary.includes("usable reward-to-risk"), true);
+});
+
+Deno.test("computeExpectancy treats a null stop as missing, not as price 0", () => {
+  // With stop=null coerced to 0 the risk became the entire entry price, so the fee cost in R
+  // collapsed to almost nothing and every plan looked cheaper to trade than it is.
+  const plan: TradePlan = {
+    bias: "long",
+    entry_zone: { low: 100, high: 100 },
+    stop_loss: null,
+    targets: [{ label: "T1", price: 104, risk_reward: 2 }],
+    risk_reward_summary: "2:1",
+    confidence: 60,
+    rationale: "test",
+  };
+  const result = computeExpectancy(plan, { p: 0.5, n: 60, hits: 30 });
+  assertEquals(result.cost_r, 0);
+});
+
+Deno.test("computeExpectancy treats a null entry bound as missing, not as price 0", () => {
+  const plan: TradePlan = {
+    bias: "long",
+    entry_zone: { low: null, high: 100 },
+    stop_loss: 98,
+    targets: [{ label: "T1", price: 104, risk_reward: 2 }],
+    risk_reward_summary: "2:1",
+    confidence: 60,
+    rationale: "test",
+  };
+  const result = computeExpectancy(plan, { p: 0.5, n: 60, hits: 30 });
+  // No usable entry mid means no fee cost can be computed — it must not be derived from a 0 bound.
+  assertEquals(result.cost_r, 0);
+});

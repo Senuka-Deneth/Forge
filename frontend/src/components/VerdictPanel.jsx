@@ -27,7 +27,11 @@ function formatR(value) {
 
 /** Mirror applyGuardrailVerdict: negative EV stays SKIP; WAIT-from-guardrails flips to TAKE only when every blocking gate is overridden and expectancy was TAKE. */
 function resolveDisplayedVerdict(expectancyVerdict, guardrails, overriddenIds) {
-  const active = (guardrails ?? []).filter((g) => g.blocked && !overriddenIds.has(g.id));
+  // `overridable: false` must hold here too, exactly as it does server-side — a non-overridable
+  // gate (liquidation before stop) can never be cleared, whatever the override set contains.
+  const active = (guardrails ?? []).filter(
+    (g) => g.blocked && !(g.overridable && overriddenIds.has(g.id)),
+  );
   if (expectancyVerdict === 'WAIT') return 'WAIT';
   if (expectancyVerdict === 'SKIP') return 'SKIP';
   if (active.length) return 'WAIT';
@@ -45,6 +49,7 @@ export default function VerdictPanel({ analysis, onOverride }) {
   const bullFactors = factors.filter((f) => f.side === 'bull');
   const bearFactors = factors.filter((f) => f.side === 'bear');
   const scenarios = verdict?.scenarios ?? {};
+  const feasibility = verdict?.feasibility ?? null;
 
   const displayedVerdict = useMemo(() => {
     if (!verdict) return 'WAIT';
@@ -113,6 +118,39 @@ export default function VerdictPanel({ analysis, onOverride }) {
           <p className="ai-signal-note mt-2">{expectancy.summary}</p>
         )}
       </div>
+
+      {feasibility && (
+        <div className="panel-section">
+          <div className="panel-section__title">Target feasibility</div>
+          <div className="stack-2">
+            <div className="row-between">
+              <span title="One standard deviation of movement over the scoring horizon">
+                Expected move ({feasibility.horizon_bars} bars)
+              </span>
+              <span>±{feasibility.expected_abs_move_pct?.toFixed(2)}%</span>
+            </div>
+            {feasibility.targets?.map((target) => (
+              <div key={target.label || target.price} className="row-between">
+                <span>
+                  {target.label || 'T'} · {target.distance_sigma?.toFixed(2)}σ away
+                </span>
+                <span className={target.reachable ? '' : 'bear'}>
+                  {(target.touch_probability * 100).toFixed(0)}% chance of trading
+                </span>
+              </div>
+            ))}
+            {feasibility.geometric_p != null && (
+              <div className="row-between">
+                <span title="Gambler's-ruin probability of reaching the target before the stop with no edge at all — the baseline the calibrated hit rate has to beat">
+                  No-edge baseline
+                </span>
+                <span>{pct(feasibility.geometric_p)}</span>
+              </div>
+            )}
+          </div>
+          <p className="ai-signal-note mt-2">{feasibility.summary}</p>
+        </div>
+      )}
 
       {guardrails.length > 0 && (
         <div className="panel-section">

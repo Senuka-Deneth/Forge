@@ -25,6 +25,10 @@ export type ExpectancyResult = {
 };
 
 function finite(value: unknown): number | null {
+  // `Number(null)` is 0 and `Number("")` is 0, both of which are finite — so a null stop or a null
+  // target price would sail through as the price level 0 and produce an EV computed against a
+  // level that does not exist. Reject the empty cases before coercing.
+  if (value === null || value === undefined || value === "") return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }

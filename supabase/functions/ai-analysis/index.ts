@@ -30,7 +30,14 @@ import {
 import type { DivergenceResult } from "../_shared/marketStructure.ts";
 import type { PivotBias } from "../_shared/pivotPoints.ts";
 import type { MarketRegime } from "../_shared/regime.ts";
-import { bookQualityFromOrderFlow, buildVerdict, type Factor } from "../_shared/verdict.ts";
+import {
+  bookQualityFromOrderFlow,
+  buildVerdict,
+  sizePlanForAccount,
+  type Factor,
+} from "../_shared/verdict.ts";
+import { realizedSigmaPerBar, sigmaFromAtr } from "../_shared/expectedMove.ts";
+import { EXPIRE_BARS } from "../_shared/outcome.ts";
 import {
   applyGuardrailVerdict,
   evaluateGuardrails,
@@ -39,7 +46,13 @@ import {
   type JournalSnapshot,
   type RiskSettings,
 } from "../_shared/guardrails.ts";
-import { fetchJournalSnapshot, fetchRiskSettings } from "../_shared/journalSnapshot.ts";
+import {
+  fetchJournalSnapshot,
+  fetchRiskSettings,
+  fetchSizingSettings,
+} from "../_shared/journalSnapshot.ts";
+import type { PositionSizeResult } from "../_shared/positionSizing.ts";
+import { fetchSymbolFilters } from "../_shared/binance.ts";
 import type { ExpectancyResult } from "../_shared/expectancy.ts";
 
 export type AnalysisMeta = {
@@ -242,11 +255,20 @@ const CALIBRATION_BUCKET_LABEL: Record<EmpiricalCalibration["bucket"], string> =
   backtest_prior: "a backtest-seeded prior for this setup type in this regime",
 };
 
-const JOURNAL_GUARDRAIL_IDS: ReadonlySet<GuardrailId> = new Set([
+/**
+ * Guardrails that depend on *who is asking*, not on the market.
+ *
+ * Market analysis is cached and shared across users; these gates are recomputed per request and
+ * replace whatever the cache held. `liquidation_before_stop` belongs here because it is derived
+ * from the caller's own equity and exchange leverage — caching one user's liquidation price and
+ * showing it to another would be worse than not showing it at all.
+ */
+const USER_GUARDRAIL_IDS: ReadonlySet<GuardrailId> = new Set([
   "daily_loss_limit",
   "max_open_r",
   "loss_cooldown",
   "correlated_exposure",
+  "liquidation_before_stop",
 ]);
 
 function deriveFactors(ctx: MarketContext, bias: TradePlan["bias"]): Factor[] {
@@ -338,6 +360,12 @@ function attachDecisionLayer(
   const tradeLogic = analysis.trade_logic as Record<string, unknown> | undefined;
   // Market-side only — journal/settings are attached after cache write so the shared cache never
   // stores per-user guardrails.
+  // Volatility for the target-feasibility gate. Realized log-return sigma is measured from the
+  // same closes the plan was built on; ATR is the fallback when history is too short to estimate
+  // one. Both null means the gate stays silent rather than guessing.
+  const sigmaPerBar = realizedSigmaPerBar(ctx.series?.closes ?? []) ??
+    sigmaFromAtr(ctx.latest?.atr14 ?? Number.NaN, ctx.price);
+
   const verdict = buildVerdict({
     plan: tradePlan,
     regime: ctx.regime,
@@ -345,6 +373,8 @@ function attachDecisionLayer(
     funding: ctx.sessions?.fundingWindow ?? null,
     blackout: ctx.sessions?.eventBlackout ?? null,
     book: bookQualityFromOrderFlow(ctx.orderFlow),
+    sigmaPerBar,
+    expireBars: EXPIRE_BARS,
     factors: deriveFactors(ctx, tradePlan.bias),
     scenarios: {
       primary: String(tradeLogic?.bullish_scenario ?? tradePlan.rationale ?? "No primary scenario."),
@@ -380,13 +410,14 @@ function attachDecisionLayer(
 }
 
 /**
- * Merge user-scoped journal guardrails onto a (possibly cached) analysis.
- * Keeps market gates already present; replaces only the journal-family gates.
+ * Merge user-scoped guardrails onto a (possibly cached) analysis.
+ * Keeps market gates already present; replaces only the user-scoped family.
  */
 function applyJournalGuardrails(
   analysis: Record<string, unknown>,
   journal: JournalSnapshot | null,
   settings: Partial<RiskSettings> | null,
+  sizing: PositionSizeResult | null = null,
 ): void {
   const expectancy = (analysis.expectancy ??
     (analysis.verdict as { expectancy?: ExpectancyResult } | undefined)?.expectancy) as
@@ -398,13 +429,14 @@ function applyJournalGuardrails(
     (analysis.guardrails as GuardrailResult[] | undefined) ??
     (analysis.verdict as { guardrails?: GuardrailResult[] } | undefined)?.guardrails ??
     []
-  ).filter((g) => !JOURNAL_GUARDRAIL_IDS.has(g.id));
+  ).filter((g) => !USER_GUARDRAIL_IDS.has(g.id));
 
   const journalGates = evaluateGuardrails({
     expectancy,
     journal,
     settings: settings ?? undefined,
-  }).filter((g) => JOURNAL_GUARDRAIL_IDS.has(g.id));
+    sizing,
+  }).filter((g) => USER_GUARDRAIL_IDS.has(g.id));
 
   const guardrails = [...existing, ...journalGates];
   const { verdict } = applyGuardrailVerdict(expectancy, guardrails);
@@ -426,13 +458,24 @@ function applyJournalGuardrails(
 async function attachUserGuardrails(
   supabase: SupabaseClient,
   userId: string,
+  symbol: string,
   analysis: Record<string, unknown>,
 ): Promise<void> {
-  const [journal, settings] = await Promise.all([
+  const [journal, settings, sizingSettings, filters] = await Promise.all([
     fetchJournalSnapshot(supabase, userId).catch(() => null),
     fetchRiskSettings(supabase, userId).catch(() => null),
+    fetchSizingSettings(supabase, userId).catch(() => null),
+    // Never rejects — falls back to unconstrained filters so a Binance outage costs precision on
+    // the quantity, not the whole gate.
+    fetchSymbolFilters(symbol),
   ]);
-  applyJournalGuardrails(analysis, journal, settings);
+
+  const sizing = sizePlanForAccount(
+    analysis.trade_plan as TradePlan | undefined,
+    sizingSettings,
+    filters,
+  );
+  applyJournalGuardrails(analysis, journal, settings, sizing);
 }
 
 /** @deprecated Use attachDecisionLayer — kept as a thin alias for any external callers. */
@@ -1274,7 +1317,7 @@ Deno.serve(async (req) => {
         ...cached,
         _meta: { ...(cached._meta as Record<string, unknown>), cached: true },
       };
-      await attachUserGuardrails(supabase, userId, analysis);
+      await attachUserGuardrails(supabase, userId, symbol, analysis);
       return jsonResponse(req, { success: true, analysis });
     }
 
@@ -1360,7 +1403,7 @@ Deno.serve(async (req) => {
     };
 
     await writeAnalysisCache(supabase, cacheKey, analysis as Record<string, unknown>);
-    await attachUserGuardrails(supabase, userId, analysis as Record<string, unknown>);
+    await attachUserGuardrails(supabase, userId, symbol, analysis as Record<string, unknown>);
 
     return jsonResponse(req, { success: true, analysis });
   } catch (error) {
@@ -1379,7 +1422,7 @@ Deno.serve(async (req) => {
         const calibration = await fetchEmpiricalCalibration(supabase, setupType, ctx.regime, symbol, interval).catch(() => null);
         attachDecisionLayer(fallback as Record<string, unknown>, calibration, setupType, ctx);
         fallback._meta = { ...fallback._meta, analysis_id: fallbackAnalysisId };
-        await attachUserGuardrails(supabase, userId, fallback as Record<string, unknown>);
+        await attachUserGuardrails(supabase, userId, symbol, fallback as Record<string, unknown>);
         return jsonResponse(req, { success: true, analysis: fallback });
       }
     } catch { /* fall through to hard error below */ }

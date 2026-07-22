@@ -8,6 +8,8 @@ import AIAnalysisPanel from './components/AIAnalysisPanel'
 import AccuracyPanel from './components/AccuracyPanel'
 import ScannerPanel from './components/ScannerPanel'
 import EdgePanel from './components/EdgePanel'
+import PositionSizerPanel from './components/PositionSizerPanel'
+import RiskLabPanel from './components/RiskLabPanel'
 import EducationPanel from './components/EducationPanel'
 import JournalPanel from './components/JournalPanel'
 import { useAuth } from './hooks/useAuth'
@@ -1010,6 +1012,12 @@ export default function App() {
                 loadChart(nextSymbol, nextInterval || chartInterval)
               }}
             />
+            <PositionSizerPanel
+              aiAnalysis={aiAnalysis}
+              symbol={symbol}
+              latestPrice={latestPrice}
+            />
+            <RiskLabPanel />
             <AccuracyPanel />
             <EdgePanel />
           </m.div>
